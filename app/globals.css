@@ -1,0 +1,40 @@
+:root {
+  --background: #f8fafc;
+  --foreground: #172033;
+  --accent: #5267d8;
+}
+
+* { box-sizing: border-box; }
+html, body { min-height: 100%; }
+body {
+  margin: 0;
+  background: var(--background);
+  color: var(--foreground);
+  font-family: Arial, "Hiragino Kaku Gothic ProN", "Yu Gothic", sans-serif;
+}
+.comingSoon {
+  display: grid;
+  min-height: 100svh;
+  place-items: center;
+  padding: 2rem 1.5rem;
+  text-align: center;
+}
+h1 {
+  margin: 0;
+  font-size: clamp(2.5rem, 12vw, 5rem);
+  letter-spacing: 0.08em;
+}
+.reading {
+  margin: 0.75rem 0 0;
+  color: #596277;
+  font-size: 0.9rem;
+  letter-spacing: 0.2em;
+}
+.status {
+  margin: 2.5rem 0 0;
+  color: var(--accent);
+  font-size: 0.9rem;
+  font-weight: 600;
+  letter-spacing: 0.24em;
+  text-transform: uppercase;
+}
