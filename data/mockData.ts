@@ -20,28 +20,32 @@ export type CampusSummary = {
   note: string;
 };
 
-export type GradeSummary = {
-  label: string;
-  value: string;
-  note: string;
+export type GradeSchoolYear = "高1" | "高2" | "高3";
+
+export type GradeTerm = "1学期" | "2学期" | "3学期" | "学年末";
+
+export type GradeRecord = {
+  id: string;
+  schoolYear: GradeSchoolYear;
+  term: GradeTerm;
+  subject: string;
+  grade: number;
+  memo: string;
+  createdAt: string;
+  updatedAt: string;
 };
 
-export type SubjectGrade = {
+export type QualificationStatus = "取得済み" | "受験予定" | "結果待ち";
+
+export type QualificationRecord = {
+  id: string;
   name: string;
-  score: string;
-};
-
-export type TermGrade = {
-  term: string;
-  average: string;
-  focus: string;
-  subjects: SubjectGrade[];
-};
-
-export type Qualification = {
-  name: string;
-  level: string;
-  date: string;
+  scoreOrLevel: string;
+  examDate: string;
+  status: QualificationStatus;
+  memo: string;
+  createdAt: string;
+  updatedAt: string;
 };
 
 export type UniversityCandidate = {
@@ -125,18 +129,18 @@ export const dashboardStats: DashboardStat[] = [
 export const recentItems: RecentItem[] = [
   {
     date: "2026.08.14",
+    title: "成績・評定の登録に対応",
+    description: "学年・学期ごとの評定保存、編集、削除と平均表示が使えるように更新",
+  },
+  {
+    date: "2026.08.14",
+    title: "資格・検定の登録に対応",
+    description: "資格の保存、編集、削除と、取得状況の管理ができるように更新",
+  },
+  {
+    date: "2026.08.14",
     title: "大学・学部候補の追加・編集UIを公開",
     description: "候補の保存、並び替え、詳細確認、編集、削除が使えるように更新",
-  },
-  {
-    date: "2026.08.14",
-    title: "AI相談メモの追加・編集UIを公開",
-    description: "相談メモの保存、詳細確認、編集、削除が使えるように更新",
-  },
-  {
-    date: "2026.08.14",
-    title: "オープンキャンパス評価を追加",
-    description: "参加後の評価入力と見返しができるように更新",
   },
 ];
 
@@ -149,41 +153,110 @@ export const upcomingCampus: CampusSummary = {
   note: "模擬授業と在学生トークが中心。家族1名同伴予定。",
 };
 
-export const gradeSummary: GradeSummary[] = [
-  { label: "最新評定平均", value: "4.1", note: "主要教科は安定" },
-  { label: "得意科目", value: "英語", note: "英検対策と相性良し" },
-  { label: "注力したい科目", value: "数学", note: "情報系も視野に補強" },
-  { label: "記録済み資格", value: "2件", note: "英検・漢検を登録" },
-];
-
-export const termGrades: TermGrade[] = [
+export const gradeRecords: GradeRecord[] = [
   {
-    term: "高校2年 1学期",
-    average: "評定平均 4.1",
-    focus: "最新",
-    subjects: [
-      { name: "現代文", score: "4" },
-      { name: "英語", score: "5" },
-      { name: "数学", score: "3" },
-      { name: "情報", score: "5" },
-    ],
+    id: "grade-h2-1-japanese",
+    schoolYear: "高2",
+    term: "1学期",
+    subject: "現代文",
+    grade: 4,
+    memo: "記述は安定。小論文も意識したい。",
+    createdAt: "2026-08-10",
+    updatedAt: "2026-08-10",
   },
   {
-    term: "高校1年 3学期",
-    average: "評定平均 3.9",
-    focus: "推移確認",
-    subjects: [
-      { name: "国語", score: "4" },
-      { name: "英語", score: "4" },
-      { name: "数学", score: "3" },
-      { name: "生物", score: "4" },
-    ],
+    id: "grade-h2-1-english",
+    schoolYear: "高2",
+    term: "1学期",
+    subject: "英語",
+    grade: 5,
+    memo: "英検対策との相乗効果あり。",
+    createdAt: "2026-08-10",
+    updatedAt: "2026-08-10",
+  },
+  {
+    id: "grade-h2-1-math",
+    schoolYear: "高2",
+    term: "1学期",
+    subject: "数学",
+    grade: 3,
+    memo: "演習量を増やしたい。",
+    createdAt: "2026-08-10",
+    updatedAt: "2026-08-10",
+  },
+  {
+    id: "grade-h2-1-info",
+    schoolYear: "高2",
+    term: "1学期",
+    subject: "情報",
+    grade: 5,
+    memo: "得意分野として維持したい。",
+    createdAt: "2026-08-10",
+    updatedAt: "2026-08-10",
+  },
+  {
+    id: "grade-h1-3-japanese",
+    schoolYear: "高1",
+    term: "3学期",
+    subject: "国語",
+    grade: 4,
+    memo: "",
+    createdAt: "2026-08-08",
+    updatedAt: "2026-08-08",
+  },
+  {
+    id: "grade-h1-3-english",
+    schoolYear: "高1",
+    term: "3学期",
+    subject: "英語",
+    grade: 4,
+    memo: "",
+    createdAt: "2026-08-08",
+    updatedAt: "2026-08-08",
+  },
+  {
+    id: "grade-h1-3-math",
+    schoolYear: "高1",
+    term: "3学期",
+    subject: "数学",
+    grade: 3,
+    memo: "",
+    createdAt: "2026-08-08",
+    updatedAt: "2026-08-08",
+  },
+  {
+    id: "grade-h1-3-biology",
+    schoolYear: "高1",
+    term: "3学期",
+    subject: "生物",
+    grade: 4,
+    memo: "",
+    createdAt: "2026-08-08",
+    updatedAt: "2026-08-08",
   },
 ];
 
-export const qualifications: Qualification[] = [
-  { name: "英検", level: "準2級", date: "2026年6月取得" },
-  { name: "漢検", level: "2級", date: "2025年11月取得" },
+export const qualifications: QualificationRecord[] = [
+  {
+    id: "qualification-eiken-pre2",
+    name: "英検",
+    scoreOrLevel: "準2級",
+    examDate: "2026-06-15",
+    status: "取得済み",
+    memo: "次は2級を目標にしたい。",
+    createdAt: "2026-06-15",
+    updatedAt: "2026-06-15",
+  },
+  {
+    id: "qualification-kanken-2",
+    name: "漢検",
+    scoreOrLevel: "2級",
+    examDate: "2025-11-20",
+    status: "取得済み",
+    memo: "",
+    createdAt: "2025-11-20",
+    updatedAt: "2025-11-20",
+  },
 ];
 
 export const universities: UniversityCandidate[] = [

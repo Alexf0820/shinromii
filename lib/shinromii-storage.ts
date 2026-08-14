@@ -1,22 +1,37 @@
-import { aiNotes, campusDone, universities } from "@/data/mockData";
-import type { AiNote, CampusEvaluation, UniversityCandidate } from "@/data/mockData";
+import { aiNotes, campusDone, gradeRecords, qualifications, universities } from "@/data/mockData";
+import type {
+  AiNote,
+  CampusEvaluation,
+  GradeRecord,
+  QualificationRecord,
+  UniversityCandidate,
+} from "@/data/mockData";
 
 const STORAGE_KEY = "SHINROMII::storage::v1";
-const STORAGE_VERSION = 2;
+const STORAGE_VERSION = 3;
 const AI_NOTES_SORT_KEY = "SHINROMII::ai-notes-sort::v1";
 const UNIVERSITY_SORT_KEY = "SHINROMII::university-sort::v1";
 
-type ShinromiiStorage = {
+export type ShinromiiStorage = {
   version: number;
   aiNotes: AiNote[];
   campusEvaluations: Record<string, CampusEvaluation>;
   universityCandidates: UniversityCandidate[];
+  gradeRecords: GradeRecord[];
+  qualifications: QualificationRecord[];
 };
 
 type ShinromiiStorageV1 = {
   version: 1;
   aiNotes: AiNote[];
   campusEvaluations: Record<string, CampusEvaluation>;
+};
+
+type ShinromiiStorageV2 = {
+  version: 2;
+  aiNotes: AiNote[];
+  campusEvaluations: Record<string, CampusEvaluation>;
+  universityCandidates: UniversityCandidate[];
 };
 
 function buildDefaultEvaluations() {
@@ -35,6 +50,8 @@ function buildDefaultStorage(): ShinromiiStorage {
     aiNotes,
     campusEvaluations: buildDefaultEvaluations(),
     universityCandidates: universities,
+    gradeRecords,
+    qualifications,
   };
 }
 
@@ -56,7 +73,9 @@ export function loadShinromiiStorage(): ShinromiiStorage {
       return fallback;
     }
 
-    const parsed = JSON.parse(raw) as Partial<ShinromiiStorage | ShinromiiStorageV1>;
+    const parsed = JSON.parse(raw) as Partial<
+      ShinromiiStorage | ShinromiiStorageV1 | ShinromiiStorageV2
+    >;
 
     if (parsed.version === 1) {
       const legacy = parsed as Partial<ShinromiiStorageV1>;
@@ -69,6 +88,26 @@ export function loadShinromiiStorage(): ShinromiiStorage {
             ? legacy.campusEvaluations
             : fallback.campusEvaluations,
         universityCandidates: fallback.universityCandidates,
+        gradeRecords: fallback.gradeRecords,
+        qualifications: fallback.qualifications,
+      };
+    }
+
+    if (parsed.version === 2) {
+      const legacy = parsed as Partial<ShinromiiStorageV2>;
+
+      return {
+        version: STORAGE_VERSION,
+        aiNotes: Array.isArray(legacy.aiNotes) ? legacy.aiNotes : fallback.aiNotes,
+        campusEvaluations:
+          legacy.campusEvaluations && typeof legacy.campusEvaluations === "object"
+            ? legacy.campusEvaluations
+            : fallback.campusEvaluations,
+        universityCandidates: Array.isArray(legacy.universityCandidates)
+          ? legacy.universityCandidates
+          : fallback.universityCandidates,
+        gradeRecords: fallback.gradeRecords,
+        qualifications: fallback.qualifications,
       };
     }
 
@@ -86,6 +125,12 @@ export function loadShinromiiStorage(): ShinromiiStorage {
       universityCandidates: Array.isArray(parsed.universityCandidates)
         ? parsed.universityCandidates
         : fallback.universityCandidates,
+      gradeRecords: Array.isArray(parsed.gradeRecords)
+        ? parsed.gradeRecords
+        : fallback.gradeRecords,
+      qualifications: Array.isArray(parsed.qualifications)
+        ? parsed.qualifications
+        : fallback.qualifications,
     };
   } catch {
     return fallback;
@@ -104,6 +149,8 @@ export function saveShinromiiStorage(next: ShinromiiStorage) {
       aiNotes: next.aiNotes,
       campusEvaluations: next.campusEvaluations,
       universityCandidates: next.universityCandidates,
+      gradeRecords: next.gradeRecords,
+      qualifications: next.qualifications,
     }),
   );
 }
@@ -132,6 +179,22 @@ export function saveUniversityCandidates(nextCandidates: UniversityCandidate[]) 
   saveShinromiiStorage({
     ...current,
     universityCandidates: nextCandidates,
+  });
+}
+
+export function saveGradeRecords(nextGradeRecords: GradeRecord[]) {
+  const current = loadShinromiiStorage();
+  saveShinromiiStorage({
+    ...current,
+    gradeRecords: nextGradeRecords,
+  });
+}
+
+export function saveQualifications(nextQualifications: QualificationRecord[]) {
+  const current = loadShinromiiStorage();
+  saveShinromiiStorage({
+    ...current,
+    qualifications: nextQualifications,
   });
 }
 
