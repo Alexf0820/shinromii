@@ -45,10 +45,22 @@ export type Qualification = {
 };
 
 export type UniversityCandidate = {
+  id: string;
+  createdAt: string;
   university: string;
   faculty: string;
   department: string;
-  interest: string;
+  url: string;
+  interest: number;
+  studentScore: "かなり高い" | "高い" | "検討中" | "低い";
+  familyScore: "かなり高い" | "高い" | "検討中" | "低い";
+  studentView: string;
+  familyView: string;
+  reason: string;
+  futureNote: string;
+};
+
+export type LegacyUniversityCandidate = {
   url: string;
   studentScore: string;
   familyScore: string;
@@ -113,6 +125,11 @@ export const dashboardStats: DashboardStat[] = [
 export const recentItems: RecentItem[] = [
   {
     date: "2026.08.14",
+    title: "大学・学部候補の追加・編集UIを公開",
+    description: "候補の保存、並び替え、詳細確認、編集、削除が使えるように更新",
+  },
+  {
+    date: "2026.08.14",
     title: "AI相談メモの追加・編集UIを公開",
     description: "相談メモの保存、詳細確認、編集、削除が使えるように更新",
   },
@@ -120,11 +137,6 @@ export const recentItems: RecentItem[] = [
     date: "2026.08.14",
     title: "オープンキャンパス評価を追加",
     description: "参加後の評価入力と見返しができるように更新",
-  },
-  {
-    date: "2026.08.12",
-    title: "青葉大学 情報デザイン学部を追加",
-    description: "本人評価と家族メモを仮登録",
   },
 ];
 
@@ -176,37 +188,49 @@ export const qualifications: Qualification[] = [
 
 export const universities: UniversityCandidate[] = [
   {
+    id: "candidate-aoba-media",
+    createdAt: "2026-08-12",
     university: "青葉大学",
     faculty: "情報デザイン学部",
     department: "メディア表現学科",
-    interest: "5",
     url: "https://example.com/aoba",
     studentScore: "かなり高い",
     familyScore: "高い",
     studentView: "デザインと情報の両方を学べそう。雰囲気も好み。",
     familyView: "通学時間が現実的で、学びの幅も広そう。",
+    interest: 5,
+    reason: "情報と表現を両方学べそうで、今の興味にかなり近い。",
+    futureNote: "Web企画、広報、UX系の進路にどうつながるか確認したい。",
   },
   {
+    id: "candidate-hoshigaoka-management",
+    createdAt: "2026-08-10",
     university: "星ヶ丘大学",
     faculty: "経営学部",
     department: "経営情報学科",
-    interest: "4",
     url: "https://example.com/hoshigaoka",
     studentScore: "高い",
     familyScore: "かなり高い",
     studentView: "オープンキャンパス次第で第一候補になるかも。",
     familyView: "サポート体制が手厚そうで安心感がある。",
+    interest: 4,
+    reason: "経営と情報の両方に触れられて進路の幅が広そう。",
+    futureNote: "就職実績とサポート内容を詳しく見たい。",
   },
   {
+    id: "candidate-konan-global",
+    createdAt: "2026-08-08",
     university: "港南学院大学",
     faculty: "国際教養学部",
     department: "国際コミュニケーション学科",
-    interest: "3",
     url: "https://example.com/konan",
     studentScore: "検討中",
     familyScore: "高い",
     studentView: "英語は魅力だけど、学科選びはもう少し比較したい。",
     familyView: "将来の進路の広さは魅力。費用感も確認したい。",
+    interest: 3,
+    reason: "英語を活かしやすいが、学科との相性はもう少し見たい。",
+    futureNote: "留学制度と卒業後の仕事の幅を確認したい。",
   },
 ];
 
