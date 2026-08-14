@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { SectionHeader } from "@/components/SectionHeader";
 import { ScoreSelector } from "@/components/ScoreSelector";
+import { UiIcon } from "@/components/UiIcon";
 import { universities as initialCandidates } from "@/data/mockData";
 import type { UniversityCandidate } from "@/data/mockData";
 import {
@@ -76,6 +77,18 @@ function formFromCandidate(candidate: UniversityCandidate): CandidateFormState {
 function shorten(text: string, maxLength: number) {
   const normalized = text.replace(/\s+/g, " ").trim();
   return normalized.length > maxLength ? `${normalized.slice(0, maxLength)}...` : normalized;
+}
+
+function renderStars(score: number) {
+  return (
+    <span className="stars" aria-label={`気になる度 ${score} / 5`}>
+      {[1, 2, 3, 4, 5].map((value) => (
+        <span key={value} className={value <= score ? "" : "star-muted"}>
+          ★
+        </span>
+      ))}
+    </span>
+  );
 }
 
 export function UniversityCandidatesClient() {
@@ -209,10 +222,25 @@ export function UniversityCandidatesClient() {
 
   return (
     <div className="page-stack">
-      <SectionHeader
-        title="大学・学部候補"
-        description="比較しながら、本人と家族の考えを並べて見られるUI"
-      />
+      <section className="page-hero tone-university">
+        <div className="page-hero-copy">
+          <p className="eyebrow">大学・学部候補</p>
+          <h2 className="hero-title">候補を比べて、気持ちを整理する。</h2>
+          <p className="hero-description">
+            気になる度、本人評価、家族評価をカード単位で見渡しやすくまとめます。
+          </p>
+          <div className="hero-stats-inline">
+            <span className="hero-stat-chip">
+              <strong>{candidates.length}校</strong>
+              <span className="item-subtitle">保存済み</span>
+            </span>
+            <span className="hero-stat-chip">
+              <strong>{selectedCandidate ? selectedCandidate.university : "未選択"}</strong>
+              <span className="item-subtitle">現在の詳細</span>
+            </span>
+          </div>
+        </div>
+      </section>
 
       <section className="panel">
         <div className="row-between gap-sm align-start">
@@ -223,6 +251,7 @@ export function UniversityCandidatesClient() {
             </p>
           </div>
           <button type="button" className="action-button primary" onClick={openCreate}>
+            <UiIcon name="plus" className="action-icon" />
             候補を追加
           </button>
         </div>
@@ -393,91 +422,165 @@ export function UniversityCandidatesClient() {
         </div>
 
         <div className="list-stack">
-          {sortedCandidates.map((item) => {
-            const isSelected = selectedId === item.id;
-            const shortStudentMemo = item.studentView ? shorten(item.studentView, 80) : "まだ入力されていません";
-
-            return (
-              <article key={item.id} className={`candidate-card ${isSelected ? "selected-card" : ""}`}>
-                <div className="row-between gap-sm align-start">
-                  <div>
+          {sortedCandidates.map((item) => (
+            <article
+              key={item.id}
+              className={`candidate-card tone-university ${selectedId === item.id ? "selected-card" : ""}`}
+            >
+              <div className="candidate-topline">
+                <div className="candidate-main">
+                  <span className="candidate-icon-badge">
+                    <UiIcon name="university" className="list-item-icon" />
+                  </span>
+                  <div className="candidate-summary">
                     <p className="item-title">{item.university}</p>
                     <p className="item-subtitle">
                       {item.faculty}
                       {item.department ? ` / ${item.department}` : ""}
                     </p>
                   </div>
-                  <span className="rating-badge">★ {item.interest}</span>
                 </div>
+                <span className="heart-shell" aria-hidden="true">
+                  ♡
+                </span>
+              </div>
 
-                <div className="candidate-meta">
-                  <span className="soft-pill">本人: {item.studentScore}</span>
-                  <span className="soft-pill">家族: {item.familyScore}</span>
-                </div>
+              <div className="score-display">
+                {renderStars(item.interest)}
+                <span className="item-subtitle">{item.interest.toFixed(1)}</span>
+              </div>
 
-                <div className="note-card">
-                  <p className="feedback-label">本人メモ</p>
-                  <p>{shortStudentMemo}</p>
-                </div>
+              <div className="badge-row">
+                <span className="pill-person">本人 {item.studentScore}</span>
+                <span className="pill-family">家族 {item.familyScore}</span>
+                <span className="pill-updated">最終更新 {item.createdAt.replaceAll("-", "/")}</span>
+              </div>
 
-                <div className="action-row compact">
-                  <button
-                    type="button"
-                    className="action-button subtle"
-                    onClick={() => setSelectedId(isSelected ? null : item.id)}
-                  >
-                    {isSelected ? "詳細を閉じる" : "詳細を見る"}
-                  </button>
-                  <button type="button" className="action-button subtle" onClick={() => openEdit(item)}>
-                    編集
-                  </button>
-                  <button type="button" className="action-button subtle danger" onClick={() => handleDelete(item)}>
-                    削除
-                  </button>
-                </div>
+              <div className="note-card">
+                <p className="feedback-label">本人メモ</p>
+                <p>{item.studentView ? shorten(item.studentView, 88) : "まだ入力されていません"}</p>
+              </div>
 
-                {isSelected && (
-                  <div className="detail-stack top-gap">
-                    {item.url ? (
-                      <div className="note-card">
-                        <p className="feedback-label">大学・学部URL</p>
-                        <a className="text-link inline-link" href={item.url}>
-                          {item.url}
-                        </a>
-                      </div>
-                    ) : null}
-
-                    <div className="feedback-grid">
-                      <div className="feedback-card">
-                        <p className="feedback-label">本人メモ</p>
-                        <p className="preserve-lines">{item.studentView || "まだ入力されていません"}</p>
-                      </div>
-                      <div className="feedback-card">
-                        <p className="feedback-label">家族メモ</p>
-                        <p className="preserve-lines">{item.familyView || "まだ入力されていません"}</p>
-                      </div>
-                    </div>
-
-                    {item.reason ? (
-                      <div className="note-card">
-                        <p className="feedback-label">志望理由・気になる理由</p>
-                        <p className="preserve-lines">{item.reason}</p>
-                      </div>
-                    ) : null}
-
-                    {item.futureNote ? (
-                      <div className="note-card">
-                        <p className="feedback-label">将来の仕事・進路メモ</p>
-                        <p className="preserve-lines">{item.futureNote}</p>
-                      </div>
-                    ) : null}
-                  </div>
-                )}
-              </article>
-            );
-          })}
+              <div className="list-actions">
+                {item.url ? (
+                  <a className="card-action subtle" href={item.url}>
+                    <UiIcon name="link" className="action-icon" />
+                    大学ページを見る
+                  </a>
+                ) : null}
+                <button
+                  type="button"
+                  className="card-action subtle"
+                  onClick={() => setSelectedId(item.id)}
+                >
+                  <UiIcon name="detail" className="action-icon" />
+                  詳細
+                </button>
+                <button type="button" className="card-action subtle" onClick={() => openEdit(item)}>
+                  <UiIcon name="edit" className="action-icon" />
+                  編集
+                </button>
+                <button type="button" className="card-action danger" onClick={() => handleDelete(item)}>
+                  <UiIcon name="delete" className="action-icon" />
+                  削除
+                </button>
+              </div>
+            </article>
+          ))}
         </div>
       </section>
+
+      {selectedCandidate && (
+        <section className="detail-card">
+          <div className="detail-section-header">
+            <div>
+              <p className="eyebrow">候補詳細</p>
+              <p className="item-title">{selectedCandidate.university}</p>
+              <p className="item-subtitle">
+                {selectedCandidate.faculty}
+                {selectedCandidate.department ? ` / ${selectedCandidate.department}` : ""}
+              </p>
+            </div>
+            <div className="score-display">
+              {renderStars(selectedCandidate.interest)}
+              <span className="item-subtitle">{selectedCandidate.interest.toFixed(1)}</span>
+            </div>
+          </div>
+
+          <div className="detail-section-list top-gap">
+            <section className="detail-section">
+              <p className="feedback-label">基本情報</p>
+              <div className="detail-entry top-gap">
+                <span className="detail-entry-label">大学名</span>
+                <span className="detail-entry-value">{selectedCandidate.university}</span>
+              </div>
+              <div className="detail-entry">
+                <span className="detail-entry-label">学部・学科</span>
+                <span className="detail-entry-value">
+                  {selectedCandidate.faculty}
+                  {selectedCandidate.department ? ` / ${selectedCandidate.department}` : ""}
+                </span>
+              </div>
+              <div className="detail-entry">
+                <span className="detail-entry-label">URL</span>
+                <span className="detail-entry-value">
+                  {selectedCandidate.url ? (
+                    <a className="text-link inline-link" href={selectedCandidate.url}>
+                      {selectedCandidate.url}
+                    </a>
+                  ) : (
+                    "未入力"
+                  )}
+                </span>
+              </div>
+            </section>
+
+            <section className="detail-section">
+              <p className="feedback-label">評価</p>
+              <div className="detail-entry top-gap">
+                <span className="detail-entry-label">気になる度</span>
+                <span className="detail-entry-value">{renderStars(selectedCandidate.interest)}</span>
+              </div>
+              <div className="detail-entry">
+                <span className="detail-entry-label">本人評価</span>
+                <span className="detail-entry-value">{selectedCandidate.studentScore}</span>
+              </div>
+              <div className="detail-entry">
+                <span className="detail-entry-label">家族評価</span>
+                <span className="detail-entry-value">{selectedCandidate.familyScore}</span>
+              </div>
+            </section>
+
+            <section className="detail-section">
+              <p className="feedback-label">メモ</p>
+              <div className="detail-entry top-gap">
+                <span className="detail-entry-label">本人メモ</span>
+                <span className="detail-entry-value preserve-lines">
+                  {selectedCandidate.studentView || "まだ入力されていません"}
+                </span>
+              </div>
+              <div className="detail-entry">
+                <span className="detail-entry-label">家族メモ</span>
+                <span className="detail-entry-value preserve-lines">
+                  {selectedCandidate.familyView || "まだ入力されていません"}
+                </span>
+              </div>
+              <div className="detail-entry">
+                <span className="detail-entry-label">志望理由</span>
+                <span className="detail-entry-value preserve-lines">
+                  {selectedCandidate.reason || "まだ入力されていません"}
+                </span>
+              </div>
+              <div className="detail-entry">
+                <span className="detail-entry-label">将来メモ</span>
+                <span className="detail-entry-value preserve-lines">
+                  {selectedCandidate.futureNote || "まだ入力されていません"}
+                </span>
+              </div>
+            </section>
+          </div>
+        </section>
+      )}
     </div>
   );
 }

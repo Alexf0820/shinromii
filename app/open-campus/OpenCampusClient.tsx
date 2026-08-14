@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { SectionHeader } from "@/components/SectionHeader";
 import { ScoreSelector } from "@/components/ScoreSelector";
+import { UiIcon } from "@/components/UiIcon";
 import { campusDone as initialDone, campusUpcoming } from "@/data/mockData";
 import type {
   CampusEvaluation,
@@ -44,6 +45,18 @@ function mergeEvaluation(item: CampusVisit, evaluations: Record<string, CampusEv
   return evaluations[item.id] ?? item.evaluation ?? createEmptyEvaluation();
 }
 
+function renderStars(score: number | null) {
+  return (
+    <span className="stars" aria-label={score ? `評価 ${score} / 5` : "未評価"}>
+      {[1, 2, 3, 4, 5].map((value) => (
+        <span key={value} className={score && value <= score ? "" : "star-muted"}>
+          ★
+        </span>
+      ))}
+    </span>
+  );
+}
+
 export function OpenCampusClient() {
   const [evaluations, setEvaluations] = useState<Record<string, CampusEvaluation>>({});
   const [detailId, setDetailId] = useState<string | null>(initialDone[0]?.id ?? null);
@@ -63,6 +76,8 @@ export function OpenCampusClient() {
       })),
     [evaluations],
   );
+
+  const selectedDoneItem = doneItems.find((item) => item.id === detailId) ?? null;
 
   function openEditor(item: CampusVisit) {
     setEditingId(item.id);
@@ -119,23 +134,40 @@ export function OpenCampusClient() {
 
   return (
     <div className="page-stack">
-      <SectionHeader
-        title="オープンキャンパス"
-        description="これから行く予定と参加済みを分けて確認"
-      />
+      <section className="page-hero tone-campus">
+        <div className="page-hero-copy">
+          <p className="eyebrow">オープンキャンパス</p>
+          <h2 className="hero-title">これから行く予定と、参加後の感想を分けて整理。</h2>
+          <p className="hero-description">
+            予定は準備しやすく、参加済みは比較しやすく見返せるレイアウトに整えます。
+          </p>
+          <div className="hero-stats-inline">
+            <span className="hero-stat-chip">
+              <strong>{campusUpcoming.length}件</strong>
+              <span className="item-subtitle">参加予定</span>
+            </span>
+            <span className="hero-stat-chip">
+              <strong>{doneItems.length}件</strong>
+              <span className="item-subtitle">参加済み</span>
+            </span>
+          </div>
+        </div>
+      </section>
 
       <section className="panel">
-        <SectionHeader
-          title="これから行く予定"
-          description="予約状況が見やすいカード表示"
-        />
+        <SectionHeader title="これから行く予定" description="予定を先にまとめて確認" />
         <div className="list-stack">
           {campusUpcoming.map((item) => (
-            <article key={item.id} className="list-card">
-              <div className="row-between gap-sm align-start">
-                <div>
-                  <p className="item-title">{item.university}</p>
-                  <p className="item-subtitle">{item.program}</p>
+            <article key={item.id} className="list-card campus-card tone-campus">
+              <div className="list-card-header">
+                <div className="candidate-main">
+                  <span className="candidate-icon-badge">
+                    <UiIcon name="campus" className="list-item-icon" />
+                  </span>
+                  <div className="candidate-summary">
+                    <p className="item-title">{item.university}</p>
+                    <p className="item-subtitle">{item.program}</p>
+                  </div>
                 </div>
                 <span
                   className={`status-pill ${
@@ -145,7 +177,9 @@ export function OpenCampusClient() {
                   {item.status}
                 </span>
               </div>
-              <p className="detail-line">{item.date}</p>
+              <div className="qualification-meta">
+                <span className="mini-badge">{item.date}</span>
+              </div>
               <p className="muted-text">{item.note}</p>
             </article>
           ))}
@@ -153,179 +187,237 @@ export function OpenCampusClient() {
       </section>
 
       <section className="panel">
-        <SectionHeader
-          title="参加済み"
-          description="評価を入力しつつ、あとで比較しやすい形に整理"
-        />
+        <SectionHeader title="参加済み" description="評価と感想を比較しやすく表示" />
         <div className="list-stack">
           {doneItems.map((item) => {
             const evaluation = item.mergedEvaluation;
-            const isDetailOpen = detailId === item.id;
-            const isEditing = editingId === item.id;
 
             return (
-              <article key={item.id} className={`candidate-card ${isDetailOpen ? "selected-card" : ""}`}>
-                <div className="row-between gap-sm align-start">
-                  <div>
-                    <p className="item-title">{item.university}</p>
-                    <p className="item-subtitle">{item.program}</p>
+              <article
+                key={item.id}
+                className={`candidate-card tone-campus ${detailId === item.id ? "selected-card" : ""}`}
+              >
+                <div className="candidate-topline">
+                  <div className="candidate-main">
+                    <span className="candidate-icon-badge">
+                      <UiIcon name="campus" className="list-item-icon" />
+                    </span>
+                    <div className="candidate-summary">
+                      <p className="item-title">{item.university}</p>
+                      <p className="item-subtitle">{item.program}</p>
+                    </div>
                   </div>
-                  <span className="status-pill done">
-                    {evaluation.overall ? `★ ${evaluation.overall}` : "未評価"}
+                  <span className={`status-pill ${evaluation.overall ? "done" : "considering"}`}>
+                    {evaluation.overall ? `総合 ${evaluation.overall}` : "未評価"}
                   </span>
                 </div>
-                <p className="detail-line">{item.date}</p>
 
-                <div className="feedback-grid">
-                  <div className="feedback-card">
-                    <p className="feedback-label">良かったところ</p>
-                    <p>{evaluation.goodPoint || "まだ入力されていません"}</p>
-                  </div>
-                  <div className="feedback-card">
-                    <p className="feedback-label">微妙だったところ</p>
-                    <p>{evaluation.badPoint || "まだ入力されていません"}</p>
-                  </div>
+                <div className="summary-line">
+                  {renderStars(evaluation.overall)}
+                  <span className="mini-badge">{item.date}</span>
                 </div>
 
                 <div className="note-card">
-                  <p className="feedback-label">本人の感想</p>
-                  <p>{evaluation.studentComment || "まだ入力されていません"}</p>
+                  <p className="feedback-label">良かったところ</p>
+                  <p>{evaluation.goodPoint || "まだ入力されていません"}</p>
                 </div>
 
-                <div className="action-row compact">
+                <div className="list-actions">
                   <button
                     type="button"
-                    className="action-button subtle"
-                    onClick={() => setDetailId(isDetailOpen ? null : item.id)}
+                    className="card-action subtle"
+                    onClick={() => setDetailId(item.id)}
                   >
-                    {isDetailOpen ? "詳細を閉じる" : "詳細を見る"}
+                    <UiIcon name="detail" className="action-icon" />
+                    詳細
                   </button>
                   <button
                     type="button"
-                    className="action-button subtle"
+                    className="card-action subtle"
                     onClick={() => openEditor(item)}
                   >
+                    <UiIcon name="edit" className="action-icon" />
                     {evaluation.overall || evaluation.goodPoint || evaluation.studentComment
                       ? "編集"
                       : "評価する"}
                   </button>
                 </div>
-
-                {isDetailOpen && (
-                  <div className="detail-stack top-gap">
-                    <div className="note-card">
-                      <p className="feedback-label">家族の感想</p>
-                      <p className="preserve-lines">
-                        {evaluation.familyComment || "まだ入力されていません"}
-                      </p>
-                    </div>
-
-                    <div className="note-card">
-                      <p className="feedback-label">自由メモ</p>
-                      <p className="preserve-lines">
-                        {evaluation.freeNote || "まだ入力されていません"}
-                      </p>
-                    </div>
-
-                    <div className="score-summary-grid">
-                      {(
-                        Object.entries(categoryLabels) as [CampusEvaluationCategory, string][]
-                      ).map(([key, label]) => (
-                        <div key={key} className="subject-chip">
-                          <span>{label}</span>
-                          <strong>{evaluation.categoryScores[key] ?? "-"}</strong>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                )}
-
-                {isEditing && (
-                  <div className="editor-card top-gap">
-                    <div className="form-stack">
-                      <ScoreSelector
-                        label="総合評価"
-                        value={form.overall}
-                        onChange={(value) => updateField("overall", value)}
-                      />
-
-                      {(
-                        Object.entries(categoryLabels) as [CampusEvaluationCategory, string][]
-                      ).map(([key, label]) => (
-                        <ScoreSelector
-                          key={key}
-                          label={label}
-                          value={form.categoryScores[key]}
-                          onChange={(value) => updateCategory(key, value)}
-                        />
-                      ))}
-
-                      <label className="field-block">
-                        <span className="field-label">良かったところ</span>
-                        <textarea
-                          className="text-area"
-                          rows={3}
-                          value={form.goodPoint}
-                          onChange={(event) => updateField("goodPoint", event.target.value)}
-                        />
-                      </label>
-
-                      <label className="field-block">
-                        <span className="field-label">微妙だったところ</span>
-                        <textarea
-                          className="text-area"
-                          rows={3}
-                          value={form.badPoint}
-                          onChange={(event) => updateField("badPoint", event.target.value)}
-                        />
-                      </label>
-
-                      <label className="field-block">
-                        <span className="field-label">本人の感想</span>
-                        <textarea
-                          className="text-area"
-                          rows={4}
-                          value={form.studentComment}
-                          onChange={(event) => updateField("studentComment", event.target.value)}
-                        />
-                      </label>
-
-                      <label className="field-block">
-                        <span className="field-label">家族の感想</span>
-                        <textarea
-                          className="text-area"
-                          rows={4}
-                          value={form.familyComment}
-                          onChange={(event) => updateField("familyComment", event.target.value)}
-                        />
-                      </label>
-
-                      <label className="field-block">
-                        <span className="field-label">自由メモ</span>
-                        <textarea
-                          className="text-area"
-                          rows={3}
-                          value={form.freeNote}
-                          onChange={(event) => updateField("freeNote", event.target.value)}
-                        />
-                      </label>
-
-                      <div className="action-row">
-                        <button type="button" className="action-button primary" onClick={handleSave}>
-                          保存する
-                        </button>
-                        <button type="button" className="action-button" onClick={closeEditor}>
-                          キャンセル
-                        </button>
-                      </div>
-                    </div>
-                  </div>
-                )}
               </article>
             );
           })}
         </div>
       </section>
+
+      {selectedDoneItem && (
+        <section className="detail-card">
+          <div className="detail-section-header">
+            <div>
+              <p className="eyebrow">参加済み詳細</p>
+              <p className="item-title">{selectedDoneItem.university}</p>
+              <p className="item-subtitle">{selectedDoneItem.program}</p>
+            </div>
+            <div className="score-display">
+              {renderStars(selectedDoneItem.mergedEvaluation.overall)}
+            </div>
+          </div>
+
+          <div className="detail-section-list top-gap">
+            <section className="detail-section">
+              <p className="feedback-label">基本情報</p>
+              <div className="detail-entry top-gap">
+                <span className="detail-entry-label">大学名</span>
+                <span className="detail-entry-value">{selectedDoneItem.university}</span>
+              </div>
+              <div className="detail-entry">
+                <span className="detail-entry-label">内容</span>
+                <span className="detail-entry-value">{selectedDoneItem.program}</span>
+              </div>
+              <div className="detail-entry">
+                <span className="detail-entry-label">日時</span>
+                <span className="detail-entry-value">{selectedDoneItem.date}</span>
+              </div>
+            </section>
+
+            <section className="detail-section">
+              <p className="feedback-label">評価</p>
+              <div className="detail-entry top-gap">
+                <span className="detail-entry-label">総合評価</span>
+                <span className="detail-entry-value">
+                  {selectedDoneItem.mergedEvaluation.overall
+                    ? `${selectedDoneItem.mergedEvaluation.overall} / 5`
+                    : "未評価"}
+                </span>
+              </div>
+              {(Object.entries(categoryLabels) as [CampusEvaluationCategory, string][]).map(
+                ([key, label]) => (
+                  <div key={key} className="detail-entry">
+                    <span className="detail-entry-label">{label}</span>
+                    <span className="detail-entry-value">
+                      {selectedDoneItem.mergedEvaluation.categoryScores[key] ?? "-"}
+                    </span>
+                  </div>
+                ),
+              )}
+            </section>
+
+            <section className="detail-section">
+              <p className="feedback-label">メモ</p>
+              <div className="detail-entry top-gap">
+                <span className="detail-entry-label">良かった</span>
+                <span className="detail-entry-value preserve-lines">
+                  {selectedDoneItem.mergedEvaluation.goodPoint || "まだ入力されていません"}
+                </span>
+              </div>
+              <div className="detail-entry">
+                <span className="detail-entry-label">微妙だった</span>
+                <span className="detail-entry-value preserve-lines">
+                  {selectedDoneItem.mergedEvaluation.badPoint || "まだ入力されていません"}
+                </span>
+              </div>
+              <div className="detail-entry">
+                <span className="detail-entry-label">本人感想</span>
+                <span className="detail-entry-value preserve-lines">
+                  {selectedDoneItem.mergedEvaluation.studentComment || "まだ入力されていません"}
+                </span>
+              </div>
+              <div className="detail-entry">
+                <span className="detail-entry-label">家族感想</span>
+                <span className="detail-entry-value preserve-lines">
+                  {selectedDoneItem.mergedEvaluation.familyComment || "まだ入力されていません"}
+                </span>
+              </div>
+              <div className="detail-entry">
+                <span className="detail-entry-label">自由メモ</span>
+                <span className="detail-entry-value preserve-lines">
+                  {selectedDoneItem.mergedEvaluation.freeNote || "まだ入力されていません"}
+                </span>
+              </div>
+            </section>
+          </div>
+
+          {editingId === selectedDoneItem.id && (
+            <div className="editor-card top-gap">
+              <div className="form-stack">
+                <ScoreSelector
+                  label="総合評価"
+                  value={form.overall}
+                  onChange={(value) => updateField("overall", value)}
+                />
+
+                {(Object.entries(categoryLabels) as [CampusEvaluationCategory, string][]).map(
+                  ([key, label]) => (
+                    <ScoreSelector
+                      key={key}
+                      label={label}
+                      value={form.categoryScores[key]}
+                      onChange={(value) => updateCategory(key, value)}
+                    />
+                  ),
+                )}
+
+                <label className="field-block">
+                  <span className="field-label">良かったところ</span>
+                  <textarea
+                    className="text-area"
+                    rows={3}
+                    value={form.goodPoint}
+                    onChange={(event) => updateField("goodPoint", event.target.value)}
+                  />
+                </label>
+
+                <label className="field-block">
+                  <span className="field-label">微妙だったところ</span>
+                  <textarea
+                    className="text-area"
+                    rows={3}
+                    value={form.badPoint}
+                    onChange={(event) => updateField("badPoint", event.target.value)}
+                  />
+                </label>
+
+                <label className="field-block">
+                  <span className="field-label">本人の感想</span>
+                  <textarea
+                    className="text-area"
+                    rows={4}
+                    value={form.studentComment}
+                    onChange={(event) => updateField("studentComment", event.target.value)}
+                  />
+                </label>
+
+                <label className="field-block">
+                  <span className="field-label">家族の感想</span>
+                  <textarea
+                    className="text-area"
+                    rows={4}
+                    value={form.familyComment}
+                    onChange={(event) => updateField("familyComment", event.target.value)}
+                  />
+                </label>
+
+                <label className="field-block">
+                  <span className="field-label">自由メモ</span>
+                  <textarea
+                    className="text-area"
+                    rows={3}
+                    value={form.freeNote}
+                    onChange={(event) => updateField("freeNote", event.target.value)}
+                  />
+                </label>
+
+                <div className="action-row">
+                  <button type="button" className="action-button primary" onClick={handleSave}>
+                    保存する
+                  </button>
+                  <button type="button" className="action-button" onClick={closeEditor}>
+                    キャンセル
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
+        </section>
+      )}
     </div>
   );
 }
