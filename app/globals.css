@@ -438,3 +438,151 @@ a {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }
+
+.compare-header.no-margin {
+  margin-bottom: 0;
+}
+
+.top-gap {
+  margin-top: 14px;
+}
+
+.detail-stack,
+.form-stack {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.action-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.action-row.compact {
+  margin-top: 14px;
+}
+
+.action-button {
+  border: 1px solid rgba(47, 145, 180, 0.18);
+  background: rgba(255, 255, 255, 0.84);
+  color: var(--accent);
+  border-radius: 999px;
+  min-height: 38px;
+  padding: 8px 14px;
+  font-size: 0.84rem;
+  font-weight: 700;
+}
+
+.action-button.primary {
+  background: linear-gradient(180deg, #ecf9fd, #dff3fb);
+}
+
+.action-button.subtle {
+  color: var(--muted);
+}
+
+.action-button.danger {
+  color: #b15d5d;
+}
+
+.field-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.field-block {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.field-label {
+  font-size: 0.84rem;
+  font-weight: 700;
+  color: var(--text);
+}
+
+.field-help {
+  font-size: 0.78rem;
+  color: var(--muted);
+}
+
+.text-input,
+.text-area {
+  width: 100%;
+  border: 1px solid rgba(111, 149, 182, 0.2);
+  border-radius: 16px;
+  background: rgba(255, 255, 255, 0.94);
+  color: var(--text);
+  padding: 12px 14px;
+  font: inherit;
+}
+
+.text-area {
+  resize: vertical;
+  line-height: 1.6;
+}
+
+.text-area-large {
+  min-height: 260px;
+}
+
+.score-selector,
+.editor-card {
+  border-radius: 20px;
+  background: rgba(247, 251, 255, 0.96);
+  padding: 14px;
+}
+
+.score-button-row {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.score-button {
+  border: 1px solid rgba(47, 145, 180, 0.16);
+  background: #fff;
+  color: var(--muted);
+  border-radius: 14px;
+  min-height: 40px;
+  font-weight: 700;
+}
+
+.score-button.active {
+  background: linear-gradient(180deg, #ecf9fd, #dff3fb);
+  color: var(--accent);
+  border-color: rgba(47, 145, 180, 0.32);
+}
+
+.empty-state {
+  border-radius: 20px;
+  background: rgba(247, 251, 255, 0.96);
+  padding: 18px;
+}
+
+.selected-card {
+  outline: 2px solid rgba(47, 145, 180, 0.14);
+}
+
+.preserve-lines {
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.score-summary-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+@media (max-width: 639px) {
+  .field-grid,
+  .score-summary-grid {
+    grid-template-columns: 1fr;
+  }
+}
