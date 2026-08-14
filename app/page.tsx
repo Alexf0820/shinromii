@@ -11,7 +11,7 @@ export default function HomePage() {
   return (
     <div className="page-stack">
       <section className="hero-card">
-        <p className="eyebrow">SHINROMII Ver.0.2</p>
+        <p className="eyebrow">SHINROMII Ver.0.3</p>
         <h1>進路の情報を、家族とやさしく整理。</h1>
         <p className="hero-copy">
           高校生本人と家族が、成績・大学候補・オープンキャンパス・AI相談メモを
