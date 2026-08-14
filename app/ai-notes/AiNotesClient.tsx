@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { SectionHeader } from "@/components/SectionHeader";
 import { ScoreSelector } from "@/components/ScoreSelector";
+import { UiIcon } from "@/components/UiIcon";
 import { aiNotes as initialAiNotes } from "@/data/mockData";
 import type { AiNote, AiProvider } from "@/data/mockData";
 import {
@@ -76,6 +77,10 @@ function formFromNote(note: AiNote): FormState {
 function shorten(text: string, length: number) {
   const normalized = text.replace(/\s+/g, " ").trim();
   return normalized.length > length ? `${normalized.slice(0, length)}...` : normalized;
+}
+
+function formatNoteDate(date: string) {
+  return date.replaceAll("-", ".");
 }
 
 export function AiNotesClient() {
@@ -202,16 +207,31 @@ export function AiNotesClient() {
 
   return (
     <div className="page-stack">
-      <SectionHeader
-        title="AI相談メモ"
-        description="外部AIで相談した進路の内容を整理して保存する場所"
-      />
+      <section className="page-hero tone-ai">
+        <div className="page-hero-copy">
+          <p className="eyebrow">AI相談メモ</p>
+          <h2 className="hero-title">相談内容と答えを、あとから見返しやすく。</h2>
+          <p className="hero-description">
+            タイトル、相談先、要約、参考度をすぐ確認できる形で整理します。
+          </p>
+          <div className="hero-stats-inline">
+            <span className="hero-stat-chip">
+              <strong>{notes.length}件</strong>
+              <span className="item-subtitle">保存済み</span>
+            </span>
+            <span className="hero-stat-chip">
+              <strong>{selectedNote ? selectedNote.provider : "ChatGPT"}</strong>
+              <span className="item-subtitle">現在の詳細</span>
+            </span>
+          </div>
+        </div>
+      </section>
 
       <section className="panel">
         <div className="form-stack">
           <button type="button" className="cta-button" onClick={openCreate}>
             <span className="cta-icon" aria-hidden="true">
-              +
+              <UiIcon name="plus" />
             </span>
             <span className="cta-copy">
               <strong>相談を追加する</strong>
@@ -369,89 +389,114 @@ export function AiNotesClient() {
               <p className="muted-text">上の「相談を追加」から保存できます。</p>
             </div>
           ) : (
-            sortedNotes.map((item) => {
-              const isSelected = selectedId === item.id;
-
-              return (
-                <article key={item.id} className={`candidate-card ${isSelected ? "selected-card" : ""}`}>
-                  <div className="row-between gap-sm align-start">
-                    <div>
+            sortedNotes.map((item) => (
+              <article
+                key={item.id}
+                className={`candidate-card ai-note-card tone-ai ${selectedId === item.id ? "selected-card" : ""}`}
+              >
+                <div className="ai-note-top">
+                  <div className="candidate-main">
+                    <span className="candidate-icon-badge">
+                      <UiIcon name="ai" className="list-item-icon" />
+                    </span>
+                    <div className="candidate-summary">
                       <p className="item-title">{item.title}</p>
                       <p className="item-subtitle">
-                        {item.provider} / {item.consultedAt}
+                        {item.provider} / {formatNoteDate(item.consultedAt)}
                       </p>
                     </div>
-                    <span className="rating-badge">参考度 {item.helpful}</span>
                   </div>
+                  <span className="rating-badge">参考度 {item.helpful}</span>
+                </div>
 
-                  <div className="note-card">
-                    <p className="feedback-label">短い要約</p>
-                    <p>{shorten(item.summary, 90)}</p>
-                  </div>
+                <div className="badge-row">
+                  <span className="soft-pill ai-provider-chip">{item.provider}</span>
+                  {item.relatedSchool ? <span className="mini-badge">{item.relatedSchool}</span> : null}
+                </div>
 
-                  <div className="action-row compact">
-                    <button
-                      type="button"
-                      className="action-button subtle"
-                      onClick={() => setSelectedId(item.id)}
-                    >
-                      詳細
-                    </button>
-                    <button type="button" className="action-button subtle" onClick={() => openEdit(item)}>
-                      編集
-                    </button>
-                    <button type="button" className="action-button subtle danger" onClick={() => handleDelete(item)}>
-                      削除
-                    </button>
-                  </div>
-                </article>
-              );
-            })
+                <div className="note-card">
+                  <p className="feedback-label">短い要約</p>
+                  <p>{shorten(item.summary, 96)}</p>
+                </div>
+
+                <div className="list-actions">
+                  <button
+                    type="button"
+                    className="card-action subtle"
+                    onClick={() => setSelectedId(item.id)}
+                  >
+                    <UiIcon name="detail" className="action-icon" />
+                    詳細
+                  </button>
+                  <button type="button" className="card-action subtle" onClick={() => openEdit(item)}>
+                    <UiIcon name="edit" className="action-icon" />
+                    編集
+                  </button>
+                  <button type="button" className="card-action danger" onClick={() => handleDelete(item)}>
+                    <UiIcon name="delete" className="action-icon" />
+                    削除
+                  </button>
+                </div>
+              </article>
+            ))
           )}
         </div>
       </section>
 
       {selectedNote && (
-        <section className="panel">
-          <SectionHeader title="相談詳細" description="回答全文は改行を保って読みやすく表示" />
-          <div className="detail-stack">
-            <div className="row-between gap-sm align-start">
-              <div>
-                <p className="item-title">{selectedNote.title}</p>
-                <p className="item-subtitle">
-                  {selectedNote.provider} / {selectedNote.consultedAt}
-                </p>
-              </div>
-              <span className="rating-badge">参考度 {selectedNote.helpful}</span>
+        <section className="detail-card">
+          <div className="detail-section-header">
+            <div>
+              <p className="eyebrow">相談詳細</p>
+              <p className="item-title">{selectedNote.title}</p>
+              <p className="item-subtitle">
+                {selectedNote.provider} / {formatNoteDate(selectedNote.consultedAt)}
+              </p>
             </div>
+            <span className="rating-badge">参考度 {selectedNote.helpful}</span>
+          </div>
 
-            {selectedNote.relatedSchool ? (
-              <div className="note-card">
-                <p className="feedback-label">関連する大学・学部</p>
-                <p>{selectedNote.relatedSchool}</p>
+          <div className="detail-section-list top-gap">
+            <section className="detail-section">
+              <p className="feedback-label">基本情報</p>
+              <div className="detail-entry top-gap">
+                <span className="detail-entry-label">相談先</span>
+                <span className="detail-entry-value">{selectedNote.provider}</span>
               </div>
-            ) : null}
+              <div className="detail-entry">
+                <span className="detail-entry-label">相談日</span>
+                <span className="detail-entry-value">{formatNoteDate(selectedNote.consultedAt)}</span>
+              </div>
+              {selectedNote.relatedSchool ? (
+                <div className="detail-entry">
+                  <span className="detail-entry-label">関連候補</span>
+                  <span className="detail-entry-value">{selectedNote.relatedSchool}</span>
+                </div>
+              ) : null}
+            </section>
 
-            <div className="note-card">
-              <p className="feedback-label">相談した内容</p>
-              <p className="preserve-lines">{selectedNote.consultationBody || "未入力"}</p>
-            </div>
+            <section className="detail-section">
+              <p className="feedback-label">相談内容</p>
+              <p className="preserve-lines top-gap">
+                {selectedNote.consultationBody || "未入力"}
+              </p>
+            </section>
 
-            <div className="note-card">
+            <section className="detail-section">
               <p className="feedback-label">AIの回答全文</p>
-              <p className="preserve-lines">{selectedNote.answerBody}</p>
-            </div>
+              <p className="preserve-lines top-gap">{selectedNote.answerBody}</p>
+            </section>
 
-            <div className="note-card">
+            <section className="detail-section">
               <p className="feedback-label">要約メモ</p>
-              <p className="preserve-lines">{selectedNote.summary}</p>
-            </div>
+              <p className="preserve-lines top-gap">{selectedNote.summary}</p>
+            </section>
 
             {selectedNote.freeNote ? (
-              <div className="note-card">
+              <section className="detail-section">
                 <p className="feedback-label">自由メモ</p>
-                <p className="preserve-lines">{selectedNote.freeNote}</p>
-              </div>
+                <p className="preserve-lines top-gap">{selectedNote.freeNote}</p>
+              </section>
             ) : null}
           </div>
         </section>
