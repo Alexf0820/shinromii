@@ -3,6 +3,7 @@ import type { AiNote, CampusEvaluation } from "@/data/mockData";
 
 const STORAGE_KEY = "SHINROMII::storage::v1";
 const STORAGE_VERSION = 1;
+const AI_NOTES_SORT_KEY = "SHINROMII::ai-notes-sort::v1";
 
 type ShinromiiStorage = {
   version: number;
@@ -97,4 +98,28 @@ export function saveCampusEvaluation(campusId: string, evaluation: CampusEvaluat
       [campusId]: evaluation,
     },
   });
+}
+
+export type AiNotesSortOrder = "newest" | "oldest" | "helpful";
+
+export function loadAiNotesSortOrder(): AiNotesSortOrder {
+  if (!canUseStorage()) {
+    return "newest";
+  }
+
+  const stored = window.localStorage.getItem(AI_NOTES_SORT_KEY);
+
+  if (stored === "oldest" || stored === "helpful" || stored === "newest") {
+    return stored;
+  }
+
+  return "newest";
+}
+
+export function saveAiNotesSortOrder(sortOrder: AiNotesSortOrder) {
+  if (!canUseStorage()) {
+    return;
+  }
+
+  window.localStorage.setItem(AI_NOTES_SORT_KEY, sortOrder);
 }

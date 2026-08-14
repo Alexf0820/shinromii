@@ -112,19 +112,19 @@ export const dashboardStats: DashboardStat[] = [
 
 export const recentItems: RecentItem[] = [
   {
+    date: "2026.08.14",
+    title: "AI相談メモの追加・編集UIを公開",
+    description: "相談メモの保存、詳細確認、編集、削除が使えるように更新",
+  },
+  {
+    date: "2026.08.14",
+    title: "オープンキャンパス評価を追加",
+    description: "参加後の評価入力と見返しができるように更新",
+  },
+  {
     date: "2026.08.12",
     title: "青葉大学 情報デザイン学部を追加",
     description: "本人評価と家族メモを仮登録",
-  },
-  {
-    date: "2026.08.11",
-    title: "ChatGPT相談メモを保存",
-    description: "文系と情報系の両立について要点を記録",
-  },
-  {
-    date: "2026.08.09",
-    title: "星ヶ丘大学 OCを予約済みに更新",
-    description: "集合時間と持ち物をメモ",
   },
 ];
 

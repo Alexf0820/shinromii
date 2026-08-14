@@ -5,7 +5,13 @@ import { SectionHeader } from "@/components/SectionHeader";
 import { ScoreSelector } from "@/components/ScoreSelector";
 import { aiNotes as initialAiNotes } from "@/data/mockData";
 import type { AiNote, AiProvider } from "@/data/mockData";
-import { loadShinromiiStorage, saveAiNotes } from "@/lib/shinromii-storage";
+import {
+  loadAiNotesSortOrder,
+  loadShinromiiStorage,
+  saveAiNotes,
+  saveAiNotesSortOrder,
+} from "@/lib/shinromii-storage";
+import type { AiNotesSortOrder } from "@/lib/shinromii-storage";
 
 const providerOptions: AiProvider[] = [
   "ChatGPT",
@@ -78,17 +84,39 @@ export function AiNotesClient() {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [isCreating, setIsCreating] = useState(false);
   const [form, setForm] = useState<FormState>(createEmptyForm());
+  const [sortOrder, setSortOrder] = useState<AiNotesSortOrder>("newest");
 
   useEffect(() => {
     const stored = loadShinromiiStorage().aiNotes;
     setNotes(stored);
     setSelectedId(stored[0]?.id ?? null);
+    setSortOrder(loadAiNotesSortOrder());
   }, []);
 
   const selectedNote = useMemo(
     () => notes.find((item) => item.id === selectedId) ?? null,
     [notes, selectedId],
   );
+
+  const sortedNotes = useMemo(() => {
+    const next = [...notes];
+
+    if (sortOrder === "oldest") {
+      return next.sort((a, b) => a.consultedAt.localeCompare(b.consultedAt));
+    }
+
+    if (sortOrder === "helpful") {
+      return next.sort((a, b) => {
+        if (b.helpful !== a.helpful) {
+          return b.helpful - a.helpful;
+        }
+
+        return b.consultedAt.localeCompare(a.consultedAt);
+      });
+    }
+
+    return next.sort((a, b) => b.consultedAt.localeCompare(a.consultedAt));
+  }, [notes, sortOrder]);
 
   const formTitle = isCreating ? "相談メモを追加" : "相談メモを編集";
 
@@ -167,6 +195,11 @@ export function AiNotesClient() {
     }
   }
 
+  function handleSortChange(nextSortOrder: AiNotesSortOrder) {
+    setSortOrder(nextSortOrder);
+    saveAiNotesSortOrder(nextSortOrder);
+  }
+
   return (
     <div className="page-stack">
       <SectionHeader
@@ -175,14 +208,25 @@ export function AiNotesClient() {
       />
 
       <section className="panel">
-        <div className="row-between gap-sm align-start">
-          <div className="compare-header no-margin">
-            <span className="soft-pill">localStorage 保存</span>
-            <p className="muted-text">一覧から詳細確認、追加・編集・削除までできる形にしました。</p>
-          </div>
-          <button type="button" className="action-button primary" onClick={openCreate}>
-            相談を追加
+        <div className="form-stack">
+          <button type="button" className="cta-button" onClick={openCreate}>
+            <span className="cta-icon" aria-hidden="true">
+              +
+            </span>
+            <span className="cta-copy">
+              <strong>相談を追加する</strong>
+              <small>新しい相談メモを作成</small>
+            </span>
           </button>
+
+          <div className="row-between gap-sm align-start">
+            <div className="compare-header no-margin">
+              <span className="soft-pill">localStorage 保存</span>
+              <p className="muted-text">
+                一覧から詳細確認、追加・編集・削除までできます。
+              </p>
+            </div>
+          </div>
         </div>
       </section>
 
@@ -304,6 +348,20 @@ export function AiNotesClient() {
 
       <section className="panel">
         <SectionHeader title="相談一覧" description="タイトル、相談先、日付、要約だけを見やすく表示" />
+        <div className="sort-bar">
+          <label className="sort-control">
+            <span className="field-label">並び順</span>
+            <select
+              className="text-input"
+              value={sortOrder}
+              onChange={(event) => handleSortChange(event.target.value as AiNotesSortOrder)}
+            >
+              <option value="newest">新しい順</option>
+              <option value="oldest">古い順</option>
+              <option value="helpful">参考度が高い順</option>
+            </select>
+          </label>
+        </div>
         <div className="list-stack">
           {notes.length === 0 ? (
             <div className="empty-state">
@@ -311,7 +369,7 @@ export function AiNotesClient() {
               <p className="muted-text">上の「相談を追加」から保存できます。</p>
             </div>
           ) : (
-            notes.map((item) => {
+            sortedNotes.map((item) => {
               const isSelected = selectedId === item.id;
 
               return (
