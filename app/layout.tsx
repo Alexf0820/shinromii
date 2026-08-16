@@ -4,7 +4,7 @@ import "./globals.css";
 import { AppShell } from "@/components/AppShell";
 
 export const metadata: Metadata = {
-  title: "SHINROMII Ver.0.1",
+  title: "SHINROMII Ver.0.51",
   description: "高校生と家族のための進路情報UIベース",
 };
 

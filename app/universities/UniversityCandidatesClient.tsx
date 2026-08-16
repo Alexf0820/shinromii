@@ -220,6 +220,100 @@ export function UniversityCandidatesClient() {
     saveUniversitySortOrder(nextSortOrder);
   }
 
+  function renderCandidateDetail(candidate: UniversityCandidate) {
+    return (
+      <section className="detail-card inline-detail-card">
+        <div className="detail-section-header">
+          <div>
+            <p className="eyebrow">候補詳細</p>
+            <p className="item-title">{candidate.university}</p>
+            <p className="item-subtitle">
+              {candidate.faculty}
+              {candidate.department ? ` / ${candidate.department}` : ""}
+            </p>
+          </div>
+          <div className="score-display">
+            {renderStars(candidate.interest)}
+            <span className="item-subtitle">{candidate.interest.toFixed(1)}</span>
+          </div>
+        </div>
+
+        <div className="detail-section-list top-gap">
+          <section className="detail-section">
+            <p className="feedback-label">基本情報</p>
+            <div className="detail-entry top-gap">
+              <span className="detail-entry-label">大学名</span>
+              <span className="detail-entry-value">{candidate.university}</span>
+            </div>
+            <div className="detail-entry">
+              <span className="detail-entry-label">学部・学科</span>
+              <span className="detail-entry-value">
+                {candidate.faculty}
+                {candidate.department ? ` / ${candidate.department}` : ""}
+              </span>
+            </div>
+            <div className="detail-entry">
+              <span className="detail-entry-label">URL</span>
+              <span className="detail-entry-value">
+                {candidate.url ? (
+                  <a className="text-link inline-link" href={candidate.url}>
+                    {candidate.url}
+                  </a>
+                ) : (
+                  "未入力"
+                )}
+              </span>
+            </div>
+          </section>
+
+          <section className="detail-section">
+            <p className="feedback-label">評価</p>
+            <div className="detail-entry top-gap">
+              <span className="detail-entry-label">気になる度</span>
+              <span className="detail-entry-value">{renderStars(candidate.interest)}</span>
+            </div>
+            <div className="detail-entry">
+              <span className="detail-entry-label">本人評価</span>
+              <span className="detail-entry-value">{candidate.studentScore}</span>
+            </div>
+            <div className="detail-entry">
+              <span className="detail-entry-label">家族評価</span>
+              <span className="detail-entry-value">{candidate.familyScore}</span>
+            </div>
+          </section>
+
+          <section className="detail-section">
+            <p className="feedback-label">メモ</p>
+            <div className="detail-entry top-gap">
+              <span className="detail-entry-label">本人メモ</span>
+              <span className="detail-entry-value preserve-lines">
+                {candidate.studentView || "まだ入力されていません"}
+              </span>
+            </div>
+            <div className="detail-entry">
+              <span className="detail-entry-label">家族メモ</span>
+              <span className="detail-entry-value preserve-lines">
+                {candidate.familyView || "まだ入力されていません"}
+              </span>
+            </div>
+            <div className="detail-entry">
+              <span className="detail-entry-label">志望理由</span>
+              <span className="detail-entry-value preserve-lines">
+                {candidate.reason || "まだ入力されていません"}
+              </span>
+            </div>
+            <div className="detail-entry">
+              <span className="detail-entry-label">将来メモ</span>
+              <span className="detail-entry-value preserve-lines">
+                {candidate.futureNote || "まだ入力されていません"}
+              </span>
+            </div>
+          </section>
+        </div>
+      </section>
+    );
+  }
+
   return (
     <div className="page-stack">
       <section className="page-hero tone-university">
@@ -423,164 +517,75 @@ export function UniversityCandidatesClient() {
 
         <div className="list-stack">
           {sortedCandidates.map((item) => (
-            <article
-              key={item.id}
-              className={`candidate-card tone-university ${selectedId === item.id ? "selected-card" : ""}`}
-            >
-              <div className="candidate-topline">
-                <div className="candidate-main">
-                  <span className="candidate-icon-badge">
-                    <UiIcon name="university" className="list-item-icon" />
-                  </span>
-                  <div className="candidate-summary">
-                    <p className="item-title">{item.university}</p>
-                    <p className="item-subtitle">
-                      {item.faculty}
-                      {item.department ? ` / ${item.department}` : ""}
-                    </p>
+            <div key={item.id} className="detail-stack">
+              <article
+                className={`candidate-card tone-university ${selectedId === item.id ? "selected-card" : ""}`}
+              >
+                <div className="candidate-topline">
+                  <div className="candidate-main">
+                    <span className="candidate-icon-badge">
+                      <UiIcon name="university" className="list-item-icon" />
+                    </span>
+                    <div className="candidate-summary">
+                      <p className="item-title">{item.university}</p>
+                      <p className="item-subtitle">
+                        {item.faculty}
+                        {item.department ? ` / ${item.department}` : ""}
+                      </p>
+                    </div>
                   </div>
+                  <span className="heart-shell" aria-hidden="true">
+                    ♡
+                  </span>
                 </div>
-                <span className="heart-shell" aria-hidden="true">
-                  ♡
-                </span>
-              </div>
 
-              <div className="score-display">
-                {renderStars(item.interest)}
-                <span className="item-subtitle">{item.interest.toFixed(1)}</span>
-              </div>
+                <div className="score-display">
+                  {renderStars(item.interest)}
+                  <span className="item-subtitle">{item.interest.toFixed(1)}</span>
+                </div>
 
-              <div className="badge-row">
-                <span className="pill-person">本人 {item.studentScore}</span>
-                <span className="pill-family">家族 {item.familyScore}</span>
-                <span className="pill-updated">最終更新 {item.createdAt.replaceAll("-", "/")}</span>
-              </div>
+                <div className="badge-row">
+                  <span className="pill-person">本人 {item.studentScore}</span>
+                  <span className="pill-family">家族 {item.familyScore}</span>
+                  <span className="pill-updated">最終更新 {item.createdAt.replaceAll("-", "/")}</span>
+                </div>
 
-              <div className="note-card">
-                <p className="feedback-label">本人メモ</p>
-                <p>{item.studentView ? shorten(item.studentView, 88) : "まだ入力されていません"}</p>
-              </div>
+                <div className="note-card">
+                  <p className="feedback-label">本人メモ</p>
+                  <p>{item.studentView ? shorten(item.studentView, 88) : "まだ入力されていません"}</p>
+                </div>
 
-              <div className="list-actions">
-                {item.url ? (
-                  <a className="card-action subtle" href={item.url}>
-                    <UiIcon name="link" className="action-icon" />
-                    大学ページを見る
-                  </a>
-                ) : null}
-                <button
-                  type="button"
-                  className="card-action subtle"
-                  onClick={() => setSelectedId(item.id)}
-                >
-                  <UiIcon name="detail" className="action-icon" />
-                  詳細
-                </button>
-                <button type="button" className="card-action subtle" onClick={() => openEdit(item)}>
-                  <UiIcon name="edit" className="action-icon" />
-                  編集
-                </button>
-                <button type="button" className="card-action danger" onClick={() => handleDelete(item)}>
-                  <UiIcon name="delete" className="action-icon" />
-                  削除
-                </button>
-              </div>
-            </article>
+                <div className="list-actions">
+                  {item.url ? (
+                    <a className="card-action subtle" href={item.url}>
+                      <UiIcon name="link" className="action-icon" />
+                      大学ページを見る
+                    </a>
+                  ) : null}
+                  <button
+                    type="button"
+                    className="card-action subtle"
+                    onClick={() => setSelectedId((current) => (current === item.id ? null : item.id))}
+                  >
+                    <UiIcon name="detail" className="action-icon" />
+                    {selectedId === item.id ? "詳細を閉じる" : "詳細"}
+                  </button>
+                  <button type="button" className="card-action subtle" onClick={() => openEdit(item)}>
+                    <UiIcon name="edit" className="action-icon" />
+                    編集
+                  </button>
+                  <button type="button" className="card-action danger" onClick={() => handleDelete(item)}>
+                    <UiIcon name="delete" className="action-icon" />
+                    削除
+                  </button>
+                </div>
+              </article>
+
+              {selectedId === item.id ? renderCandidateDetail(item) : null}
+            </div>
           ))}
         </div>
       </section>
-
-      {selectedCandidate && (
-        <section className="detail-card">
-          <div className="detail-section-header">
-            <div>
-              <p className="eyebrow">候補詳細</p>
-              <p className="item-title">{selectedCandidate.university}</p>
-              <p className="item-subtitle">
-                {selectedCandidate.faculty}
-                {selectedCandidate.department ? ` / ${selectedCandidate.department}` : ""}
-              </p>
-            </div>
-            <div className="score-display">
-              {renderStars(selectedCandidate.interest)}
-              <span className="item-subtitle">{selectedCandidate.interest.toFixed(1)}</span>
-            </div>
-          </div>
-
-          <div className="detail-section-list top-gap">
-            <section className="detail-section">
-              <p className="feedback-label">基本情報</p>
-              <div className="detail-entry top-gap">
-                <span className="detail-entry-label">大学名</span>
-                <span className="detail-entry-value">{selectedCandidate.university}</span>
-              </div>
-              <div className="detail-entry">
-                <span className="detail-entry-label">学部・学科</span>
-                <span className="detail-entry-value">
-                  {selectedCandidate.faculty}
-                  {selectedCandidate.department ? ` / ${selectedCandidate.department}` : ""}
-                </span>
-              </div>
-              <div className="detail-entry">
-                <span className="detail-entry-label">URL</span>
-                <span className="detail-entry-value">
-                  {selectedCandidate.url ? (
-                    <a className="text-link inline-link" href={selectedCandidate.url}>
-                      {selectedCandidate.url}
-                    </a>
-                  ) : (
-                    "未入力"
-                  )}
-                </span>
-              </div>
-            </section>
-
-            <section className="detail-section">
-              <p className="feedback-label">評価</p>
-              <div className="detail-entry top-gap">
-                <span className="detail-entry-label">気になる度</span>
-                <span className="detail-entry-value">{renderStars(selectedCandidate.interest)}</span>
-              </div>
-              <div className="detail-entry">
-                <span className="detail-entry-label">本人評価</span>
-                <span className="detail-entry-value">{selectedCandidate.studentScore}</span>
-              </div>
-              <div className="detail-entry">
-                <span className="detail-entry-label">家族評価</span>
-                <span className="detail-entry-value">{selectedCandidate.familyScore}</span>
-              </div>
-            </section>
-
-            <section className="detail-section">
-              <p className="feedback-label">メモ</p>
-              <div className="detail-entry top-gap">
-                <span className="detail-entry-label">本人メモ</span>
-                <span className="detail-entry-value preserve-lines">
-                  {selectedCandidate.studentView || "まだ入力されていません"}
-                </span>
-              </div>
-              <div className="detail-entry">
-                <span className="detail-entry-label">家族メモ</span>
-                <span className="detail-entry-value preserve-lines">
-                  {selectedCandidate.familyView || "まだ入力されていません"}
-                </span>
-              </div>
-              <div className="detail-entry">
-                <span className="detail-entry-label">志望理由</span>
-                <span className="detail-entry-value preserve-lines">
-                  {selectedCandidate.reason || "まだ入力されていません"}
-                </span>
-              </div>
-              <div className="detail-entry">
-                <span className="detail-entry-label">将来メモ</span>
-                <span className="detail-entry-value preserve-lines">
-                  {selectedCandidate.futureNote || "まだ入力されていません"}
-                </span>
-              </div>
-            </section>
-          </div>
-        </section>
-      )}
     </div>
   );
 }
