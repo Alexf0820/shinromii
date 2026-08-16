@@ -224,6 +224,7 @@ export function OpenCampusClient() {
   const [pendingAttachments, setPendingAttachments] = useState<PendingAttachment[]>([]);
   const [removedAttachmentIds, setRemovedAttachmentIds] = useState<string[]>([]);
   const [attachmentWarning, setAttachmentWarning] = useState<string | null>(null);
+  const [attachmentAvailability, setAttachmentAvailability] = useState<Record<string, boolean>>({});
   const attachmentInputRef = useRef<HTMLInputElement | null>(null);
   const objectUrlsRef = useRef<string[]>([]);
   const attachmentsAvailable = isAttachmentStorageAvailable();
@@ -266,6 +267,36 @@ export function OpenCampusClient() {
 
     return evaluations[selectedEvent.id] ?? createEmptyEvaluation();
   }, [evaluations, selectedEvent]);
+
+  useEffect(() => {
+    if (!attachmentsAvailable || !selectedEvent || selectedEvent.attachments.length === 0) {
+      setAttachmentAvailability({});
+      return;
+    }
+
+    let active = true;
+
+    void Promise.all(
+      selectedEvent.attachments.map(async (attachment) => {
+        try {
+          const blob = await getAttachmentBlob(attachment.id);
+          return [attachment.id, Boolean(blob)] as const;
+        } catch {
+          return [attachment.id, false] as const;
+        }
+      }),
+    ).then((entries) => {
+      if (!active) {
+        return;
+      }
+
+      setAttachmentAvailability(Object.fromEntries(entries));
+    });
+
+    return () => {
+      active = false;
+    };
+  }, [attachmentsAvailable, selectedEvent]);
 
   function persistEvents(nextEvents: OpenCampusEvent[]) {
     setEvents(nextEvents);
@@ -612,7 +643,7 @@ export function OpenCampusClient() {
       const blob = await getAttachmentBlob(meta.id);
 
       if (!blob) {
-        window.alert("添付ファイルが見つかりませんでした。");
+        window.alert("この端末にはファイルがありません。添付ファイル本体はバックアップ対象外です。");
         return;
       }
 
@@ -1287,11 +1318,17 @@ export function OpenCampusClient() {
                             type="button"
                             className="card-action subtle"
                             onClick={() => void openAttachment(attachment)}
+                            disabled={attachmentAvailability[attachment.id] === false}
                           >
                             開く
                           </button>
                         </div>
                       </div>
+                      {attachmentAvailability[attachment.id] === false ? (
+                        <p className="muted-text top-gap">
+                          この端末にはファイルがありません。添付ファイル本体はバックアップ対象外です。
+                        </p>
+                      ) : null}
                     </article>
                   ))
                 )}

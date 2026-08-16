@@ -696,6 +696,14 @@ a {
   border-color: transparent;
 }
 
+.action-button:disabled,
+.card-action:disabled,
+.icon-action:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+  box-shadow: none;
+}
+
 .action-button.subtle,
 .card-action.subtle {
   color: var(--muted-strong);

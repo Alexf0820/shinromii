@@ -13,7 +13,9 @@ type UiIconName =
   | "detail"
   | "calendar"
   | "link"
-  | "spark";
+  | "spark"
+  | "download"
+  | "upload";
 
 type UiIconProps = SVGProps<SVGSVGElement> & {
   name: UiIconName;
@@ -123,6 +125,22 @@ export function UiIcon({ name, ...props }: UiIconProps) {
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" {...props}>
           <path d="m12 4 1.8 4.2L18 10l-4.2 1.8L12 16l-1.8-4.2L6 10l4.2-1.8L12 4Z" />
           <path d="m18.5 4 .7 1.8L21 6.5l-1.8.7-.7 1.8-.7-1.8L16 6.5l1.8-.7.7-1.8Z" />
+        </svg>
+      );
+    case "download":
+      return (
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" {...props}>
+          <path d="M12 4v10" />
+          <path d="m8.5 10.5 3.5 3.8 3.5-3.8" />
+          <path d="M5 19h14" />
+        </svg>
+      );
+    case "upload":
+      return (
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" {...props}>
+          <path d="M12 20V10" />
+          <path d="m8.5 13.5 3.5-3.8 3.5 3.8" />
+          <path d="M5 5h14" />
         </svg>
       );
     default:
