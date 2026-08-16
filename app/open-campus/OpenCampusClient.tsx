@@ -38,9 +38,17 @@ const allowedMimeTypes = new Set(["application/pdf", "image/jpeg", "image/png", 
 const allowedExtensions = [".pdf", ".jpg", ".jpeg", ".png", ".webp"];
 const maxAttachmentSizeBytes = 20 * 1024 * 1024;
 
+type AttachmentKind = "image" | "pdf" | "other";
+
 type PendingAttachment = {
   id: string;
   file: File;
+};
+
+type AttachmentPreview = {
+  available: boolean;
+  kind: AttachmentKind;
+  objectUrl: string | null;
 };
 
 type EventFormState = {
@@ -208,6 +216,34 @@ function matchesAllowedFileType(file: File) {
   return allowedExtensions.some((extension) => lower.endsWith(extension));
 }
 
+function getAttachmentKind(meta: OpenCampusAttachmentMeta): AttachmentKind {
+  const lowerName = meta.name.toLowerCase();
+
+  if (meta.mimeType.startsWith("image/") || [".jpg", ".jpeg", ".png", ".webp"].some((extension) => lowerName.endsWith(extension))) {
+    return "image";
+  }
+
+  if (meta.mimeType === "application/pdf" || lowerName.endsWith(".pdf")) {
+    return "pdf";
+  }
+
+  return "other";
+}
+
+function normalizeAttachmentBlob(blob: Blob, meta: OpenCampusAttachmentMeta) {
+  if (!meta.mimeType || blob.type === meta.mimeType) {
+    return blob;
+  }
+
+  return new Blob([blob], { type: meta.mimeType });
+}
+
+function revokeObjectUrls(urls: string[]) {
+  urls.forEach((url) => {
+    URL.revokeObjectURL(url);
+  });
+}
+
 function stopEvent(event: React.MouseEvent<HTMLElement>) {
   event.stopPropagation();
 }
@@ -224,7 +260,8 @@ export function OpenCampusClient() {
   const [pendingAttachments, setPendingAttachments] = useState<PendingAttachment[]>([]);
   const [removedAttachmentIds, setRemovedAttachmentIds] = useState<string[]>([]);
   const [attachmentWarning, setAttachmentWarning] = useState<string | null>(null);
-  const [attachmentAvailability, setAttachmentAvailability] = useState<Record<string, boolean>>({});
+  const [attachmentPreviews, setAttachmentPreviews] = useState<Record<string, AttachmentPreview>>({});
+  const [expandedImageId, setExpandedImageId] = useState<string | null>(null);
   const attachmentInputRef = useRef<HTMLInputElement | null>(null);
   const objectUrlsRef = useRef<string[]>([]);
   const attachmentsAvailable = isAttachmentStorageAvailable();
@@ -238,9 +275,7 @@ export function OpenCampusClient() {
 
   useEffect(() => {
     return () => {
-      objectUrlsRef.current.forEach((url) => {
-        URL.revokeObjectURL(url);
-      });
+      revokeObjectUrls(objectUrlsRef.current);
       objectUrlsRef.current = [];
     };
   }, []);
@@ -268,9 +303,33 @@ export function OpenCampusClient() {
     return evaluations[selectedEvent.id] ?? createEmptyEvaluation();
   }, [evaluations, selectedEvent]);
 
+  const selectedImageAttachments = useMemo(
+    () => (selectedEvent ? selectedEvent.attachments.filter((attachment) => getAttachmentKind(attachment) === "image") : []),
+    [selectedEvent],
+  );
+
+  const selectedDocumentAttachments = useMemo(
+    () =>
+      selectedEvent
+        ? selectedEvent.attachments.filter((attachment) => getAttachmentKind(attachment) !== "image")
+        : [],
+    [selectedEvent],
+  );
+
+  const expandedImageAttachment = useMemo(() => {
+    if (!selectedEvent || !expandedImageId) {
+      return null;
+    }
+
+    return selectedEvent.attachments.find((attachment) => attachment.id === expandedImageId) ?? null;
+  }, [expandedImageId, selectedEvent]);
+
   useEffect(() => {
+    revokeObjectUrls(objectUrlsRef.current);
+    objectUrlsRef.current = [];
+
     if (!attachmentsAvailable || !selectedEvent || selectedEvent.attachments.length === 0) {
-      setAttachmentAvailability({});
+      setAttachmentPreviews({});
       return;
     }
 
@@ -278,25 +337,73 @@ export function OpenCampusClient() {
 
     void Promise.all(
       selectedEvent.attachments.map(async (attachment) => {
+        const kind = getAttachmentKind(attachment);
+
         try {
           const blob = await getAttachmentBlob(attachment.id);
-          return [attachment.id, Boolean(blob)] as const;
+
+          if (!blob) {
+            return [
+              attachment.id,
+              {
+                available: false,
+                kind,
+                objectUrl: null,
+              },
+            ] as const;
+          }
+
+          const objectUrl = URL.createObjectURL(normalizeAttachmentBlob(blob, attachment));
+
+          return [
+            attachment.id,
+            {
+              available: true,
+              kind,
+              objectUrl,
+            },
+          ] as const;
         } catch {
-          return [attachment.id, false] as const;
+          return [
+            attachment.id,
+            {
+              available: false,
+              kind,
+              objectUrl: null,
+            },
+          ] as const;
         }
       }),
     ).then((entries) => {
       if (!active) {
+        revokeObjectUrls(
+          entries
+            .map(([, preview]) => preview.objectUrl)
+            .filter((url): url is string => Boolean(url)),
+        );
         return;
       }
 
-      setAttachmentAvailability(Object.fromEntries(entries));
+      objectUrlsRef.current = entries
+        .map(([, preview]) => preview.objectUrl)
+        .filter((url): url is string => Boolean(url));
+      setAttachmentPreviews(Object.fromEntries(entries));
     });
 
     return () => {
       active = false;
     };
   }, [attachmentsAvailable, selectedEvent]);
+
+  useEffect(() => {
+    if (!expandedImageId) {
+      return;
+    }
+
+    if (!selectedEvent || !selectedEvent.attachments.some((attachment) => attachment.id === expandedImageId)) {
+      setExpandedImageId(null);
+    }
+  }, [expandedImageId, selectedEvent]);
 
   function persistEvents(nextEvents: OpenCampusEvent[]) {
     setEvents(nextEvents);
@@ -638,8 +745,86 @@ export function OpenCampusClient() {
     }
   }
 
+  async function handleDeleteAttachment(meta: OpenCampusAttachmentMeta) {
+    if (!selectedEvent) {
+      return;
+    }
+
+    const confirmed = window.confirm(`添付ファイル「${meta.name}」を削除しますか？`);
+
+    if (!confirmed) {
+      return;
+    }
+
+    const nextEvents = events.map((event) =>
+      event.id === selectedEvent.id
+        ? {
+            ...event,
+            attachments: event.attachments.filter((attachment) => attachment.id !== meta.id),
+            updatedAt: todayString(),
+          }
+        : event,
+    );
+    const preview = attachmentPreviews[meta.id];
+
+    setEvents(nextEvents);
+    saveOpenCampusEvents(nextEvents);
+
+    if (preview?.objectUrl) {
+      URL.revokeObjectURL(preview.objectUrl);
+      objectUrlsRef.current = objectUrlsRef.current.filter((url) => url !== preview.objectUrl);
+    }
+
+    setAttachmentPreviews((current) => {
+      const next = { ...current };
+      delete next[meta.id];
+      return next;
+    });
+
+    if (editingEventId === selectedEvent.id) {
+      setEventForm((current) => ({
+        ...current,
+        attachments: current.attachments.filter((attachment) => attachment.id !== meta.id),
+      }));
+    }
+
+    if (expandedImageId === meta.id) {
+      setExpandedImageId(null);
+    }
+
+    if (attachmentsAvailable) {
+      try {
+        await deleteAttachmentBlob(meta.id);
+      } catch {
+        window.alert("添付ファイルの削除に失敗しました。");
+      }
+    }
+  }
+
   async function openAttachment(meta: OpenCampusAttachmentMeta) {
     try {
+      const preview = attachmentPreviews[meta.id];
+
+      if (preview?.kind === "image") {
+        if (!preview.available || !preview.objectUrl) {
+          window.alert("この端末にはファイルがありません。添付ファイル本体はバックアップ対象外です。");
+          return;
+        }
+
+        setExpandedImageId(meta.id);
+        return;
+      }
+
+      if (preview?.objectUrl) {
+        const opened = window.open(preview.objectUrl, "_blank", "noopener,noreferrer");
+
+        if (!opened) {
+          window.alert("添付ファイルを開けませんでした。ブラウザ設定を確認してください。");
+        }
+
+        return;
+      }
+
       const blob = await getAttachmentBlob(meta.id);
 
       if (!blob) {
@@ -647,7 +832,7 @@ export function OpenCampusClient() {
         return;
       }
 
-      const objectUrl = URL.createObjectURL(blob);
+      const objectUrl = URL.createObjectURL(normalizeAttachmentBlob(blob, meta));
       objectUrlsRef.current.push(objectUrl);
 
       const opened = window.open(objectUrl, "_blank", "noopener,noreferrer");
@@ -956,14 +1141,14 @@ export function OpenCampusClient() {
                           {attachment.mimeType} / {(attachment.size / (1024 * 1024)).toFixed(1)}MB
                         </p>
                       </div>
-                      <div className="list-actions">
-                        <button
-                          type="button"
-                          className="card-action subtle"
-                          onClick={() => void openAttachment(attachment)}
-                        >
-                          開く
-                        </button>
+                        <div className="list-actions">
+                          <button
+                            type="button"
+                            className="card-action subtle"
+                            onClick={() => void openAttachment(attachment)}
+                          >
+                            {getAttachmentKind(attachment) === "image" ? "画像を確認" : "開く"}
+                          </button>
                         <button
                           type="button"
                           className="card-action danger"
@@ -1304,33 +1489,113 @@ export function OpenCampusClient() {
                 {selectedEvent.attachments.length === 0 ? (
                   <p className="muted-text">まだ添付ファイルはありません。</p>
                 ) : (
-                  selectedEvent.attachments.map((attachment) => (
-                    <article key={attachment.id} className="list-card compact-card">
-                      <div className="row-between gap-sm align-start">
-                        <div>
-                          <p className="item-title small">{attachment.name}</p>
-                          <p className="item-subtitle">
-                            {attachment.mimeType} / {(attachment.size / (1024 * 1024)).toFixed(1)}MB
-                          </p>
-                        </div>
-                        <div className="list-actions">
-                          <button
-                            type="button"
-                            className="card-action subtle"
-                            onClick={() => void openAttachment(attachment)}
-                            disabled={attachmentAvailability[attachment.id] === false}
-                          >
-                            開く
-                          </button>
-                        </div>
+                  <>
+                    {selectedImageAttachments.length > 0 ? (
+                      <div className="attachment-image-grid">
+                        {selectedImageAttachments.map((attachment) => {
+                          const preview = attachmentPreviews[attachment.id];
+
+                          return (
+                            <article key={attachment.id} className="attachment-image-card">
+                              {preview?.available && preview.objectUrl ? (
+                                <button
+                                  type="button"
+                                  className="attachment-image-button"
+                                  onClick={() => setExpandedImageId(attachment.id)}
+                                >
+                                  <img
+                                    src={preview.objectUrl}
+                                    alt={attachment.name}
+                                    className="attachment-image-thumb"
+                                  />
+                                </button>
+                              ) : (
+                                <div className="attachment-missing-card">
+                                  <p className="item-title small">{attachment.name}</p>
+                                  <p className="muted-text">
+                                    この端末にはファイルがありません。添付ファイル本体はバックアップ対象外です。
+                                  </p>
+                                </div>
+                              )}
+
+                              <div className="attachment-caption">
+                                <p className="item-title small">{attachment.name}</p>
+                                <p className="item-subtitle">
+                                  {(attachment.size / (1024 * 1024)).toFixed(1)}MB
+                                </p>
+                              </div>
+
+                              <div className="list-actions">
+                                <button
+                                  type="button"
+                                  className="card-action subtle"
+                                  onClick={() => setExpandedImageId(attachment.id)}
+                                  disabled={!preview?.available || !preview.objectUrl}
+                                >
+                                  大きく表示
+                                </button>
+                                <button
+                                  type="button"
+                                  className="card-action danger"
+                                  onClick={() => void handleDeleteAttachment(attachment)}
+                                >
+                                  削除
+                                </button>
+                              </div>
+                            </article>
+                          );
+                        })}
                       </div>
-                      {attachmentAvailability[attachment.id] === false ? (
-                        <p className="muted-text top-gap">
-                          この端末にはファイルがありません。添付ファイル本体はバックアップ対象外です。
-                        </p>
-                      ) : null}
-                    </article>
-                  ))
+                    ) : null}
+
+                    {selectedDocumentAttachments.map((attachment) => {
+                      const preview = attachmentPreviews[attachment.id];
+                      const isPdf = getAttachmentKind(attachment) === "pdf";
+
+                      return (
+                        <article key={attachment.id} className="list-card compact-card">
+                          <div className="row-between gap-sm align-start">
+                            <div>
+                              <p className="item-title small">
+                                {isPdf ? "PDF" : "資料"} / {attachment.name}
+                              </p>
+                              <p className="item-subtitle">
+                                {(attachment.size / (1024 * 1024)).toFixed(1)}MB
+                              </p>
+                            </div>
+                            <div className="list-actions">
+                              {preview?.available && preview.objectUrl ? (
+                                <a
+                                  className="card-action subtle"
+                                  href={preview.objectUrl}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                >
+                                  {isPdf ? "PDFを開く" : "開く"}
+                                </a>
+                              ) : (
+                                <button type="button" className="card-action subtle" disabled>
+                                  開けません
+                                </button>
+                              )}
+                              <button
+                                type="button"
+                                className="card-action danger"
+                                onClick={() => void handleDeleteAttachment(attachment)}
+                              >
+                                削除
+                              </button>
+                            </div>
+                          </div>
+                          {!preview?.available ? (
+                            <p className="muted-text top-gap">
+                              この端末にはファイルがありません。添付ファイル本体はバックアップ対象外です。
+                            </p>
+                          ) : null}
+                        </article>
+                      );
+                    })}
+                  </>
                 )}
               </div>
             </section>
@@ -1398,6 +1663,39 @@ export function OpenCampusClient() {
             ) : null}
           </div>
         </section>
+      ) : null}
+
+      {expandedImageAttachment && attachmentPreviews[expandedImageAttachment.id]?.objectUrl ? (
+        <div
+          className="attachment-lightbox"
+          role="dialog"
+          aria-modal="true"
+          aria-label={expandedImageAttachment.name}
+          onClick={() => setExpandedImageId(null)}
+        >
+          <div className="attachment-lightbox-panel" onClick={(event) => event.stopPropagation()}>
+            <div className="row-between gap-sm align-start">
+              <div>
+                <p className="item-title small">{expandedImageAttachment.name}</p>
+                <p className="item-subtitle">
+                  {(expandedImageAttachment.size / (1024 * 1024)).toFixed(1)}MB
+                </p>
+              </div>
+              <button
+                type="button"
+                className="card-action subtle"
+                onClick={() => setExpandedImageId(null)}
+              >
+                閉じる
+              </button>
+            </div>
+            <img
+              src={attachmentPreviews[expandedImageAttachment.id]?.objectUrl ?? ""}
+              alt={expandedImageAttachment.name}
+              className="attachment-lightbox-image"
+            />
+          </div>
+        </div>
       ) : null}
 
       {editingEvaluationId && selectedEvent?.id === editingEvaluationId ? (
