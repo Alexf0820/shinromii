@@ -20,6 +20,25 @@ export type CampusSummary = {
   note: string;
 };
 
+export type OpenCampusStatus = "検討中" | "予約済み" | "参加済み";
+
+export type OpenCampusLink = {
+  id: string;
+  label: string;
+  url: string;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type OpenCampusAttachmentMeta = {
+  id: string;
+  ocId: string;
+  name: string;
+  mimeType: string;
+  size: number;
+  createdAt: string;
+};
+
 export type GradeSchoolYear = "高1" | "高2" | "高3";
 
 export type GradeTerm = "1学期" | "2学期" | "3学期" | "学年末";
@@ -117,6 +136,26 @@ export type CampusVisit = {
   program: string;
   date: string;
   evaluation?: CampusEvaluation;
+};
+
+export type OpenCampusEvent = {
+  id: string;
+  university: string;
+  facultyDepartment: string;
+  eventName: string;
+  eventType: string;
+  eventDate: string;
+  startTime: string;
+  endTime: string;
+  status: OpenCampusStatus;
+  companionMemo: string;
+  meetingPlace: string;
+  accessMemo: string;
+  dayMemo: string;
+  links: OpenCampusLink[];
+  attachments: OpenCampusAttachmentMeta[];
+  createdAt: string;
+  updatedAt: string;
 };
 
 export const dashboardStats: DashboardStat[] = [
@@ -347,6 +386,66 @@ export const campusDone: CampusVisit[] = [
         career: 4,
       },
     },
+  },
+];
+
+export const openCampusEvents: OpenCampusEvent[] = [
+  {
+    id: "campus-upcoming-hoshigaoka",
+    university: "星ヶ丘大学",
+    facultyDepartment: "経営学部",
+    eventName: "オープンキャンパス",
+    eventType: "オープンキャンパス",
+    eventDate: "2026-08-24",
+    startTime: "13:00",
+    endTime: "16:00",
+    status: "予約済み",
+    companionMemo: "家族1名同伴予定",
+    meetingPlace: "正門前受付",
+    accessMemo: "駅から徒歩8分。模擬授業会場の位置も確認したい。",
+    dayMemo: "模擬授業と在学生トークが中心。",
+    links: [],
+    attachments: [],
+    createdAt: "2026-08-12",
+    updatedAt: "2026-08-12",
+  },
+  {
+    id: "campus-upcoming-aoba",
+    university: "青葉大学",
+    facultyDepartment: "情報デザイン学部",
+    eventName: "体験会",
+    eventType: "体験授業",
+    eventDate: "2026-09-07",
+    startTime: "10:00",
+    endTime: "12:30",
+    status: "検討中",
+    companionMemo: "家族同伴可",
+    meetingPlace: "",
+    accessMemo: "制作系の展示が多そう。駅からのバス有無を要確認。",
+    dayMemo: "",
+    links: [],
+    attachments: [],
+    createdAt: "2026-08-11",
+    updatedAt: "2026-08-11",
+  },
+  {
+    id: "campus-done-konan",
+    university: "港南学院大学",
+    facultyDepartment: "国際教養学部",
+    eventName: "キャンパス説明会",
+    eventType: "学部説明会",
+    eventDate: "2026-07-20",
+    startTime: "14:00",
+    endTime: "16:00",
+    status: "参加済み",
+    companionMemo: "",
+    meetingPlace: "",
+    accessMemo: "最寄り駅からの動線は当日確認済み。",
+    dayMemo: "留学制度と学生の雰囲気が印象に残った。",
+    links: [],
+    attachments: [],
+    createdAt: "2026-07-20",
+    updatedAt: "2026-07-20",
   },
 ];
 
