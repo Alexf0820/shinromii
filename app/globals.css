@@ -1083,6 +1083,10 @@ a {
   margin-top: -2px;
 }
 
+.inline-detail-card {
+  margin-top: -2px;
+}
+
 .record-list {
   display: grid;
   gap: 12px;

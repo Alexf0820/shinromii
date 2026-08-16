@@ -202,7 +202,7 @@ export function HomeClient() {
     <div className="page-stack home-page">
       <section className="home-hero">
         <div className="home-hero-copy">
-          <p className="eyebrow">SHINROMII Ver.0.5</p>
+          <p className="eyebrow">SHINROMII Ver.0.51</p>
           <h1>わたしの進路ノート</h1>
           <p className="hero-copy">
             未来の自分に向けて、今のわたしができることを整える。

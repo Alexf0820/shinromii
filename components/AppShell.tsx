@@ -40,7 +40,7 @@ export function AppShell({ children }: AppShellProps) {
           </div>
           <div className="household-badge">
             <UiIcon name="spark" className="household-icon" />
-            <span>Ver.0.5</span>
+            <span>Ver.0.51</span>
           </div>
         </header>
         <div className="content-area">{children}</div>
