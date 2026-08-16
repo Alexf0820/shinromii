@@ -251,7 +251,7 @@ function stopEvent(event: React.MouseEvent<HTMLElement>) {
 export function OpenCampusClient() {
   const [events, setEvents] = useState<OpenCampusEvent[]>(initialOpenCampusEvents);
   const [evaluations, setEvaluations] = useState<Record<string, CampusEvaluation>>({});
-  const [selectedId, setSelectedId] = useState<string | null>(initialOpenCampusEvents[0]?.id ?? null);
+  const [selectedId, setSelectedId] = useState<string | null>(null);
   const [editingEventId, setEditingEventId] = useState<string | null>(null);
   const [editingEvaluationId, setEditingEvaluationId] = useState<string | null>(null);
   const [isCreatingEvent, setIsCreatingEvent] = useState(false);
@@ -262,15 +262,17 @@ export function OpenCampusClient() {
   const [attachmentWarning, setAttachmentWarning] = useState<string | null>(null);
   const [attachmentPreviews, setAttachmentPreviews] = useState<Record<string, AttachmentPreview>>({});
   const [expandedImageId, setExpandedImageId] = useState<string | null>(null);
+  const [pendingScrollId, setPendingScrollId] = useState<string | null>(null);
   const attachmentInputRef = useRef<HTMLInputElement | null>(null);
   const objectUrlsRef = useRef<string[]>([]);
+  const detailRefs = useRef<Record<string, HTMLElement | null>>({});
   const attachmentsAvailable = isAttachmentStorageAvailable();
 
   useEffect(() => {
     const stored = loadShinromiiStorage();
     setEvents(stored.openCampusEvents);
     setEvaluations(stored.campusEvaluations);
-    setSelectedId(stored.openCampusEvents[0]?.id ?? null);
+    setSelectedId(null);
   }, []);
 
   useEffect(() => {
@@ -302,19 +304,6 @@ export function OpenCampusClient() {
 
     return evaluations[selectedEvent.id] ?? createEmptyEvaluation();
   }, [evaluations, selectedEvent]);
-
-  const selectedImageAttachments = useMemo(
-    () => (selectedEvent ? selectedEvent.attachments.filter((attachment) => getAttachmentKind(attachment) === "image") : []),
-    [selectedEvent],
-  );
-
-  const selectedDocumentAttachments = useMemo(
-    () =>
-      selectedEvent
-        ? selectedEvent.attachments.filter((attachment) => getAttachmentKind(attachment) !== "image")
-        : [],
-    [selectedEvent],
-  );
 
   const expandedImageAttachment = useMemo(() => {
     if (!selectedEvent || !expandedImageId) {
@@ -404,6 +393,28 @@ export function OpenCampusClient() {
       setExpandedImageId(null);
     }
   }, [expandedImageId, selectedEvent]);
+
+  useEffect(() => {
+    if (!pendingScrollId || pendingScrollId !== selectedId) {
+      return;
+    }
+
+    const element = detailRefs.current[pendingScrollId];
+
+    if (!element) {
+      return;
+    }
+
+    const frame = window.requestAnimationFrame(() => {
+      element.scrollIntoView({
+        behavior: "smooth",
+        block: "start",
+      });
+      setPendingScrollId(null);
+    });
+
+    return () => window.cancelAnimationFrame(frame);
+  }, [pendingScrollId, selectedId]);
 
   function persistEvents(nextEvents: OpenCampusEvent[]) {
     setEvents(nextEvents);
@@ -518,6 +529,323 @@ export function OpenCampusClient() {
         [category]: value,
       },
     }));
+  }
+
+  function toggleDetail(id: string) {
+    setSelectedId((current) => {
+      const nextId = current === id ? null : id;
+
+      if (nextId) {
+        setPendingScrollId(nextId);
+      } else {
+        setPendingScrollId(null);
+      }
+
+      return nextId;
+    });
+  }
+
+  function renderDetailBlock(event: OpenCampusEvent) {
+    const detailEvaluation = evaluations[event.id] ?? createEmptyEvaluation();
+    const imageAttachments = event.attachments.filter((attachment) => getAttachmentKind(attachment) === "image");
+    const documentAttachments = event.attachments.filter((attachment) => getAttachmentKind(attachment) !== "image");
+
+    return (
+      <section
+        ref={(node) => {
+          detailRefs.current[event.id] = node;
+        }}
+        className="detail-card inline-detail-card inline-oc-detail-card"
+      >
+        <div className="detail-section-header">
+          <div>
+            <p className="eyebrow">OC詳細</p>
+            <p className="item-title">{event.university}</p>
+            <p className="item-subtitle">
+              {event.facultyDepartment ? `${event.facultyDepartment} / ` : ""}
+              {event.eventName}
+            </p>
+          </div>
+          <span
+            className={`status-pill ${
+              event.status === "参加済み"
+                ? "done"
+                : event.status === "予約済み"
+                  ? "reserved"
+                  : "considering"
+            }`}
+          >
+            {event.status}
+          </span>
+        </div>
+
+        <div className="list-actions top-gap">
+          <button type="button" className="card-action subtle" onClick={() => openEditEvent(event)}>
+            <UiIcon name="edit" className="action-icon" />
+            編集
+          </button>
+          <button
+            type="button"
+            className="card-action danger"
+            onClick={() => void handleDeleteEvent(event)}
+          >
+            <UiIcon name="delete" className="action-icon" />
+            削除
+          </button>
+          {event.status === "参加済み" ? (
+            <button
+              type="button"
+              className="card-action subtle"
+              onClick={() => openEvaluationEditor(event)}
+            >
+              評価を編集
+            </button>
+          ) : null}
+        </div>
+
+        <div className="detail-section-list top-gap">
+          <section className="detail-section">
+            <p className="feedback-label">基本情報</p>
+            <div className="detail-entry top-gap">
+              <span className="detail-entry-label">大学</span>
+              <span className="detail-entry-value">{event.university}</span>
+            </div>
+            <div className="detail-entry">
+              <span className="detail-entry-label">学部・学科</span>
+              <span className="detail-entry-value">
+                {event.facultyDepartment || "未入力"}
+              </span>
+            </div>
+            <div className="detail-entry">
+              <span className="detail-entry-label">イベント名</span>
+              <span className="detail-entry-value">{event.eventName}</span>
+            </div>
+            <div className="detail-entry">
+              <span className="detail-entry-label">日時</span>
+              <span className="detail-entry-value">{formatEventDateTime(event)}</span>
+            </div>
+            <div className="detail-entry">
+              <span className="detail-entry-label">状態</span>
+              <span className="detail-entry-value">{event.status}</span>
+            </div>
+            <div className="detail-entry">
+              <span className="detail-entry-label">集合場所</span>
+              <span className="detail-entry-value">{event.meetingPlace || "未入力"}</span>
+            </div>
+            <div className="detail-entry">
+              <span className="detail-entry-label">同伴者</span>
+              <span className="detail-entry-value">{event.companionMemo || "未入力"}</span>
+            </div>
+            <div className="detail-entry">
+              <span className="detail-entry-label">アクセス</span>
+              <span className="detail-entry-value preserve-lines">
+                {event.accessMemo || "未入力"}
+              </span>
+            </div>
+          </section>
+
+          <section className="detail-section">
+            <p className="feedback-label">当日リンク</p>
+            <div className="list-stack top-gap">
+              {event.links.length === 0 ? (
+                <p className="muted-text">まだリンクはありません。</p>
+              ) : (
+                event.links.map((link) => (
+                  <a key={link.id} className="card-action subtle" href={link.url}>
+                    <UiIcon name="link" className="action-icon" />
+                    {link.label}
+                  </a>
+                ))
+              )}
+            </div>
+          </section>
+
+          <section className="detail-section">
+            <p className="feedback-label">資料・添付ファイル</p>
+            {!attachmentsAvailable ? (
+              <p className="muted-text top-gap">
+                このブラウザでは添付ファイル保存に対応していません。
+              </p>
+            ) : null}
+            <div className="list-stack top-gap">
+              {event.attachments.length === 0 ? (
+                <p className="muted-text">まだ添付ファイルはありません。</p>
+              ) : (
+                <>
+                  {imageAttachments.length > 0 ? (
+                    <div className="attachment-image-grid">
+                      {imageAttachments.map((attachment) => {
+                        const preview = attachmentPreviews[attachment.id];
+
+                        return (
+                          <article key={attachment.id} className="attachment-image-card">
+                            {preview?.available && preview.objectUrl ? (
+                              <button
+                                type="button"
+                                className="attachment-image-button"
+                                onClick={() => setExpandedImageId(attachment.id)}
+                              >
+                                <img
+                                  src={preview.objectUrl}
+                                  alt={attachment.name}
+                                  className="attachment-image-thumb"
+                                />
+                              </button>
+                            ) : (
+                              <div className="attachment-missing-card">
+                                <p className="item-title small">{attachment.name}</p>
+                                <p className="muted-text">
+                                  この端末にはファイルがありません。添付ファイル本体はバックアップ対象外です。
+                                </p>
+                              </div>
+                            )}
+
+                            <div className="attachment-caption">
+                              <p className="item-title small">{attachment.name}</p>
+                              <p className="item-subtitle">
+                                {(attachment.size / (1024 * 1024)).toFixed(1)}MB
+                              </p>
+                            </div>
+
+                            <div className="list-actions">
+                              <button
+                                type="button"
+                                className="card-action subtle"
+                                onClick={() => setExpandedImageId(attachment.id)}
+                                disabled={!preview?.available || !preview.objectUrl}
+                              >
+                                大きく表示
+                              </button>
+                              <button
+                                type="button"
+                                className="card-action danger"
+                                onClick={() => void handleDeleteAttachment(attachment)}
+                              >
+                                削除
+                              </button>
+                            </div>
+                          </article>
+                        );
+                      })}
+                    </div>
+                  ) : null}
+
+                  {documentAttachments.map((attachment) => {
+                    const preview = attachmentPreviews[attachment.id];
+                    const isPdf = getAttachmentKind(attachment) === "pdf";
+
+                    return (
+                      <article key={attachment.id} className="list-card compact-card">
+                        <div className="row-between gap-sm align-start">
+                          <div>
+                            <p className="item-title small">
+                              {isPdf ? "PDF" : "資料"} / {attachment.name}
+                            </p>
+                            <p className="item-subtitle">
+                              {(attachment.size / (1024 * 1024)).toFixed(1)}MB
+                            </p>
+                          </div>
+                          <div className="list-actions">
+                            {preview?.available && preview.objectUrl ? (
+                              <a
+                                className="card-action subtle"
+                                href={preview.objectUrl}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                              >
+                                {isPdf ? "PDFを開く" : "開く"}
+                              </a>
+                            ) : (
+                              <button type="button" className="card-action subtle" disabled>
+                                開けません
+                              </button>
+                            )}
+                            <button
+                              type="button"
+                              className="card-action danger"
+                              onClick={() => void handleDeleteAttachment(attachment)}
+                            >
+                              削除
+                            </button>
+                          </div>
+                        </div>
+                        {!preview?.available ? (
+                          <p className="muted-text top-gap">
+                            この端末にはファイルがありません。添付ファイル本体はバックアップ対象外です。
+                          </p>
+                        ) : null}
+                      </article>
+                    );
+                  })}
+                </>
+              )}
+            </div>
+          </section>
+
+          <section className="detail-section">
+            <p className="feedback-label">メモ</p>
+            <div className="detail-entry top-gap">
+              <span className="detail-entry-label">当日のメモ</span>
+              <span className="detail-entry-value preserve-lines">
+                {event.dayMemo || "未入力"}
+              </span>
+            </div>
+          </section>
+
+          {event.status === "参加済み" ? (
+            <section className="detail-section">
+              <p className="feedback-label">評価</p>
+              <div className="detail-entry top-gap">
+                <span className="detail-entry-label">総合評価</span>
+                <span className="detail-entry-value">
+                  {detailEvaluation.overall ? `${detailEvaluation.overall} / 5` : "未評価"}
+                </span>
+              </div>
+              {(Object.entries(categoryLabels) as [CampusEvaluationCategory, string][]).map(
+                ([key, label]) => (
+                  <div key={key} className="detail-entry">
+                    <span className="detail-entry-label">{label}</span>
+                    <span className="detail-entry-value">
+                      {detailEvaluation.categoryScores[key] ?? "-"}
+                    </span>
+                  </div>
+                ),
+              )}
+              <div className="detail-entry">
+                <span className="detail-entry-label">良かったところ</span>
+                <span className="detail-entry-value preserve-lines">
+                  {detailEvaluation.goodPoint || "未入力"}
+                </span>
+              </div>
+              <div className="detail-entry">
+                <span className="detail-entry-label">微妙だったところ</span>
+                <span className="detail-entry-value preserve-lines">
+                  {detailEvaluation.badPoint || "未入力"}
+                </span>
+              </div>
+              <div className="detail-entry">
+                <span className="detail-entry-label">本人の感想</span>
+                <span className="detail-entry-value preserve-lines">
+                  {detailEvaluation.studentComment || "未入力"}
+                </span>
+              </div>
+              <div className="detail-entry">
+                <span className="detail-entry-label">家族の感想</span>
+                <span className="detail-entry-value preserve-lines">
+                  {detailEvaluation.familyComment || "未入力"}
+                </span>
+              </div>
+              <div className="detail-entry">
+                <span className="detail-entry-label">自由メモ</span>
+                <span className="detail-entry-value preserve-lines">
+                  {detailEvaluation.freeNote || "未入力"}
+                </span>
+              </div>
+            </section>
+          ) : null}
+        </div>
+      </section>
+    );
   }
 
   async function handleAttachmentFiles(fileList: FileList | null) {
@@ -1205,71 +1533,74 @@ export function OpenCampusClient() {
             </div>
           ) : (
             plannedEvents.map((event) => (
-              <article
-                key={event.id}
-                className={`candidate-card tone-campus ${selectedId === event.id ? "selected-card" : ""}`}
-                onClick={() => setSelectedId(event.id)}
-              >
-                <div className="candidate-topline">
-                  <div className="candidate-main">
-                    <span className="candidate-icon-badge">
-                      <UiIcon name="campus" className="list-item-icon" />
-                    </span>
-                    <div className="candidate-summary">
-                      <p className="item-title">{event.university}</p>
-                      <p className="item-subtitle">
-                        {event.facultyDepartment ? `${event.facultyDepartment} / ` : ""}
-                        {event.eventName}
-                      </p>
+              <div key={event.id} className="detail-stack">
+                <article
+                  className={`candidate-card tone-campus ${selectedId === event.id ? "selected-card" : ""}`}
+                  onClick={() => setSelectedId(event.id)}
+                >
+                  <div className="candidate-topline">
+                    <div className="candidate-main">
+                      <span className="candidate-icon-badge">
+                        <UiIcon name="campus" className="list-item-icon" />
+                      </span>
+                      <div className="candidate-summary">
+                        <p className="item-title">{event.university}</p>
+                        <p className="item-subtitle">
+                          {event.facultyDepartment ? `${event.facultyDepartment} / ` : ""}
+                          {event.eventName}
+                        </p>
+                      </div>
                     </div>
+                    <span className={`status-pill ${event.status === "予約済み" ? "reserved" : "considering"}`}>
+                      {event.status}
+                    </span>
                   </div>
-                  <span className={`status-pill ${event.status === "予約済み" ? "reserved" : "considering"}`}>
-                    {event.status}
-                  </span>
-                </div>
 
-                <div className="qualification-meta">
-                  <span className="mini-badge">{formatEventDateTime(event)}</span>
-                </div>
+                  <div className="qualification-meta">
+                    <span className="mini-badge">{formatEventDateTime(event)}</span>
+                  </div>
 
-                <p className="muted-text">{event.dayMemo || event.accessMemo || "まだメモはありません"}</p>
+                  <p className="muted-text">{event.dayMemo || event.accessMemo || "まだメモはありません"}</p>
 
-                <div className="list-actions">
-                  <button
-                    type="button"
-                    className="card-action subtle"
-                    onClick={(eventDom) => {
-                      stopEvent(eventDom);
-                      setSelectedId(event.id);
-                    }}
-                  >
-                    <UiIcon name="detail" className="action-icon" />
-                    詳細
-                  </button>
-                  <button
-                    type="button"
-                    className="card-action subtle"
-                    onClick={(eventDom) => {
-                      stopEvent(eventDom);
-                      openEditEvent(event);
-                    }}
-                  >
-                    <UiIcon name="edit" className="action-icon" />
-                    編集
-                  </button>
-                  <button
-                    type="button"
-                    className="card-action danger"
-                    onClick={(eventDom) => {
-                      stopEvent(eventDom);
-                      void handleDeleteEvent(event);
-                    }}
-                  >
-                    <UiIcon name="delete" className="action-icon" />
-                    削除
-                  </button>
-                </div>
-              </article>
+                  <div className="list-actions">
+                    <button
+                      type="button"
+                      className="card-action subtle"
+                      onClick={(eventDom) => {
+                        stopEvent(eventDom);
+                        toggleDetail(event.id);
+                      }}
+                    >
+                      <UiIcon name="detail" className="action-icon" />
+                      {selectedId === event.id ? "詳細を閉じる" : "詳細"}
+                    </button>
+                    <button
+                      type="button"
+                      className="card-action subtle"
+                      onClick={(eventDom) => {
+                        stopEvent(eventDom);
+                        openEditEvent(event);
+                      }}
+                    >
+                      <UiIcon name="edit" className="action-icon" />
+                      編集
+                    </button>
+                    <button
+                      type="button"
+                      className="card-action danger"
+                      onClick={(eventDom) => {
+                        stopEvent(eventDom);
+                        void handleDeleteEvent(event);
+                      }}
+                    >
+                      <UiIcon name="delete" className="action-icon" />
+                      削除
+                    </button>
+                  </div>
+                </article>
+
+                {selectedId === event.id ? renderDetailBlock(event) : null}
+              </div>
             ))
           )}
         </div>
@@ -1288,382 +1619,93 @@ export function OpenCampusClient() {
               const evaluation = evaluations[event.id] ?? createEmptyEvaluation();
 
               return (
-                <article
-                  key={event.id}
-                  className={`candidate-card tone-campus ${selectedId === event.id ? "selected-card" : ""}`}
-                  onClick={() => setSelectedId(event.id)}
-                >
-                  <div className="candidate-topline">
-                    <div className="candidate-main">
-                      <span className="candidate-icon-badge">
-                        <UiIcon name="campus" className="list-item-icon" />
-                      </span>
-                      <div className="candidate-summary">
-                        <p className="item-title">{event.university}</p>
-                        <p className="item-subtitle">
-                          {event.facultyDepartment ? `${event.facultyDepartment} / ` : ""}
-                          {event.eventName}
-                        </p>
+                <div key={event.id} className="detail-stack">
+                  <article
+                    className={`candidate-card tone-campus ${selectedId === event.id ? "selected-card" : ""}`}
+                    onClick={() => setSelectedId(event.id)}
+                  >
+                    <div className="candidate-topline">
+                      <div className="candidate-main">
+                        <span className="candidate-icon-badge">
+                          <UiIcon name="campus" className="list-item-icon" />
+                        </span>
+                        <div className="candidate-summary">
+                          <p className="item-title">{event.university}</p>
+                          <p className="item-subtitle">
+                            {event.facultyDepartment ? `${event.facultyDepartment} / ` : ""}
+                            {event.eventName}
+                          </p>
+                        </div>
                       </div>
+                      <span className={`status-pill ${evaluation.overall ? "done" : "considering"}`}>
+                        {evaluation.overall ? `総合 ${evaluation.overall}` : "未評価"}
+                      </span>
                     </div>
-                    <span className={`status-pill ${evaluation.overall ? "done" : "considering"}`}>
-                      {evaluation.overall ? `総合 ${evaluation.overall}` : "未評価"}
-                    </span>
-                  </div>
 
-                  <div className="summary-line">
-                    {renderStars(evaluation.overall)}
-                    <span className="mini-badge">{formatEventDateTime(event)}</span>
-                  </div>
+                    <div className="summary-line">
+                      {renderStars(evaluation.overall)}
+                      <span className="mini-badge">{formatEventDateTime(event)}</span>
+                    </div>
 
-                  <div className="note-card">
-                    <p className="feedback-label">良かったところ</p>
-                    <p>{evaluation.goodPoint || "まだ入力されていません"}</p>
-                  </div>
+                    <div className="note-card">
+                      <p className="feedback-label">良かったところ</p>
+                      <p>{evaluation.goodPoint || "まだ入力されていません"}</p>
+                    </div>
 
-                  <div className="list-actions">
-                    <button
-                      type="button"
-                      className="card-action subtle"
-                      onClick={(eventDom) => {
-                        stopEvent(eventDom);
-                        setSelectedId(event.id);
-                      }}
-                    >
-                      <UiIcon name="detail" className="action-icon" />
-                      詳細
-                    </button>
-                    <button
-                      type="button"
-                      className="card-action subtle"
-                      onClick={(eventDom) => {
-                        stopEvent(eventDom);
-                        openEditEvent(event);
-                      }}
-                    >
-                      <UiIcon name="edit" className="action-icon" />
-                      編集
-                    </button>
-                    <button
-                      type="button"
-                      className="card-action subtle"
-                      onClick={(eventDom) => {
-                        stopEvent(eventDom);
-                        openEvaluationEditor(event);
-                      }}
-                    >
-                      評価する
-                    </button>
-                    <button
-                      type="button"
-                      className="card-action danger"
-                      onClick={(eventDom) => {
-                        stopEvent(eventDom);
-                        void handleDeleteEvent(event);
-                      }}
-                    >
-                      <UiIcon name="delete" className="action-icon" />
-                      削除
-                    </button>
-                  </div>
-                </article>
+                    <div className="list-actions">
+                      <button
+                        type="button"
+                        className="card-action subtle"
+                        onClick={(eventDom) => {
+                          stopEvent(eventDom);
+                          toggleDetail(event.id);
+                        }}
+                      >
+                        <UiIcon name="detail" className="action-icon" />
+                        {selectedId === event.id ? "詳細を閉じる" : "詳細"}
+                      </button>
+                      <button
+                        type="button"
+                        className="card-action subtle"
+                        onClick={(eventDom) => {
+                          stopEvent(eventDom);
+                          openEditEvent(event);
+                        }}
+                      >
+                        <UiIcon name="edit" className="action-icon" />
+                        編集
+                      </button>
+                      <button
+                        type="button"
+                        className="card-action subtle"
+                        onClick={(eventDom) => {
+                          stopEvent(eventDom);
+                          openEvaluationEditor(event);
+                        }}
+                      >
+                        評価する
+                      </button>
+                      <button
+                        type="button"
+                        className="card-action danger"
+                        onClick={(eventDom) => {
+                          stopEvent(eventDom);
+                          void handleDeleteEvent(event);
+                        }}
+                      >
+                        <UiIcon name="delete" className="action-icon" />
+                        削除
+                      </button>
+                    </div>
+                  </article>
+
+                  {selectedId === event.id ? renderDetailBlock(event) : null}
+                </div>
               );
             })
           )}
         </div>
       </section>
-
-      {selectedEvent ? (
-        <section className="detail-card">
-          <div className="detail-section-header">
-            <div>
-              <p className="eyebrow">OC詳細</p>
-              <p className="item-title">{selectedEvent.university}</p>
-              <p className="item-subtitle">
-                {selectedEvent.facultyDepartment ? `${selectedEvent.facultyDepartment} / ` : ""}
-                {selectedEvent.eventName}
-              </p>
-            </div>
-            <span
-              className={`status-pill ${
-                selectedEvent.status === "参加済み"
-                  ? "done"
-                  : selectedEvent.status === "予約済み"
-                    ? "reserved"
-                    : "considering"
-              }`}
-            >
-              {selectedEvent.status}
-            </span>
-          </div>
-
-          <div className="list-actions top-gap">
-            <button type="button" className="card-action subtle" onClick={() => openEditEvent(selectedEvent)}>
-              <UiIcon name="edit" className="action-icon" />
-              編集
-            </button>
-            <button
-              type="button"
-              className="card-action danger"
-              onClick={() => void handleDeleteEvent(selectedEvent)}
-            >
-              <UiIcon name="delete" className="action-icon" />
-              削除
-            </button>
-            {selectedEvent.status === "参加済み" ? (
-              <button
-                type="button"
-                className="card-action subtle"
-                onClick={() => openEvaluationEditor(selectedEvent)}
-              >
-                評価を編集
-              </button>
-            ) : null}
-          </div>
-
-          <div className="detail-section-list top-gap">
-            <section className="detail-section">
-              <p className="feedback-label">基本情報</p>
-              <div className="detail-entry top-gap">
-                <span className="detail-entry-label">大学</span>
-                <span className="detail-entry-value">{selectedEvent.university}</span>
-              </div>
-              <div className="detail-entry">
-                <span className="detail-entry-label">学部・学科</span>
-                <span className="detail-entry-value">
-                  {selectedEvent.facultyDepartment || "未入力"}
-                </span>
-              </div>
-              <div className="detail-entry">
-                <span className="detail-entry-label">イベント名</span>
-                <span className="detail-entry-value">{selectedEvent.eventName}</span>
-              </div>
-              <div className="detail-entry">
-                <span className="detail-entry-label">日時</span>
-                <span className="detail-entry-value">{formatEventDateTime(selectedEvent)}</span>
-              </div>
-              <div className="detail-entry">
-                <span className="detail-entry-label">状態</span>
-                <span className="detail-entry-value">{selectedEvent.status}</span>
-              </div>
-              <div className="detail-entry">
-                <span className="detail-entry-label">集合場所</span>
-                <span className="detail-entry-value">{selectedEvent.meetingPlace || "未入力"}</span>
-              </div>
-              <div className="detail-entry">
-                <span className="detail-entry-label">同伴者</span>
-                <span className="detail-entry-value">{selectedEvent.companionMemo || "未入力"}</span>
-              </div>
-              <div className="detail-entry">
-                <span className="detail-entry-label">アクセス</span>
-                <span className="detail-entry-value preserve-lines">
-                  {selectedEvent.accessMemo || "未入力"}
-                </span>
-              </div>
-            </section>
-
-            <section className="detail-section">
-              <p className="feedback-label">当日リンク</p>
-              <div className="list-stack top-gap">
-                {selectedEvent.links.length === 0 ? (
-                  <p className="muted-text">まだリンクはありません。</p>
-                ) : (
-                  selectedEvent.links.map((link) => (
-                    <a key={link.id} className="card-action subtle" href={link.url}>
-                      <UiIcon name="link" className="action-icon" />
-                      {link.label}
-                    </a>
-                  ))
-                )}
-              </div>
-            </section>
-
-            <section className="detail-section">
-              <p className="feedback-label">資料・添付ファイル</p>
-              {!attachmentsAvailable ? (
-                <p className="muted-text top-gap">
-                  このブラウザでは添付ファイル保存に対応していません。
-                </p>
-              ) : null}
-              <div className="list-stack top-gap">
-                {selectedEvent.attachments.length === 0 ? (
-                  <p className="muted-text">まだ添付ファイルはありません。</p>
-                ) : (
-                  <>
-                    {selectedImageAttachments.length > 0 ? (
-                      <div className="attachment-image-grid">
-                        {selectedImageAttachments.map((attachment) => {
-                          const preview = attachmentPreviews[attachment.id];
-
-                          return (
-                            <article key={attachment.id} className="attachment-image-card">
-                              {preview?.available && preview.objectUrl ? (
-                                <button
-                                  type="button"
-                                  className="attachment-image-button"
-                                  onClick={() => setExpandedImageId(attachment.id)}
-                                >
-                                  <img
-                                    src={preview.objectUrl}
-                                    alt={attachment.name}
-                                    className="attachment-image-thumb"
-                                  />
-                                </button>
-                              ) : (
-                                <div className="attachment-missing-card">
-                                  <p className="item-title small">{attachment.name}</p>
-                                  <p className="muted-text">
-                                    この端末にはファイルがありません。添付ファイル本体はバックアップ対象外です。
-                                  </p>
-                                </div>
-                              )}
-
-                              <div className="attachment-caption">
-                                <p className="item-title small">{attachment.name}</p>
-                                <p className="item-subtitle">
-                                  {(attachment.size / (1024 * 1024)).toFixed(1)}MB
-                                </p>
-                              </div>
-
-                              <div className="list-actions">
-                                <button
-                                  type="button"
-                                  className="card-action subtle"
-                                  onClick={() => setExpandedImageId(attachment.id)}
-                                  disabled={!preview?.available || !preview.objectUrl}
-                                >
-                                  大きく表示
-                                </button>
-                                <button
-                                  type="button"
-                                  className="card-action danger"
-                                  onClick={() => void handleDeleteAttachment(attachment)}
-                                >
-                                  削除
-                                </button>
-                              </div>
-                            </article>
-                          );
-                        })}
-                      </div>
-                    ) : null}
-
-                    {selectedDocumentAttachments.map((attachment) => {
-                      const preview = attachmentPreviews[attachment.id];
-                      const isPdf = getAttachmentKind(attachment) === "pdf";
-
-                      return (
-                        <article key={attachment.id} className="list-card compact-card">
-                          <div className="row-between gap-sm align-start">
-                            <div>
-                              <p className="item-title small">
-                                {isPdf ? "PDF" : "資料"} / {attachment.name}
-                              </p>
-                              <p className="item-subtitle">
-                                {(attachment.size / (1024 * 1024)).toFixed(1)}MB
-                              </p>
-                            </div>
-                            <div className="list-actions">
-                              {preview?.available && preview.objectUrl ? (
-                                <a
-                                  className="card-action subtle"
-                                  href={preview.objectUrl}
-                                  target="_blank"
-                                  rel="noopener noreferrer"
-                                >
-                                  {isPdf ? "PDFを開く" : "開く"}
-                                </a>
-                              ) : (
-                                <button type="button" className="card-action subtle" disabled>
-                                  開けません
-                                </button>
-                              )}
-                              <button
-                                type="button"
-                                className="card-action danger"
-                                onClick={() => void handleDeleteAttachment(attachment)}
-                              >
-                                削除
-                              </button>
-                            </div>
-                          </div>
-                          {!preview?.available ? (
-                            <p className="muted-text top-gap">
-                              この端末にはファイルがありません。添付ファイル本体はバックアップ対象外です。
-                            </p>
-                          ) : null}
-                        </article>
-                      );
-                    })}
-                  </>
-                )}
-              </div>
-            </section>
-
-            <section className="detail-section">
-              <p className="feedback-label">メモ</p>
-              <div className="detail-entry top-gap">
-                <span className="detail-entry-label">当日のメモ</span>
-                <span className="detail-entry-value preserve-lines">
-                  {selectedEvent.dayMemo || "未入力"}
-                </span>
-              </div>
-            </section>
-
-            {selectedEvent.status === "参加済み" ? (
-              <section className="detail-section">
-                <p className="feedback-label">評価</p>
-                <div className="detail-entry top-gap">
-                  <span className="detail-entry-label">総合評価</span>
-                  <span className="detail-entry-value">
-                    {selectedEvaluation.overall ? `${selectedEvaluation.overall} / 5` : "未評価"}
-                  </span>
-                </div>
-                {(Object.entries(categoryLabels) as [CampusEvaluationCategory, string][]).map(
-                  ([key, label]) => (
-                    <div key={key} className="detail-entry">
-                      <span className="detail-entry-label">{label}</span>
-                      <span className="detail-entry-value">
-                        {selectedEvaluation.categoryScores[key] ?? "-"}
-                      </span>
-                    </div>
-                  ),
-                )}
-                <div className="detail-entry">
-                  <span className="detail-entry-label">良かったところ</span>
-                  <span className="detail-entry-value preserve-lines">
-                    {selectedEvaluation.goodPoint || "未入力"}
-                  </span>
-                </div>
-                <div className="detail-entry">
-                  <span className="detail-entry-label">微妙だったところ</span>
-                  <span className="detail-entry-value preserve-lines">
-                    {selectedEvaluation.badPoint || "未入力"}
-                  </span>
-                </div>
-                <div className="detail-entry">
-                  <span className="detail-entry-label">本人の感想</span>
-                  <span className="detail-entry-value preserve-lines">
-                    {selectedEvaluation.studentComment || "未入力"}
-                  </span>
-                </div>
-                <div className="detail-entry">
-                  <span className="detail-entry-label">家族の感想</span>
-                  <span className="detail-entry-value preserve-lines">
-                    {selectedEvaluation.familyComment || "未入力"}
-                  </span>
-                </div>
-                <div className="detail-entry">
-                  <span className="detail-entry-label">自由メモ</span>
-                  <span className="detail-entry-value preserve-lines">
-                    {selectedEvaluation.freeNote || "未入力"}
-                  </span>
-                </div>
-              </section>
-            ) : null}
-          </div>
-        </section>
-      ) : null}
 
       {expandedImageAttachment && attachmentPreviews[expandedImageAttachment.id]?.objectUrl ? (
         <div
