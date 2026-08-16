@@ -1,14 +1,15 @@
-import { aiNotes, campusDone, gradeRecords, qualifications, universities } from "@/data/mockData";
+import { aiNotes, campusDone, gradeRecords, openCampusEvents, qualifications, universities } from "@/data/mockData";
 import type {
   AiNote,
   CampusEvaluation,
   GradeRecord,
+  OpenCampusEvent,
   QualificationRecord,
   UniversityCandidate,
 } from "@/data/mockData";
 
 const STORAGE_KEY = "SHINROMII::storage::v1";
-const STORAGE_VERSION = 3;
+const STORAGE_VERSION = 4;
 const AI_NOTES_SORT_KEY = "SHINROMII::ai-notes-sort::v1";
 const UNIVERSITY_SORT_KEY = "SHINROMII::university-sort::v1";
 
@@ -19,6 +20,7 @@ export type ShinromiiStorage = {
   universityCandidates: UniversityCandidate[];
   gradeRecords: GradeRecord[];
   qualifications: QualificationRecord[];
+  openCampusEvents: OpenCampusEvent[];
 };
 
 type ShinromiiStorageV1 = {
@@ -32,6 +34,15 @@ type ShinromiiStorageV2 = {
   aiNotes: AiNote[];
   campusEvaluations: Record<string, CampusEvaluation>;
   universityCandidates: UniversityCandidate[];
+};
+
+type ShinromiiStorageV3 = {
+  version: 3;
+  aiNotes: AiNote[];
+  campusEvaluations: Record<string, CampusEvaluation>;
+  universityCandidates: UniversityCandidate[];
+  gradeRecords: GradeRecord[];
+  qualifications: QualificationRecord[];
 };
 
 function buildDefaultEvaluations() {
@@ -52,6 +63,7 @@ function buildDefaultStorage(): ShinromiiStorage {
     universityCandidates: universities,
     gradeRecords,
     qualifications,
+    openCampusEvents,
   };
 }
 
@@ -74,7 +86,7 @@ export function loadShinromiiStorage(): ShinromiiStorage {
     }
 
     const parsed = JSON.parse(raw) as Partial<
-      ShinromiiStorage | ShinromiiStorageV1 | ShinromiiStorageV2
+      ShinromiiStorage | ShinromiiStorageV1 | ShinromiiStorageV2 | ShinromiiStorageV3
     >;
 
     if (parsed.version === 1) {
@@ -90,6 +102,7 @@ export function loadShinromiiStorage(): ShinromiiStorage {
         universityCandidates: fallback.universityCandidates,
         gradeRecords: fallback.gradeRecords,
         qualifications: fallback.qualifications,
+        openCampusEvents: fallback.openCampusEvents,
       };
     }
 
@@ -108,6 +121,30 @@ export function loadShinromiiStorage(): ShinromiiStorage {
           : fallback.universityCandidates,
         gradeRecords: fallback.gradeRecords,
         qualifications: fallback.qualifications,
+        openCampusEvents: fallback.openCampusEvents,
+      };
+    }
+
+    if (parsed.version === 3) {
+      const legacy = parsed as Partial<ShinromiiStorageV3>;
+
+      return {
+        version: STORAGE_VERSION,
+        aiNotes: Array.isArray(legacy.aiNotes) ? legacy.aiNotes : fallback.aiNotes,
+        campusEvaluations:
+          legacy.campusEvaluations && typeof legacy.campusEvaluations === "object"
+            ? legacy.campusEvaluations
+            : fallback.campusEvaluations,
+        universityCandidates: Array.isArray(legacy.universityCandidates)
+          ? legacy.universityCandidates
+          : fallback.universityCandidates,
+        gradeRecords: Array.isArray(legacy.gradeRecords)
+          ? legacy.gradeRecords
+          : fallback.gradeRecords,
+        qualifications: Array.isArray(legacy.qualifications)
+          ? legacy.qualifications
+          : fallback.qualifications,
+        openCampusEvents: fallback.openCampusEvents,
       };
     }
 
@@ -131,6 +168,9 @@ export function loadShinromiiStorage(): ShinromiiStorage {
       qualifications: Array.isArray(parsed.qualifications)
         ? parsed.qualifications
         : fallback.qualifications,
+      openCampusEvents: Array.isArray(parsed.openCampusEvents)
+        ? parsed.openCampusEvents
+        : fallback.openCampusEvents,
     };
   } catch {
     return fallback;
@@ -151,6 +191,7 @@ export function saveShinromiiStorage(next: ShinromiiStorage) {
       universityCandidates: next.universityCandidates,
       gradeRecords: next.gradeRecords,
       qualifications: next.qualifications,
+      openCampusEvents: next.openCampusEvents,
     }),
   );
 }
@@ -171,6 +212,14 @@ export function saveCampusEvaluation(campusId: string, evaluation: CampusEvaluat
       ...current.campusEvaluations,
       [campusId]: evaluation,
     },
+  });
+}
+
+export function saveCampusEvaluations(nextEvaluations: Record<string, CampusEvaluation>) {
+  const current = loadShinromiiStorage();
+  saveShinromiiStorage({
+    ...current,
+    campusEvaluations: nextEvaluations,
   });
 }
 
@@ -195,6 +244,14 @@ export function saveQualifications(nextQualifications: QualificationRecord[]) {
   saveShinromiiStorage({
     ...current,
     qualifications: nextQualifications,
+  });
+}
+
+export function saveOpenCampusEvents(nextOpenCampusEvents: OpenCampusEvent[]) {
+  const current = loadShinromiiStorage();
+  saveShinromiiStorage({
+    ...current,
+    openCampusEvents: nextOpenCampusEvents,
   });
 }
 

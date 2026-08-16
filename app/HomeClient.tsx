@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import { UiIcon } from "@/components/UiIcon";
-import { campusUpcoming, recentItems } from "@/data/mockData";
+import { recentItems } from "@/data/mockData";
 import type { ShinromiiStorage } from "@/lib/shinromii-storage";
 import { loadShinromiiStorage } from "@/lib/shinromii-storage";
 
@@ -126,7 +126,9 @@ export function HomeClient() {
     },
     {
       label: "OC参加予定",
-      value: `${campusUpcoming.length}件`,
+      value: storage
+        ? `${storage.openCampusEvents.filter((item) => item.status !== "参加済み").length}件`
+        : "-",
       note: "今後の予定",
       tone: "campus",
     },
