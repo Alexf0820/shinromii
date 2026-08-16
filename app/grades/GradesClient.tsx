@@ -185,8 +185,12 @@ export function GradesClient() {
     createEmptyQualificationForm(),
   );
   const [pendingGradeScrollId, setPendingGradeScrollId] = useState<string | null>(null);
+  const [pendingGradeEditScrollId, setPendingGradeEditScrollId] = useState<string | null>(null);
+  const [pendingQualificationEditScrollId, setPendingQualificationEditScrollId] = useState<string | null>(null);
   const gradesSectionRef = useRef<HTMLElement | null>(null);
   const gradeDetailRefs = useRef<Record<string, HTMLElement | null>>({});
+  const gradeEditRefs = useRef<Record<string, HTMLElement | null>>({});
+  const qualificationEditRefs = useRef<Record<string, HTMLElement | null>>({});
 
   useEffect(() => {
     const storage = loadShinromiiStorage();
@@ -304,18 +308,23 @@ export function GradesClient() {
   function openCreateGrade() {
     setIsCreatingGrade(true);
     setGradeEditingId(null);
+    setPendingGradeEditScrollId(null);
     setGradeForm(createEmptyGradeForm());
   }
 
   function openEditGrade(record: GradeRecord) {
     setIsCreatingGrade(false);
     setGradeEditingId(record.id);
+    setSelectedGradeId(null);
+    setPendingGradeScrollId(null);
+    setPendingGradeEditScrollId(record.id);
     setGradeForm(formFromGradeRecord(record));
   }
 
   function closeGradeEditor() {
     setIsCreatingGrade(false);
     setGradeEditingId(null);
+    setPendingGradeEditScrollId(null);
     setGradeForm(createEmptyGradeForm());
   }
 
@@ -376,18 +385,21 @@ export function GradesClient() {
   function openCreateQualification() {
     setIsCreatingQualification(true);
     setQualificationEditingId(null);
+    setPendingQualificationEditScrollId(null);
     setQualificationForm(createEmptyQualificationForm());
   }
 
   function openEditQualification(record: QualificationRecord) {
     setIsCreatingQualification(false);
     setQualificationEditingId(record.id);
+    setPendingQualificationEditScrollId(record.id);
     setQualificationForm(formFromQualification(record));
   }
 
   function closeQualificationEditor() {
     setIsCreatingQualification(false);
     setQualificationEditingId(null);
+    setPendingQualificationEditScrollId(null);
     setQualificationForm(createEmptyQualificationForm());
   }
 
@@ -444,6 +456,10 @@ export function GradesClient() {
   }
 
   function toggleGradeDetail(id: string) {
+    if (gradeEditingId) {
+      closeGradeEditor();
+    }
+
     setSelectedGradeId((current) => {
       const nextId = current === id ? null : id;
 
@@ -519,6 +535,192 @@ export function GradesClient() {
     );
   }
 
+  function renderGradeEditor(title: string, description: string, editorId?: string) {
+    return (
+      <section
+        ref={(node) => {
+          if (editorId) {
+            gradeEditRefs.current[editorId] = node;
+          }
+        }}
+        className="panel inline-detail-card inline-editor-card"
+      >
+        <SectionHeader title={title} description={description} />
+        <div className="form-stack">
+          <div className="field-grid">
+            <label className="field-block">
+              <span className="field-label">学年</span>
+              <select
+                className="text-input"
+                value={gradeForm.schoolYear}
+                onChange={(event) =>
+                  updateGradeForm("schoolYear", event.target.value as GradeSchoolYear)
+                }
+              >
+                {schoolYearOptions.map((option) => (
+                  <option key={option} value={option}>
+                    {option}
+                  </option>
+                ))}
+              </select>
+            </label>
+
+            <label className="field-block">
+              <span className="field-label">学期</span>
+              <select
+                className="text-input"
+                value={gradeForm.term}
+                onChange={(event) => updateGradeForm("term", event.target.value as GradeTerm)}
+              >
+                {termOptions.map((option) => (
+                  <option key={option} value={option}>
+                    {option}
+                  </option>
+                ))}
+              </select>
+            </label>
+          </div>
+
+          <div className="field-grid">
+            <label className="field-block">
+              <span className="field-label">科目名</span>
+              <input
+                className="text-input"
+                type="text"
+                value={gradeForm.subject}
+                onChange={(event) => updateGradeForm("subject", event.target.value)}
+              />
+            </label>
+
+            <label className="field-block">
+              <span className="field-label">評定</span>
+              <select
+                className="text-input"
+                value={gradeForm.grade}
+                onChange={(event) => updateGradeForm("grade", Number(event.target.value))}
+              >
+                {[1, 2, 3, 4, 5].map((score) => (
+                  <option key={score} value={score}>
+                    {score}
+                  </option>
+                ))}
+              </select>
+            </label>
+          </div>
+
+          <label className="field-block">
+            <span className="field-label">メモ（任意）</span>
+            <textarea
+              className="text-area"
+              rows={3}
+              value={gradeForm.memo}
+              onChange={(event) => updateGradeForm("memo", event.target.value)}
+            />
+          </label>
+
+          <div className="action-row">
+            <button type="button" className="action-button primary" onClick={handleSaveGrade}>
+              保存する
+            </button>
+            <button type="button" className="action-button" onClick={closeGradeEditor}>
+              キャンセル
+            </button>
+          </div>
+        </div>
+      </section>
+    );
+  }
+
+  function renderQualificationEditor(title: string, description: string, editorId?: string) {
+    return (
+      <section
+        ref={(node) => {
+          if (editorId) {
+            qualificationEditRefs.current[editorId] = node;
+          }
+        }}
+        className="panel inline-detail-card inline-editor-card"
+      >
+        <SectionHeader title={title} description={description} />
+        <div className="form-stack">
+          <div className="field-grid">
+            <label className="field-block">
+              <span className="field-label">資格名</span>
+              <input
+                className="text-input"
+                type="text"
+                value={qualificationForm.name}
+                onChange={(event) => updateQualificationForm("name", event.target.value)}
+              />
+            </label>
+
+            <label className="field-block">
+              <span className="field-label">級・スコア</span>
+              <input
+                className="text-input"
+                type="text"
+                value={qualificationForm.scoreOrLevel}
+                onChange={(event) => updateQualificationForm("scoreOrLevel", event.target.value)}
+              />
+            </label>
+          </div>
+
+          <div className="field-grid">
+            <label className="field-block">
+              <span className="field-label">取得日または受験日</span>
+              <input
+                className="text-input"
+                type="date"
+                value={qualificationForm.examDate}
+                onChange={(event) => updateQualificationForm("examDate", event.target.value)}
+              />
+            </label>
+
+            <label className="field-block">
+              <span className="field-label">状態</span>
+              <select
+                className="text-input"
+                value={qualificationForm.status}
+                onChange={(event) =>
+                  updateQualificationForm("status", event.target.value as QualificationStatus)
+                }
+              >
+                {qualificationStatusOptions.map((option) => (
+                  <option key={option} value={option}>
+                    {option}
+                  </option>
+                ))}
+              </select>
+            </label>
+          </div>
+
+          <label className="field-block">
+            <span className="field-label">メモ（任意）</span>
+            <textarea
+              className="text-area"
+              rows={3}
+              value={qualificationForm.memo}
+              onChange={(event) => updateQualificationForm("memo", event.target.value)}
+            />
+          </label>
+
+          <div className="action-row">
+            <button
+              type="button"
+              className="action-button primary"
+              onClick={handleSaveQualification}
+            >
+              保存する
+            </button>
+            <button type="button" className="action-button" onClick={closeQualificationEditor}>
+              キャンセル
+            </button>
+          </div>
+        </div>
+      </section>
+    );
+  }
+
   useEffect(() => {
     if (!pendingGradeScrollId || pendingGradeScrollId !== selectedGradeId) {
       return;
@@ -540,6 +742,53 @@ export function GradesClient() {
 
     return () => window.cancelAnimationFrame(frame);
   }, [pendingGradeScrollId, selectedGradeId]);
+
+  useEffect(() => {
+    if (!pendingGradeEditScrollId || pendingGradeEditScrollId !== gradeEditingId) {
+      return;
+    }
+
+    const element = gradeEditRefs.current[pendingGradeEditScrollId];
+
+    if (!element) {
+      return;
+    }
+
+    const frame = window.requestAnimationFrame(() => {
+      element.scrollIntoView({
+        behavior: "smooth",
+        block: "start",
+      });
+      setPendingGradeEditScrollId(null);
+    });
+
+    return () => window.cancelAnimationFrame(frame);
+  }, [gradeEditingId, pendingGradeEditScrollId]);
+
+  useEffect(() => {
+    if (
+      !pendingQualificationEditScrollId ||
+      pendingQualificationEditScrollId !== qualificationEditingId
+    ) {
+      return;
+    }
+
+    const element = qualificationEditRefs.current[pendingQualificationEditScrollId];
+
+    if (!element) {
+      return;
+    }
+
+    const frame = window.requestAnimationFrame(() => {
+      element.scrollIntoView({
+        behavior: "smooth",
+        block: "start",
+      });
+      setPendingQualificationEditScrollId(null);
+    });
+
+    return () => window.cancelAnimationFrame(frame);
+  }, [pendingQualificationEditScrollId, qualificationEditingId]);
 
   return (
     <div className="page-stack">
@@ -612,95 +861,9 @@ export function GradesClient() {
         </div>
       </section>
 
-      {(isCreatingGrade || gradeEditingId) && (
-        <section className="panel">
-          <SectionHeader
-            title={isCreatingGrade ? "評定を追加" : "評定を編集"}
-            description="学年・学期・科目ごとにあとから編集できます"
-          />
-          <div className="form-stack">
-            <div className="field-grid">
-              <label className="field-block">
-                <span className="field-label">学年</span>
-                <select
-                  className="text-input"
-                  value={gradeForm.schoolYear}
-                  onChange={(event) =>
-                    updateGradeForm("schoolYear", event.target.value as GradeSchoolYear)
-                  }
-                >
-                  {schoolYearOptions.map((option) => (
-                    <option key={option} value={option}>
-                      {option}
-                    </option>
-                  ))}
-                </select>
-              </label>
-
-              <label className="field-block">
-                <span className="field-label">学期</span>
-                <select
-                  className="text-input"
-                  value={gradeForm.term}
-                  onChange={(event) => updateGradeForm("term", event.target.value as GradeTerm)}
-                >
-                  {termOptions.map((option) => (
-                    <option key={option} value={option}>
-                      {option}
-                    </option>
-                  ))}
-                </select>
-              </label>
-            </div>
-
-            <div className="field-grid">
-              <label className="field-block">
-                <span className="field-label">科目名</span>
-                <input
-                  className="text-input"
-                  type="text"
-                  value={gradeForm.subject}
-                  onChange={(event) => updateGradeForm("subject", event.target.value)}
-                />
-              </label>
-
-              <label className="field-block">
-                <span className="field-label">評定</span>
-                <select
-                  className="text-input"
-                  value={gradeForm.grade}
-                  onChange={(event) => updateGradeForm("grade", Number(event.target.value))}
-                >
-                  {[1, 2, 3, 4, 5].map((score) => (
-                    <option key={score} value={score}>
-                      {score}
-                    </option>
-                  ))}
-                </select>
-              </label>
-            </div>
-
-            <label className="field-block">
-              <span className="field-label">メモ（任意）</span>
-              <textarea
-                className="text-area"
-                rows={3}
-                value={gradeForm.memo}
-                onChange={(event) => updateGradeForm("memo", event.target.value)}
-              />
-            </label>
-
-            <div className="action-row">
-              <button type="button" className="action-button primary" onClick={handleSaveGrade}>
-                保存する
-              </button>
-              <button type="button" className="action-button" onClick={closeGradeEditor}>
-                キャンセル
-              </button>
-            </div>
-          </div>
-        </section>
-      )}
+      {isCreatingGrade
+        ? renderGradeEditor("評定を追加", "学年・学期・科目ごとにあとから編集できます")
+        : null}
 
       <section className="panel">
         <SectionHeader
@@ -749,9 +912,15 @@ export function GradesClient() {
                             <UiIcon name="detail" className="action-icon" />
                             {selectedGradeId === record.id ? "詳細を閉じる" : "詳細"}
                           </button>
-                          <button type="button" className="card-action subtle" onClick={() => openEditGrade(record)}>
+                          <button
+                            type="button"
+                            className="card-action subtle"
+                            onClick={() =>
+                              gradeEditingId === record.id ? closeGradeEditor() : openEditGrade(record)
+                            }
+                          >
                             <UiIcon name="edit" className="action-icon" />
-                            編集
+                            {gradeEditingId === record.id ? "編集を閉じる" : "編集"}
                           </button>
                           <button type="button" className="card-action danger" onClick={() => handleDeleteGrade(record)}>
                             <UiIcon name="delete" className="action-icon" />
@@ -761,6 +930,13 @@ export function GradesClient() {
                       </article>
 
                       {selectedGradeId === record.id ? renderGradeDetail(record) : null}
+                      {gradeEditingId === record.id
+                        ? renderGradeEditor(
+                            `${record.subject}を編集`,
+                            "学年・学期・科目ごとにあとから編集できます",
+                            record.id,
+                          )
+                        : null}
                     </div>
                   ))}
                 </div>
@@ -783,91 +959,9 @@ export function GradesClient() {
         </div>
       </section>
 
-      {(isCreatingQualification || qualificationEditingId) && (
-        <section className="panel">
-          <SectionHeader
-            title={isCreatingQualification ? "資格を追加" : "資格を編集"}
-            description="取得済み、受験予定、結果待ちを分けて保存"
-          />
-          <div className="form-stack">
-            <div className="field-grid">
-              <label className="field-block">
-                <span className="field-label">資格名</span>
-                <input
-                  className="text-input"
-                  type="text"
-                  value={qualificationForm.name}
-                  onChange={(event) => updateQualificationForm("name", event.target.value)}
-                />
-              </label>
-
-              <label className="field-block">
-                <span className="field-label">級・スコア</span>
-                <input
-                  className="text-input"
-                  type="text"
-                  value={qualificationForm.scoreOrLevel}
-                  onChange={(event) =>
-                    updateQualificationForm("scoreOrLevel", event.target.value)
-                  }
-                />
-              </label>
-            </div>
-
-            <div className="field-grid">
-              <label className="field-block">
-                <span className="field-label">取得日または受験日</span>
-                <input
-                  className="text-input"
-                  type="date"
-                  value={qualificationForm.examDate}
-                  onChange={(event) => updateQualificationForm("examDate", event.target.value)}
-                />
-              </label>
-
-              <label className="field-block">
-                <span className="field-label">状態</span>
-                <select
-                  className="text-input"
-                  value={qualificationForm.status}
-                  onChange={(event) =>
-                    updateQualificationForm("status", event.target.value as QualificationStatus)
-                  }
-                >
-                  {qualificationStatusOptions.map((option) => (
-                    <option key={option} value={option}>
-                      {option}
-                    </option>
-                  ))}
-                </select>
-              </label>
-            </div>
-
-            <label className="field-block">
-              <span className="field-label">メモ（任意）</span>
-              <textarea
-                className="text-area"
-                rows={3}
-                value={qualificationForm.memo}
-                onChange={(event) => updateQualificationForm("memo", event.target.value)}
-              />
-            </label>
-
-            <div className="action-row">
-              <button
-                type="button"
-                className="action-button primary"
-                onClick={handleSaveQualification}
-              >
-                保存する
-              </button>
-              <button type="button" className="action-button" onClick={closeQualificationEditor}>
-                キャンセル
-              </button>
-            </div>
-          </div>
-        </section>
-      )}
+      {isCreatingQualification
+        ? renderQualificationEditor("資格を追加", "取得済み、受験予定、結果待ちを分けて保存")
+        : null}
 
       <section className="panel">
         <SectionHeader title="資格・検定一覧" description="日付の新しい順で表示" />
@@ -879,40 +973,54 @@ export function GradesClient() {
             </div>
           ) : (
             sortedQualifications.map((record) => (
-              <article key={record.id} className="list-card qualification-card">
-                <div className="row-between gap-sm align-start">
-                  <div>
-                    <p className="item-title">{record.name}</p>
-                    <p className="item-subtitle">{record.scoreOrLevel}</p>
+              <div key={record.id} className="detail-stack">
+                <article className="list-card qualification-card">
+                  <div className="row-between gap-sm align-start">
+                    <div>
+                      <p className="item-title">{record.name}</p>
+                      <p className="item-subtitle">{record.scoreOrLevel}</p>
+                    </div>
+                    <span className={`status-pill ${qualificationStatusClass(record.status)}`}>
+                      {record.status}
+                    </span>
                   </div>
-                  <span className={`status-pill ${qualificationStatusClass(record.status)}`}>
-                    {record.status}
-                  </span>
-                </div>
-                <div className="qualification-meta">
-                  <span className="mini-badge">{formatDate(record.examDate)}</span>
-                  <span className="mini-badge">{record.scoreOrLevel}</span>
-                </div>
-                <p className="muted-text">{record.memo || "メモはまだ入力されていません"}</p>
-                <div className="list-actions">
-                  <button
-                    type="button"
-                    className="card-action subtle"
-                    onClick={() => openEditQualification(record)}
-                  >
-                    <UiIcon name="edit" className="action-icon" />
-                    編集
-                  </button>
-                  <button
-                    type="button"
-                    className="card-action danger"
-                    onClick={() => handleDeleteQualification(record)}
-                  >
-                    <UiIcon name="delete" className="action-icon" />
-                    削除
-                  </button>
-                </div>
-              </article>
+                  <div className="qualification-meta">
+                    <span className="mini-badge">{formatDate(record.examDate)}</span>
+                    <span className="mini-badge">{record.scoreOrLevel}</span>
+                  </div>
+                  <p className="muted-text">{record.memo || "メモはまだ入力されていません"}</p>
+                  <div className="list-actions">
+                    <button
+                      type="button"
+                      className="card-action subtle"
+                      onClick={() =>
+                        qualificationEditingId === record.id
+                          ? closeQualificationEditor()
+                          : openEditQualification(record)
+                      }
+                    >
+                      <UiIcon name="edit" className="action-icon" />
+                      {qualificationEditingId === record.id ? "編集を閉じる" : "編集"}
+                    </button>
+                    <button
+                      type="button"
+                      className="card-action danger"
+                      onClick={() => handleDeleteQualification(record)}
+                    >
+                      <UiIcon name="delete" className="action-icon" />
+                      削除
+                    </button>
+                  </div>
+                </article>
+
+                {qualificationEditingId === record.id
+                  ? renderQualificationEditor(
+                      `${record.name}を編集`,
+                      "取得済み、受験予定、結果待ちを分けて保存",
+                      record.id,
+                    )
+                  : null}
+              </div>
             ))
           )}
         </div>
