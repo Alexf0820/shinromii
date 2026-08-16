@@ -1091,6 +1091,10 @@ a {
   scroll-margin-top: 18px;
 }
 
+.inline-grade-detail-card {
+  scroll-margin-top: 18px;
+}
+
 .record-list {
   display: grid;
   gap: 12px;
