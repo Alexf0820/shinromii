@@ -263,9 +263,11 @@ export function OpenCampusClient() {
   const [attachmentPreviews, setAttachmentPreviews] = useState<Record<string, AttachmentPreview>>({});
   const [expandedImageId, setExpandedImageId] = useState<string | null>(null);
   const [pendingScrollId, setPendingScrollId] = useState<string | null>(null);
+  const [pendingEditScrollId, setPendingEditScrollId] = useState<string | null>(null);
   const attachmentInputRef = useRef<HTMLInputElement | null>(null);
   const objectUrlsRef = useRef<string[]>([]);
   const detailRefs = useRef<Record<string, HTMLElement | null>>({});
+  const editRefs = useRef<Record<string, HTMLElement | null>>({});
   const attachmentsAvailable = isAttachmentStorageAvailable();
 
   useEffect(() => {
@@ -416,6 +418,28 @@ export function OpenCampusClient() {
     return () => window.cancelAnimationFrame(frame);
   }, [pendingScrollId, selectedId]);
 
+  useEffect(() => {
+    if (!pendingEditScrollId || pendingEditScrollId !== editingEventId) {
+      return;
+    }
+
+    const element = editRefs.current[pendingEditScrollId];
+
+    if (!element) {
+      return;
+    }
+
+    const frame = window.requestAnimationFrame(() => {
+      element.scrollIntoView({
+        behavior: "smooth",
+        block: "start",
+      });
+      setPendingEditScrollId(null);
+    });
+
+    return () => window.cancelAnimationFrame(frame);
+  }, [editingEventId, pendingEditScrollId]);
+
   function persistEvents(nextEvents: OpenCampusEvent[]) {
     setEvents(nextEvents);
     setSelectedId(nextEvents[0]?.id ?? null);
@@ -426,6 +450,7 @@ export function OpenCampusClient() {
     setIsCreatingEvent(true);
     setEditingEventId(null);
     setEditingEvaluationId(null);
+    setPendingEditScrollId(null);
     setEventForm(createEmptyEventForm());
     setEvaluationForm(createEmptyEvaluation());
     setPendingAttachments([]);
@@ -436,7 +461,9 @@ export function OpenCampusClient() {
   function openEditEvent(event: OpenCampusEvent) {
     setIsCreatingEvent(false);
     setEditingEventId(event.id);
-    setSelectedId(event.id);
+    setSelectedId(null);
+    setPendingScrollId(null);
+    setPendingEditScrollId(event.id);
     setEventForm(formFromEvent(event));
     setPendingAttachments([]);
     setRemovedAttachmentIds([]);
@@ -446,6 +473,7 @@ export function OpenCampusClient() {
   function closeEventEditor() {
     setIsCreatingEvent(false);
     setEditingEventId(null);
+    setPendingEditScrollId(null);
     setEventForm(createEmptyEventForm());
     setPendingAttachments([]);
     setRemovedAttachmentIds([]);
@@ -532,6 +560,10 @@ export function OpenCampusClient() {
   }
 
   function toggleDetail(id: string) {
+    if (editingEventId) {
+      closeEventEditor();
+    }
+
     setSelectedId((current) => {
       const nextId = current === id ? null : id;
 
@@ -543,6 +575,318 @@ export function OpenCampusClient() {
 
       return nextId;
     });
+  }
+
+  function renderEventEditor(title: string, description: string, editorId?: string) {
+    return (
+      <section
+        ref={(node) => {
+          if (editorId) {
+            editRefs.current[editorId] = node;
+          }
+        }}
+        className="panel inline-detail-card inline-editor-card"
+      >
+        <SectionHeader title={title} description={description} />
+
+        <div className="form-stack">
+          <div className="field-grid">
+            <label className="field-block">
+              <span className="field-label">大学名</span>
+              <input
+                className="text-input"
+                type="text"
+                value={eventForm.university}
+                onChange={(event) => updateEventForm("university", event.target.value)}
+              />
+            </label>
+
+            <label className="field-block">
+              <span className="field-label">学部・学科（任意）</span>
+              <input
+                className="text-input"
+                type="text"
+                value={eventForm.facultyDepartment}
+                onChange={(event) => updateEventForm("facultyDepartment", event.target.value)}
+              />
+            </label>
+          </div>
+
+          <div className="field-grid">
+            <label className="field-block">
+              <span className="field-label">イベント名</span>
+              <input
+                className="text-input"
+                type="text"
+                value={eventForm.eventName}
+                onChange={(event) => updateEventForm("eventName", event.target.value)}
+                placeholder="例: オープンキャンパス"
+              />
+            </label>
+
+            <label className="field-block">
+              <span className="field-label">イベント種別</span>
+              <input
+                className="text-input"
+                type="text"
+                value={eventForm.eventType}
+                onChange={(event) => updateEventForm("eventType", event.target.value)}
+                placeholder="例: 体験授業"
+              />
+            </label>
+          </div>
+
+          <div className="field-grid">
+            <label className="field-block">
+              <span className="field-label">開催日</span>
+              <input
+                className="text-input"
+                type="date"
+                value={eventForm.eventDate}
+                onChange={(event) => updateEventForm("eventDate", event.target.value)}
+              />
+            </label>
+
+            <label className="field-block">
+              <span className="field-label">状態</span>
+              <select
+                className="text-input"
+                value={eventForm.status}
+                onChange={(event) =>
+                  updateEventForm("status", event.target.value as OpenCampusStatus)
+                }
+              >
+                <option value="検討中">検討中</option>
+                <option value="予約済み">予約済み</option>
+                <option value="参加済み">参加済み</option>
+              </select>
+            </label>
+          </div>
+
+          <div className="field-grid">
+            <label className="field-block">
+              <span className="field-label">開始時間</span>
+              <input
+                className="text-input"
+                type="time"
+                value={eventForm.startTime}
+                onChange={(event) => updateEventForm("startTime", event.target.value)}
+              />
+            </label>
+
+            <label className="field-block">
+              <span className="field-label">終了時間</span>
+              <input
+                className="text-input"
+                type="time"
+                value={eventForm.endTime}
+                onChange={(event) => updateEventForm("endTime", event.target.value)}
+              />
+            </label>
+          </div>
+
+          <label className="field-block">
+            <span className="field-label">同伴者メモ（任意）</span>
+            <input
+              className="text-input"
+              type="text"
+              value={eventForm.companionMemo}
+              onChange={(event) => updateEventForm("companionMemo", event.target.value)}
+            />
+          </label>
+
+          <label className="field-block">
+            <span className="field-label">集合場所（任意）</span>
+            <input
+              className="text-input"
+              type="text"
+              value={eventForm.meetingPlace}
+              onChange={(event) => updateEventForm("meetingPlace", event.target.value)}
+            />
+          </label>
+
+          <label className="field-block">
+            <span className="field-label">アクセス・行き方メモ（任意）</span>
+            <textarea
+              className="text-area"
+              rows={3}
+              value={eventForm.accessMemo}
+              onChange={(event) => updateEventForm("accessMemo", event.target.value)}
+            />
+          </label>
+
+          <label className="field-block">
+            <span className="field-label">当日のメモ（任意）</span>
+            <textarea
+              className="text-area"
+              rows={3}
+              value={eventForm.dayMemo}
+              onChange={(event) => updateEventForm("dayMemo", event.target.value)}
+            />
+          </label>
+
+          <div className="editor-card">
+            <div className="row-between gap-sm align-start">
+              <div>
+                <p className="item-title small">当日リンク</p>
+                <p className="muted-text">表示名 + URL を複数登録できます。</p>
+              </div>
+              <button type="button" className="card-action subtle" onClick={addLink}>
+                <UiIcon name="plus" className="action-icon" />
+                リンク追加
+              </button>
+            </div>
+
+            <div className="list-stack top-gap">
+              {eventForm.links.length === 0 ? (
+                <div className="empty-state">
+                  <p className="item-title small">まだリンクはありません</p>
+                  <p className="muted-text">参加証や予約ページを追加できます。</p>
+                </div>
+              ) : (
+                eventForm.links.map((link) => (
+                  <article key={link.id} className="note-card">
+                    <div className="field-grid">
+                      <label className="field-block">
+                        <span className="field-label">表示名</span>
+                        <input
+                          className="text-input"
+                          type="text"
+                          value={link.label}
+                          onChange={(event) => updateLink(link.id, "label", event.target.value)}
+                          placeholder="例: 参加証"
+                        />
+                      </label>
+
+                      <label className="field-block">
+                        <span className="field-label">URL</span>
+                        <input
+                          className="text-input"
+                          type="url"
+                          value={link.url}
+                          onChange={(event) => updateLink(link.id, "url", event.target.value)}
+                          placeholder="https://..."
+                        />
+                      </label>
+                    </div>
+                    <div className="list-actions top-gap">
+                      <button type="button" className="card-action danger" onClick={() => removeLink(link.id)}>
+                        <UiIcon name="delete" className="action-icon" />
+                        削除
+                      </button>
+                    </div>
+                  </article>
+                ))
+              )}
+            </div>
+          </div>
+
+          <div className="editor-card">
+            <div className="row-between gap-sm align-start">
+              <div>
+                <p className="item-title small">資料・添付ファイル</p>
+                <p className="muted-text">PDF / JPG / PNG / WebP、1ファイル20MBまで。</p>
+              </div>
+              <button
+                type="button"
+                className="card-action subtle"
+                onClick={() => attachmentInputRef.current?.click()}
+                disabled={!attachmentsAvailable}
+              >
+                <UiIcon name="plus" className="action-icon" />
+                ファイル追加
+              </button>
+            </div>
+
+            <input
+              ref={attachmentInputRef}
+              type="file"
+              accept=".pdf,.jpg,.jpeg,.png,.webp,application/pdf,image/jpeg,image/png,image/webp"
+              multiple
+              hidden
+              onChange={(event) => {
+                void handleAttachmentFiles(event.target.files);
+                event.target.value = "";
+              }}
+            />
+
+            {!attachmentsAvailable ? (
+              <div className="empty-state top-gap">
+                <p className="item-title small">添付ファイル機能は利用できません</p>
+                <p className="muted-text">このブラウザでは IndexedDB が使えないため、添付保存を無効化しています。</p>
+              </div>
+            ) : null}
+
+            {attachmentWarning ? (
+              <div className="empty-state top-gap">
+                <p className="item-title small">追加できなかったファイルがあります</p>
+                <p className="muted-text preserve-lines">{attachmentWarning}</p>
+              </div>
+            ) : null}
+
+            <div className="list-stack top-gap">
+              {eventForm.attachments.map((attachment) => (
+                <article key={attachment.id} className="list-card compact-card">
+                  <div className="row-between gap-sm align-start">
+                    <div>
+                      <p className="item-title small">{attachment.name}</p>
+                      <p className="item-subtitle">
+                        {attachment.mimeType} / {(attachment.size / (1024 * 1024)).toFixed(1)}MB
+                      </p>
+                    </div>
+                    <div className="list-actions">
+                      <button
+                        type="button"
+                        className="card-action subtle"
+                        onClick={() => void openAttachment(attachment)}
+                      >
+                        {getAttachmentKind(attachment) === "image" ? "画像を確認" : "開く"}
+                      </button>
+                      <button
+                        type="button"
+                        className="card-action danger"
+                        onClick={() => removeExistingAttachment(attachment.id)}
+                      >
+                        削除
+                      </button>
+                    </div>
+                  </div>
+                </article>
+              ))}
+
+              {pendingAttachments.map((attachment) => (
+                <article key={attachment.id} className="list-card compact-card">
+                  <div className="row-between gap-sm align-start">
+                    <div>
+                      <p className="item-title small">{attachment.file.name}</p>
+                      <p className="item-subtitle">
+                        保存待ち / {(attachment.file.size / (1024 * 1024)).toFixed(1)}MB
+                      </p>
+                    </div>
+                    <button
+                      type="button"
+                      className="card-action danger"
+                      onClick={() => removePendingAttachment(attachment.id)}
+                    >
+                      削除
+                    </button>
+                  </div>
+                </article>
+              ))}
+            </div>
+          </div>
+
+          <div className="action-row">
+            <button type="button" className="action-button primary" onClick={() => void handleSaveEvent()}>
+              保存する
+            </button>
+            <button type="button" className="action-button" onClick={closeEventEditor}>
+              キャンセル
+            </button>
+          </div>
+        </div>
+      </section>
+    );
   }
 
   function renderDetailBlock(event: OpenCampusEvent) {
@@ -580,9 +924,13 @@ export function OpenCampusClient() {
         </div>
 
         <div className="list-actions top-gap">
-          <button type="button" className="card-action subtle" onClick={() => openEditEvent(event)}>
+          <button
+            type="button"
+            className="card-action subtle"
+            onClick={() => (editingEventId === event.id ? closeEventEditor() : openEditEvent(event))}
+          >
             <UiIcon name="edit" className="action-icon" />
-            編集
+            {editingEventId === event.id ? "編集を閉じる" : "編集"}
           </button>
           <button
             type="button"
@@ -1217,311 +1565,9 @@ export function OpenCampusClient() {
         </div>
       </section>
 
-      {(isCreatingEvent || editingEventId) && (
-        <section className="panel">
-          <SectionHeader
-            title={isCreatingEvent ? "オープンキャンパスを追加" : "オープンキャンパスを編集"}
-            description="日程、状態、当日リンク、資料をまとめて保存"
-          />
-
-          <div className="form-stack">
-            <div className="field-grid">
-              <label className="field-block">
-                <span className="field-label">大学名</span>
-                <input
-                  className="text-input"
-                  type="text"
-                  value={eventForm.university}
-                  onChange={(event) => updateEventForm("university", event.target.value)}
-                />
-              </label>
-
-              <label className="field-block">
-                <span className="field-label">学部・学科（任意）</span>
-                <input
-                  className="text-input"
-                  type="text"
-                  value={eventForm.facultyDepartment}
-                  onChange={(event) => updateEventForm("facultyDepartment", event.target.value)}
-                />
-              </label>
-            </div>
-
-            <div className="field-grid">
-              <label className="field-block">
-                <span className="field-label">イベント名</span>
-                <input
-                  className="text-input"
-                  type="text"
-                  value={eventForm.eventName}
-                  onChange={(event) => updateEventForm("eventName", event.target.value)}
-                  placeholder="例: オープンキャンパス"
-                />
-              </label>
-
-              <label className="field-block">
-                <span className="field-label">イベント種別</span>
-                <input
-                  className="text-input"
-                  type="text"
-                  value={eventForm.eventType}
-                  onChange={(event) => updateEventForm("eventType", event.target.value)}
-                  placeholder="例: 体験授業"
-                />
-              </label>
-            </div>
-
-            <div className="field-grid">
-              <label className="field-block">
-                <span className="field-label">開催日</span>
-                <input
-                  className="text-input"
-                  type="date"
-                  value={eventForm.eventDate}
-                  onChange={(event) => updateEventForm("eventDate", event.target.value)}
-                />
-              </label>
-
-              <label className="field-block">
-                <span className="field-label">状態</span>
-                <select
-                  className="text-input"
-                  value={eventForm.status}
-                  onChange={(event) =>
-                    updateEventForm("status", event.target.value as OpenCampusStatus)
-                  }
-                >
-                  <option value="検討中">検討中</option>
-                  <option value="予約済み">予約済み</option>
-                  <option value="参加済み">参加済み</option>
-                </select>
-              </label>
-            </div>
-
-            <div className="field-grid">
-              <label className="field-block">
-                <span className="field-label">開始時間</span>
-                <input
-                  className="text-input"
-                  type="time"
-                  value={eventForm.startTime}
-                  onChange={(event) => updateEventForm("startTime", event.target.value)}
-                />
-              </label>
-
-              <label className="field-block">
-                <span className="field-label">終了時間</span>
-                <input
-                  className="text-input"
-                  type="time"
-                  value={eventForm.endTime}
-                  onChange={(event) => updateEventForm("endTime", event.target.value)}
-                />
-              </label>
-            </div>
-
-            <label className="field-block">
-              <span className="field-label">同伴者メモ（任意）</span>
-              <input
-                className="text-input"
-                type="text"
-                value={eventForm.companionMemo}
-                onChange={(event) => updateEventForm("companionMemo", event.target.value)}
-              />
-            </label>
-
-            <label className="field-block">
-              <span className="field-label">集合場所（任意）</span>
-              <input
-                className="text-input"
-                type="text"
-                value={eventForm.meetingPlace}
-                onChange={(event) => updateEventForm("meetingPlace", event.target.value)}
-              />
-            </label>
-
-            <label className="field-block">
-              <span className="field-label">アクセス・行き方メモ（任意）</span>
-              <textarea
-                className="text-area"
-                rows={3}
-                value={eventForm.accessMemo}
-                onChange={(event) => updateEventForm("accessMemo", event.target.value)}
-              />
-            </label>
-
-            <label className="field-block">
-              <span className="field-label">当日のメモ（任意）</span>
-              <textarea
-                className="text-area"
-                rows={3}
-                value={eventForm.dayMemo}
-                onChange={(event) => updateEventForm("dayMemo", event.target.value)}
-              />
-            </label>
-
-            <div className="editor-card">
-              <div className="row-between gap-sm align-start">
-                <div>
-                  <p className="item-title small">当日リンク</p>
-                  <p className="muted-text">表示名 + URL を複数登録できます。</p>
-                </div>
-                <button type="button" className="card-action subtle" onClick={addLink}>
-                  <UiIcon name="plus" className="action-icon" />
-                  リンク追加
-                </button>
-              </div>
-
-              <div className="list-stack top-gap">
-                {eventForm.links.length === 0 ? (
-                  <div className="empty-state">
-                    <p className="item-title small">まだリンクはありません</p>
-                    <p className="muted-text">参加証や予約ページを追加できます。</p>
-                  </div>
-                ) : (
-                  eventForm.links.map((link) => (
-                    <article key={link.id} className="note-card">
-                      <div className="field-grid">
-                        <label className="field-block">
-                          <span className="field-label">表示名</span>
-                          <input
-                            className="text-input"
-                            type="text"
-                            value={link.label}
-                            onChange={(event) => updateLink(link.id, "label", event.target.value)}
-                            placeholder="例: 参加証"
-                          />
-                        </label>
-
-                        <label className="field-block">
-                          <span className="field-label">URL</span>
-                          <input
-                            className="text-input"
-                            type="url"
-                            value={link.url}
-                            onChange={(event) => updateLink(link.id, "url", event.target.value)}
-                            placeholder="https://..."
-                          />
-                        </label>
-                      </div>
-                      <div className="list-actions top-gap">
-                        <button type="button" className="card-action danger" onClick={() => removeLink(link.id)}>
-                          <UiIcon name="delete" className="action-icon" />
-                          削除
-                        </button>
-                      </div>
-                    </article>
-                  ))
-                )}
-              </div>
-            </div>
-
-            <div className="editor-card">
-              <div className="row-between gap-sm align-start">
-                <div>
-                  <p className="item-title small">資料・添付ファイル</p>
-                  <p className="muted-text">PDF / JPG / PNG / WebP、1ファイル20MBまで。</p>
-                </div>
-                <button
-                  type="button"
-                  className="card-action subtle"
-                  onClick={() => attachmentInputRef.current?.click()}
-                  disabled={!attachmentsAvailable}
-                >
-                  <UiIcon name="plus" className="action-icon" />
-                  ファイル追加
-                </button>
-              </div>
-
-              <input
-                ref={attachmentInputRef}
-                type="file"
-                accept=".pdf,.jpg,.jpeg,.png,.webp,application/pdf,image/jpeg,image/png,image/webp"
-                multiple
-                hidden
-                onChange={(event) => {
-                  void handleAttachmentFiles(event.target.files);
-                  event.target.value = "";
-                }}
-              />
-
-              {!attachmentsAvailable ? (
-                <div className="empty-state top-gap">
-                  <p className="item-title small">添付ファイル機能は利用できません</p>
-                  <p className="muted-text">このブラウザでは IndexedDB が使えないため、添付保存を無効化しています。</p>
-                </div>
-              ) : null}
-
-              {attachmentWarning ? (
-                <div className="empty-state top-gap">
-                  <p className="item-title small">追加できなかったファイルがあります</p>
-                  <p className="muted-text preserve-lines">{attachmentWarning}</p>
-                </div>
-              ) : null}
-
-              <div className="list-stack top-gap">
-                {eventForm.attachments.map((attachment) => (
-                  <article key={attachment.id} className="list-card compact-card">
-                    <div className="row-between gap-sm align-start">
-                      <div>
-                        <p className="item-title small">{attachment.name}</p>
-                        <p className="item-subtitle">
-                          {attachment.mimeType} / {(attachment.size / (1024 * 1024)).toFixed(1)}MB
-                        </p>
-                      </div>
-                        <div className="list-actions">
-                          <button
-                            type="button"
-                            className="card-action subtle"
-                            onClick={() => void openAttachment(attachment)}
-                          >
-                            {getAttachmentKind(attachment) === "image" ? "画像を確認" : "開く"}
-                          </button>
-                        <button
-                          type="button"
-                          className="card-action danger"
-                          onClick={() => removeExistingAttachment(attachment.id)}
-                        >
-                          削除
-                        </button>
-                      </div>
-                    </div>
-                  </article>
-                ))}
-
-                {pendingAttachments.map((attachment) => (
-                  <article key={attachment.id} className="list-card compact-card">
-                    <div className="row-between gap-sm align-start">
-                      <div>
-                        <p className="item-title small">{attachment.file.name}</p>
-                        <p className="item-subtitle">
-                          保存待ち / {(attachment.file.size / (1024 * 1024)).toFixed(1)}MB
-                        </p>
-                      </div>
-                      <button
-                        type="button"
-                        className="card-action danger"
-                        onClick={() => removePendingAttachment(attachment.id)}
-                      >
-                        削除
-                      </button>
-                    </div>
-                  </article>
-                ))}
-              </div>
-            </div>
-
-            <div className="action-row">
-              <button type="button" className="action-button primary" onClick={() => void handleSaveEvent()}>
-                保存する
-              </button>
-              <button type="button" className="action-button" onClick={closeEventEditor}>
-                キャンセル
-              </button>
-            </div>
-          </div>
-        </section>
-      )}
+      {isCreatingEvent
+        ? renderEventEditor("オープンキャンパスを追加", "日程、状態、当日リンク、資料をまとめて保存")
+        : null}
 
       <section className="panel">
         <SectionHeader title="これから行く予定" description="検討中と予約済みの予定をまとめて管理" />
@@ -1579,11 +1625,15 @@ export function OpenCampusClient() {
                       className="card-action subtle"
                       onClick={(eventDom) => {
                         stopEvent(eventDom);
-                        openEditEvent(event);
+                        if (editingEventId === event.id) {
+                          closeEventEditor();
+                        } else {
+                          openEditEvent(event);
+                        }
                       }}
                     >
                       <UiIcon name="edit" className="action-icon" />
-                      編集
+                      {editingEventId === event.id ? "編集を閉じる" : "編集"}
                     </button>
                     <button
                       type="button"
@@ -1600,6 +1650,13 @@ export function OpenCampusClient() {
                 </article>
 
                 {selectedId === event.id ? renderDetailBlock(event) : null}
+                {editingEventId === event.id
+                  ? renderEventEditor(
+                      `${event.university}を編集`,
+                      "日程、状態、当日リンク、資料をまとめて保存",
+                      event.id,
+                    )
+                  : null}
               </div>
             ))
           )}
@@ -1669,11 +1726,15 @@ export function OpenCampusClient() {
                         className="card-action subtle"
                         onClick={(eventDom) => {
                           stopEvent(eventDom);
-                          openEditEvent(event);
+                          if (editingEventId === event.id) {
+                            closeEventEditor();
+                          } else {
+                            openEditEvent(event);
+                          }
                         }}
                       >
                         <UiIcon name="edit" className="action-icon" />
-                        編集
+                        {editingEventId === event.id ? "編集を閉じる" : "編集"}
                       </button>
                       <button
                         type="button"
@@ -1700,6 +1761,13 @@ export function OpenCampusClient() {
                   </article>
 
                   {selectedId === event.id ? renderDetailBlock(event) : null}
+                  {editingEventId === event.id
+                    ? renderEventEditor(
+                        `${event.university}を編集`,
+                        "日程、状態、当日リンク、資料をまとめて保存",
+                        event.id,
+                      )
+                    : null}
                 </div>
               );
             })

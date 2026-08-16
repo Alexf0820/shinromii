@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { SectionHeader } from "@/components/SectionHeader";
 import { ScoreSelector } from "@/components/ScoreSelector";
 import { UiIcon } from "@/components/UiIcon";
@@ -90,6 +90,8 @@ export function AiNotesClient() {
   const [isCreating, setIsCreating] = useState(false);
   const [form, setForm] = useState<FormState>(createEmptyForm());
   const [sortOrder, setSortOrder] = useState<AiNotesSortOrder>("newest");
+  const [pendingEditScrollId, setPendingEditScrollId] = useState<string | null>(null);
+  const editRefs = useRef<Record<string, HTMLElement | null>>({});
 
   useEffect(() => {
     const stored = loadShinromiiStorage().aiNotes;
@@ -128,19 +130,22 @@ export function AiNotesClient() {
   function openCreate() {
     setIsCreating(true);
     setEditingId(null);
+    setPendingEditScrollId(null);
     setForm(createEmptyForm());
   }
 
   function openEdit(note: AiNote) {
     setIsCreating(false);
     setEditingId(note.id);
-    setSelectedId(note.id);
+    setSelectedId(null);
+    setPendingEditScrollId(note.id);
     setForm(formFromNote(note));
   }
 
   function closeEditor() {
     setIsCreating(false);
     setEditingId(null);
+    setPendingEditScrollId(null);
     setForm(createEmptyForm());
   }
 
@@ -205,6 +210,161 @@ export function AiNotesClient() {
     saveAiNotesSortOrder(nextSortOrder);
   }
 
+  function toggleDetail(id: string) {
+    if (editingId) {
+      closeEditor();
+    }
+
+    setSelectedId((current) => (current === id ? null : id));
+  }
+
+  function renderEditor(title: string, description: string, editorId?: string) {
+    return (
+      <section
+        ref={(node) => {
+          if (editorId) {
+            editRefs.current[editorId] = node;
+          }
+        }}
+        className="panel inline-detail-card inline-editor-card"
+      >
+        <SectionHeader title={title} description={description} />
+        <div className="form-stack">
+          <div className="field-grid">
+            <label className="field-block">
+              <span className="field-label">相談日</span>
+              <input
+                className="text-input"
+                type="date"
+                value={form.consultedAt}
+                onChange={(event) => updateForm("consultedAt", event.target.value)}
+              />
+            </label>
+
+            <label className="field-block">
+              <span className="field-label">相談先</span>
+              <select
+                className="text-input"
+                value={form.provider}
+                onChange={(event) => updateForm("provider", event.target.value as AiProvider)}
+              >
+                {providerOptions.map((provider) => (
+                  <option key={provider} value={provider}>
+                    {provider}
+                  </option>
+                ))}
+              </select>
+            </label>
+          </div>
+
+          <label className="field-block">
+            <span className="field-label">タイトル / 相談テーマ</span>
+            <input
+              className="text-input"
+              type="text"
+              value={form.title}
+              onChange={(event) => updateForm("title", event.target.value)}
+              placeholder="例: 文系寄りでも学びやすい情報系学部"
+            />
+          </label>
+
+          <label className="field-block">
+            <span className="field-label">相談した内容</span>
+            <textarea
+              className="text-area"
+              rows={6}
+              value={form.consultationBody}
+              onChange={(event) => updateForm("consultationBody", event.target.value)}
+              placeholder="AIに送った相談内容を貼り付け"
+            />
+          </label>
+
+          <label className="field-block">
+            <span className="field-label">AIの回答全文</span>
+            <textarea
+              className="text-area text-area-large"
+              rows={14}
+              value={form.answerBody}
+              onChange={(event) => updateForm("answerBody", event.target.value)}
+              placeholder="長文でもそのまま貼り付けて保存"
+            />
+            <span className="field-help">{form.answerBody.length.toLocaleString()} 文字</span>
+          </label>
+
+          <label className="field-block">
+            <span className="field-label">要約メモ</span>
+            <textarea
+              className="text-area"
+              rows={4}
+              value={form.summary}
+              onChange={(event) => updateForm("summary", event.target.value)}
+              placeholder="一覧で見返しやすい短めの要約"
+            />
+          </label>
+
+          <label className="field-block">
+            <span className="field-label">関連する大学・学部（任意）</span>
+            <input
+              className="text-input"
+              type="text"
+              value={form.relatedSchool}
+              onChange={(event) => updateForm("relatedSchool", event.target.value)}
+              placeholder="例: 情報デザイン / 経営情報"
+            />
+          </label>
+
+          <ScoreSelector
+            label="参考度"
+            value={form.helpful}
+            onChange={(value) => updateForm("helpful", value)}
+          />
+
+          <label className="field-block">
+            <span className="field-label">自由メモ</span>
+            <textarea
+              className="text-area"
+              rows={4}
+              value={form.freeNote}
+              onChange={(event) => updateForm("freeNote", event.target.value)}
+              placeholder="家族と話したこと、次に確認したいことなど"
+            />
+          </label>
+
+          <div className="action-row">
+            <button type="button" className="action-button primary" onClick={handleSave}>
+              保存する
+            </button>
+            <button type="button" className="action-button" onClick={closeEditor}>
+              キャンセル
+            </button>
+          </div>
+        </div>
+      </section>
+    );
+  }
+
+  useEffect(() => {
+    if (!pendingEditScrollId || pendingEditScrollId !== editingId) {
+      return;
+    }
+
+    const element = editRefs.current[pendingEditScrollId];
+
+    if (!element) {
+      return;
+    }
+
+    const frame = window.requestAnimationFrame(() => {
+      element.scrollIntoView({
+        behavior: "smooth",
+        block: "start",
+      });
+      setPendingEditScrollId(null);
+    });
+
+    return () => window.cancelAnimationFrame(frame);
+  }, [editingId, pendingEditScrollId]);
+
   return (
     <div className="page-stack">
       <section className="page-hero tone-ai">
@@ -250,121 +410,7 @@ export function AiNotesClient() {
         </div>
       </section>
 
-      {(isCreating || editingId) && (
-        <section className="panel">
-          <SectionHeader title={formTitle} description="長文回答もそのまま貼り付けて保存できます" />
-          <div className="form-stack">
-            <div className="field-grid">
-              <label className="field-block">
-                <span className="field-label">相談日</span>
-                <input
-                  className="text-input"
-                  type="date"
-                  value={form.consultedAt}
-                  onChange={(event) => updateForm("consultedAt", event.target.value)}
-                />
-              </label>
-
-              <label className="field-block">
-                <span className="field-label">相談先</span>
-                <select
-                  className="text-input"
-                  value={form.provider}
-                  onChange={(event) => updateForm("provider", event.target.value as AiProvider)}
-                >
-                  {providerOptions.map((provider) => (
-                    <option key={provider} value={provider}>
-                      {provider}
-                    </option>
-                  ))}
-                </select>
-              </label>
-            </div>
-
-            <label className="field-block">
-              <span className="field-label">タイトル / 相談テーマ</span>
-              <input
-                className="text-input"
-                type="text"
-                value={form.title}
-                onChange={(event) => updateForm("title", event.target.value)}
-                placeholder="例: 文系寄りでも学びやすい情報系学部"
-              />
-            </label>
-
-            <label className="field-block">
-              <span className="field-label">相談した内容</span>
-              <textarea
-                className="text-area"
-                rows={6}
-                value={form.consultationBody}
-                onChange={(event) => updateForm("consultationBody", event.target.value)}
-                placeholder="AIに送った相談内容を貼り付け"
-              />
-            </label>
-
-            <label className="field-block">
-              <span className="field-label">AIの回答全文</span>
-              <textarea
-                className="text-area text-area-large"
-                rows={14}
-                value={form.answerBody}
-                onChange={(event) => updateForm("answerBody", event.target.value)}
-                placeholder="長文でもそのまま貼り付けて保存"
-              />
-              <span className="field-help">{form.answerBody.length.toLocaleString()} 文字</span>
-            </label>
-
-            <label className="field-block">
-              <span className="field-label">要約メモ</span>
-              <textarea
-                className="text-area"
-                rows={4}
-                value={form.summary}
-                onChange={(event) => updateForm("summary", event.target.value)}
-                placeholder="一覧で見返しやすい短めの要約"
-              />
-            </label>
-
-            <label className="field-block">
-              <span className="field-label">関連する大学・学部（任意）</span>
-              <input
-                className="text-input"
-                type="text"
-                value={form.relatedSchool}
-                onChange={(event) => updateForm("relatedSchool", event.target.value)}
-                placeholder="例: 情報デザイン / 経営情報"
-              />
-            </label>
-
-            <ScoreSelector
-              label="参考度"
-              value={form.helpful}
-              onChange={(value) => updateForm("helpful", value)}
-            />
-
-            <label className="field-block">
-              <span className="field-label">自由メモ</span>
-              <textarea
-                className="text-area"
-                rows={4}
-                value={form.freeNote}
-                onChange={(event) => updateForm("freeNote", event.target.value)}
-                placeholder="家族と話したこと、次に確認したいことなど"
-              />
-            </label>
-
-            <div className="action-row">
-              <button type="button" className="action-button primary" onClick={handleSave}>
-                保存する
-              </button>
-              <button type="button" className="action-button" onClick={closeEditor}>
-                キャンセル
-              </button>
-            </div>
-          </div>
-        </section>
-      )}
+      {isCreating ? renderEditor(formTitle, "長文回答もそのまま貼り付けて保存できます") : null}
 
       <section className="panel">
         <SectionHeader title="相談一覧" description="タイトル、相談先、日付、要約だけを見やすく表示" />
@@ -390,54 +436,59 @@ export function AiNotesClient() {
             </div>
           ) : (
             sortedNotes.map((item) => (
-              <article
-                key={item.id}
-                className={`candidate-card ai-note-card tone-ai ${selectedId === item.id ? "selected-card" : ""}`}
-              >
-                <div className="ai-note-top">
-                  <div className="candidate-main">
-                    <span className="candidate-icon-badge">
-                      <UiIcon name="ai" className="list-item-icon" />
-                    </span>
-                    <div className="candidate-summary">
-                      <p className="item-title">{item.title}</p>
-                      <p className="item-subtitle">
-                        {item.provider} / {formatNoteDate(item.consultedAt)}
-                      </p>
+              <div key={item.id} className="detail-stack">
+                <article
+                  className={`candidate-card ai-note-card tone-ai ${selectedId === item.id ? "selected-card" : ""}`}
+                >
+                  <div className="ai-note-top">
+                    <div className="candidate-main">
+                      <span className="candidate-icon-badge">
+                        <UiIcon name="ai" className="list-item-icon" />
+                      </span>
+                      <div className="candidate-summary">
+                        <p className="item-title">{item.title}</p>
+                        <p className="item-subtitle">
+                          {item.provider} / {formatNoteDate(item.consultedAt)}
+                        </p>
+                      </div>
                     </div>
+                    <span className="rating-badge">参考度 {item.helpful}</span>
                   </div>
-                  <span className="rating-badge">参考度 {item.helpful}</span>
-                </div>
 
-                <div className="badge-row">
-                  <span className="soft-pill ai-provider-chip">{item.provider}</span>
-                  {item.relatedSchool ? <span className="mini-badge">{item.relatedSchool}</span> : null}
-                </div>
+                  <div className="badge-row">
+                    <span className="soft-pill ai-provider-chip">{item.provider}</span>
+                    {item.relatedSchool ? <span className="mini-badge">{item.relatedSchool}</span> : null}
+                  </div>
 
-                <div className="note-card">
-                  <p className="feedback-label">短い要約</p>
-                  <p>{shorten(item.summary, 96)}</p>
-                </div>
+                  <div className="note-card">
+                    <p className="feedback-label">短い要約</p>
+                    <p>{shorten(item.summary, 96)}</p>
+                  </div>
 
-                <div className="list-actions">
-                  <button
-                    type="button"
-                    className="card-action subtle"
-                    onClick={() => setSelectedId(item.id)}
-                  >
-                    <UiIcon name="detail" className="action-icon" />
-                    詳細
-                  </button>
-                  <button type="button" className="card-action subtle" onClick={() => openEdit(item)}>
-                    <UiIcon name="edit" className="action-icon" />
-                    編集
-                  </button>
-                  <button type="button" className="card-action danger" onClick={() => handleDelete(item)}>
-                    <UiIcon name="delete" className="action-icon" />
-                    削除
-                  </button>
-                </div>
-              </article>
+                  <div className="list-actions">
+                    <button type="button" className="card-action subtle" onClick={() => toggleDetail(item.id)}>
+                      <UiIcon name="detail" className="action-icon" />
+                      {selectedId === item.id ? "詳細を閉じる" : "詳細"}
+                    </button>
+                    <button
+                      type="button"
+                      className="card-action subtle"
+                      onClick={() => (editingId === item.id ? closeEditor() : openEdit(item))}
+                    >
+                      <UiIcon name="edit" className="action-icon" />
+                      {editingId === item.id ? "編集を閉じる" : "編集"}
+                    </button>
+                    <button type="button" className="card-action danger" onClick={() => handleDelete(item)}>
+                      <UiIcon name="delete" className="action-icon" />
+                      削除
+                    </button>
+                  </div>
+                </article>
+
+                {editingId === item.id
+                  ? renderEditor(`${item.title}を編集`, "長文回答もそのまま貼り付けて保存できます", item.id)
+                  : null}
+              </div>
             ))
           )}
         </div>

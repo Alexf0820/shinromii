@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { SectionHeader } from "@/components/SectionHeader";
 import { ScoreSelector } from "@/components/ScoreSelector";
 import { UiIcon } from "@/components/UiIcon";
@@ -98,6 +98,8 @@ export function UniversityCandidatesClient() {
   const [isCreating, setIsCreating] = useState(false);
   const [sortOrder, setSortOrder] = useState<UniversitySortOrder>("interest");
   const [form, setForm] = useState<CandidateFormState>(createEmptyForm());
+  const [pendingEditScrollId, setPendingEditScrollId] = useState<string | null>(null);
+  const editRefs = useRef<Record<string, HTMLElement | null>>({});
 
   useEffect(() => {
     const storage = loadShinromiiStorage();
@@ -145,19 +147,22 @@ export function UniversityCandidatesClient() {
   function openCreate() {
     setIsCreating(true);
     setEditingId(null);
+    setPendingEditScrollId(null);
     setForm(createEmptyForm());
   }
 
   function openEdit(candidate: UniversityCandidate) {
     setIsCreating(false);
     setEditingId(candidate.id);
-    setSelectedId(candidate.id);
+    setSelectedId(null);
+    setPendingEditScrollId(candidate.id);
     setForm(formFromCandidate(candidate));
   }
 
   function closeEditor() {
     setIsCreating(false);
     setEditingId(null);
+    setPendingEditScrollId(null);
     setForm(createEmptyForm());
   }
 
@@ -218,6 +223,166 @@ export function UniversityCandidatesClient() {
   function handleSortChange(nextSortOrder: UniversitySortOrder) {
     setSortOrder(nextSortOrder);
     saveUniversitySortOrder(nextSortOrder);
+  }
+
+  function toggleDetail(id: string) {
+    if (editingId) {
+      closeEditor();
+    }
+
+    setSelectedId((current) => (current === id ? null : id));
+  }
+
+  function renderCandidateEditor(title: string, description: string, editorId?: string) {
+    return (
+      <section
+        ref={(node) => {
+          if (editorId) {
+            editRefs.current[editorId] = node;
+          }
+        }}
+        className="panel inline-detail-card inline-editor-card"
+      >
+        <SectionHeader title={title} description={description} />
+
+        <div className="form-stack">
+          <div className="field-grid">
+            <label className="field-block">
+              <span className="field-label">大学名</span>
+              <input
+                className="text-input"
+                type="text"
+                value={form.university}
+                onChange={(event) => updateForm("university", event.target.value)}
+              />
+            </label>
+
+            <label className="field-block">
+              <span className="field-label">学部名</span>
+              <input
+                className="text-input"
+                type="text"
+                value={form.faculty}
+                onChange={(event) => updateForm("faculty", event.target.value)}
+              />
+            </label>
+          </div>
+
+          <div className="field-grid">
+            <label className="field-block">
+              <span className="field-label">学科名（任意）</span>
+              <input
+                className="text-input"
+                type="text"
+                value={form.department}
+                onChange={(event) => updateForm("department", event.target.value)}
+              />
+            </label>
+
+            <label className="field-block">
+              <span className="field-label">大学・学部URL（任意）</span>
+              <input
+                className="text-input"
+                type="url"
+                value={form.url}
+                onChange={(event) => updateForm("url", event.target.value)}
+              />
+            </label>
+          </div>
+
+          <ScoreSelector
+            label="気になる度"
+            value={form.interest}
+            onChange={(value) => updateForm("interest", value)}
+          />
+
+          <div className="field-grid">
+            <label className="field-block">
+              <span className="field-label">本人評価</span>
+              <select
+                className="text-input"
+                value={form.studentScore}
+                onChange={(event) =>
+                  updateForm("studentScore", event.target.value as UniversityCandidate["studentScore"])
+                }
+              >
+                {evaluationOptions.map((option) => (
+                  <option key={option} value={option}>
+                    {option}
+                  </option>
+                ))}
+              </select>
+            </label>
+
+            <label className="field-block">
+              <span className="field-label">家族評価</span>
+              <select
+                className="text-input"
+                value={form.familyScore}
+                onChange={(event) =>
+                  updateForm("familyScore", event.target.value as UniversityCandidate["familyScore"])
+                }
+              >
+                {evaluationOptions.map((option) => (
+                  <option key={option} value={option}>
+                    {option}
+                  </option>
+                ))}
+              </select>
+            </label>
+          </div>
+
+          <label className="field-block">
+            <span className="field-label">本人メモ</span>
+            <textarea
+              className="text-area"
+              rows={4}
+              value={form.studentView}
+              onChange={(event) => updateForm("studentView", event.target.value)}
+            />
+          </label>
+
+          <label className="field-block">
+            <span className="field-label">家族メモ</span>
+            <textarea
+              className="text-area"
+              rows={4}
+              value={form.familyView}
+              onChange={(event) => updateForm("familyView", event.target.value)}
+            />
+          </label>
+
+          <label className="field-block">
+            <span className="field-label">志望理由・気になる理由（任意）</span>
+            <textarea
+              className="text-area"
+              rows={4}
+              value={form.reason}
+              onChange={(event) => updateForm("reason", event.target.value)}
+            />
+          </label>
+
+          <label className="field-block">
+            <span className="field-label">将来の仕事・進路メモ（任意）</span>
+            <textarea
+              className="text-area"
+              rows={4}
+              value={form.futureNote}
+              onChange={(event) => updateForm("futureNote", event.target.value)}
+            />
+          </label>
+
+          <div className="action-row">
+            <button type="button" className="action-button primary" onClick={handleSave}>
+              保存する
+            </button>
+            <button type="button" className="action-button" onClick={closeEditor}>
+              キャンセル
+            </button>
+          </div>
+        </div>
+      </section>
+    );
   }
 
   function renderCandidateDetail(candidate: UniversityCandidate) {
@@ -314,6 +479,28 @@ export function UniversityCandidatesClient() {
     );
   }
 
+  useEffect(() => {
+    if (!pendingEditScrollId || pendingEditScrollId !== editingId) {
+      return;
+    }
+
+    const element = editRefs.current[pendingEditScrollId];
+
+    if (!element) {
+      return;
+    }
+
+    const frame = window.requestAnimationFrame(() => {
+      element.scrollIntoView({
+        behavior: "smooth",
+        block: "start",
+      });
+      setPendingEditScrollId(null);
+    });
+
+    return () => window.cancelAnimationFrame(frame);
+  }, [editingId, pendingEditScrollId]);
+
   return (
     <div className="page-stack">
       <section className="page-hero tone-university">
@@ -351,151 +538,9 @@ export function UniversityCandidatesClient() {
         </div>
       </section>
 
-      {(isCreating || editingId) && (
-        <section className="panel">
-          <SectionHeader
-            title={isCreating ? "候補を追加" : "候補を編集"}
-            description="実際の進路検討で見返しやすい内容だけを入力"
-          />
-
-          <div className="form-stack">
-            <div className="field-grid">
-              <label className="field-block">
-                <span className="field-label">大学名</span>
-                <input
-                  className="text-input"
-                  type="text"
-                  value={form.university}
-                  onChange={(event) => updateForm("university", event.target.value)}
-                />
-              </label>
-
-              <label className="field-block">
-                <span className="field-label">学部名</span>
-                <input
-                  className="text-input"
-                  type="text"
-                  value={form.faculty}
-                  onChange={(event) => updateForm("faculty", event.target.value)}
-                />
-              </label>
-            </div>
-
-            <div className="field-grid">
-              <label className="field-block">
-                <span className="field-label">学科名（任意）</span>
-                <input
-                  className="text-input"
-                  type="text"
-                  value={form.department}
-                  onChange={(event) => updateForm("department", event.target.value)}
-                />
-              </label>
-
-              <label className="field-block">
-                <span className="field-label">大学・学部URL（任意）</span>
-                <input
-                  className="text-input"
-                  type="url"
-                  value={form.url}
-                  onChange={(event) => updateForm("url", event.target.value)}
-                />
-              </label>
-            </div>
-
-            <ScoreSelector
-              label="気になる度"
-              value={form.interest}
-              onChange={(value) => updateForm("interest", value)}
-            />
-
-            <div className="field-grid">
-              <label className="field-block">
-                <span className="field-label">本人評価</span>
-                <select
-                  className="text-input"
-                  value={form.studentScore}
-                  onChange={(event) =>
-                    updateForm("studentScore", event.target.value as UniversityCandidate["studentScore"])
-                  }
-                >
-                  {evaluationOptions.map((option) => (
-                    <option key={option} value={option}>
-                      {option}
-                    </option>
-                  ))}
-                </select>
-              </label>
-
-              <label className="field-block">
-                <span className="field-label">家族評価</span>
-                <select
-                  className="text-input"
-                  value={form.familyScore}
-                  onChange={(event) =>
-                    updateForm("familyScore", event.target.value as UniversityCandidate["familyScore"])
-                  }
-                >
-                  {evaluationOptions.map((option) => (
-                    <option key={option} value={option}>
-                      {option}
-                    </option>
-                  ))}
-                </select>
-              </label>
-            </div>
-
-            <label className="field-block">
-              <span className="field-label">本人メモ</span>
-              <textarea
-                className="text-area"
-                rows={4}
-                value={form.studentView}
-                onChange={(event) => updateForm("studentView", event.target.value)}
-              />
-            </label>
-
-            <label className="field-block">
-              <span className="field-label">家族メモ</span>
-              <textarea
-                className="text-area"
-                rows={4}
-                value={form.familyView}
-                onChange={(event) => updateForm("familyView", event.target.value)}
-              />
-            </label>
-
-            <label className="field-block">
-              <span className="field-label">志望理由・気になる理由（任意）</span>
-              <textarea
-                className="text-area"
-                rows={4}
-                value={form.reason}
-                onChange={(event) => updateForm("reason", event.target.value)}
-              />
-            </label>
-
-            <label className="field-block">
-              <span className="field-label">将来の仕事・進路メモ（任意）</span>
-              <textarea
-                className="text-area"
-                rows={4}
-                value={form.futureNote}
-                onChange={(event) => updateForm("futureNote", event.target.value)}
-              />
-            </label>
-
-            <div className="action-row">
-              <button type="button" className="action-button primary" onClick={handleSave}>
-                保存する
-              </button>
-              <button type="button" className="action-button" onClick={closeEditor}>
-                キャンセル
-              </button>
-            </div>
-          </div>
-        </section>
-      )}
+      {isCreating
+        ? renderCandidateEditor("候補を追加", "実際の進路検討で見返しやすい内容だけを入力")
+        : null}
 
       <section className="panel">
         <SectionHeader title="候補一覧" description="比較しやすい順に並べ替えながら見返せます" />
@@ -565,14 +610,18 @@ export function UniversityCandidatesClient() {
                   <button
                     type="button"
                     className="card-action subtle"
-                    onClick={() => setSelectedId((current) => (current === item.id ? null : item.id))}
+                    onClick={() => toggleDetail(item.id)}
                   >
                     <UiIcon name="detail" className="action-icon" />
                     {selectedId === item.id ? "詳細を閉じる" : "詳細"}
                   </button>
-                  <button type="button" className="card-action subtle" onClick={() => openEdit(item)}>
+                  <button
+                    type="button"
+                    className="card-action subtle"
+                    onClick={() => (editingId === item.id ? closeEditor() : openEdit(item))}
+                  >
                     <UiIcon name="edit" className="action-icon" />
-                    編集
+                    {editingId === item.id ? "編集を閉じる" : "編集"}
                   </button>
                   <button type="button" className="card-action danger" onClick={() => handleDelete(item)}>
                     <UiIcon name="delete" className="action-icon" />
@@ -582,6 +631,13 @@ export function UniversityCandidatesClient() {
               </article>
 
               {selectedId === item.id ? renderCandidateDetail(item) : null}
+              {editingId === item.id
+                ? renderCandidateEditor(
+                    `${item.university}を編集`,
+                    "実際の進路検討で見返しやすい内容だけを入力",
+                    item.id,
+                  )
+                : null}
             </div>
           ))}
         </div>
