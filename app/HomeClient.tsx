@@ -202,7 +202,7 @@ export function HomeClient() {
     <div className="page-stack home-page">
       <section className="home-hero">
         <div className="home-hero-copy">
-          <p className="eyebrow">SHINROMII Ver.0.52</p>
+          <p className="eyebrow">SHINROMII Ver.0.53</p>
           <h1>わたしの進路ノート</h1>
           <p className="hero-copy">
             未来の自分に向けて、今のわたしができることを整える。
@@ -219,13 +219,21 @@ export function HomeClient() {
       <section className="panel section-panel">
         <SectionTitle title="現在のわたし" detail="今日の進路状況をひと目で確認" />
         <div className="summary-grid">
-          {summaryItems.map((item) => (
-            <article key={item.label} className={`summary-card tone-${item.tone}`}>
-              <p className="metric-label">{item.label}</p>
-              <p className="stat-value">{item.value}</p>
-              <p className="muted-text">{item.note}</p>
-            </article>
-          ))}
+          {summaryItems.map((item) =>
+            item.label === "評定平均" ? (
+              <Link key={item.label} href="/grades#grades" className={`summary-card tone-${item.tone}`}>
+                <p className="metric-label">{item.label}</p>
+                <p className="stat-value">{item.value}</p>
+                <p className="muted-text">{item.note}</p>
+              </Link>
+            ) : (
+              <article key={item.label} className={`summary-card tone-${item.tone}`}>
+                <p className="metric-label">{item.label}</p>
+                <p className="stat-value">{item.value}</p>
+                <p className="muted-text">{item.note}</p>
+              </article>
+            ),
+          )}
         </div>
       </section>
 

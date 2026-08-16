@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { SectionHeader } from "@/components/SectionHeader";
 import { UiIcon } from "@/components/UiIcon";
 import { gradeRecords as initialGradeRecords, qualifications as initialQualifications } from "@/data/mockData";
@@ -175,6 +175,7 @@ function qualificationStatusClass(status: QualificationStatus) {
 export function GradesClient() {
   const [gradeRecords, setGradeRecords] = useState<GradeRecord[]>(initialGradeRecords);
   const [qualifications, setQualifications] = useState<QualificationRecord[]>(initialQualifications);
+  const [selectedGradeId, setSelectedGradeId] = useState<string | null>(null);
   const [gradeEditingId, setGradeEditingId] = useState<string | null>(null);
   const [qualificationEditingId, setQualificationEditingId] = useState<string | null>(null);
   const [isCreatingGrade, setIsCreatingGrade] = useState(false);
@@ -183,11 +184,29 @@ export function GradesClient() {
   const [qualificationForm, setQualificationForm] = useState<QualificationFormState>(
     createEmptyQualificationForm(),
   );
+  const [pendingGradeScrollId, setPendingGradeScrollId] = useState<string | null>(null);
+  const gradesSectionRef = useRef<HTMLElement | null>(null);
+  const gradeDetailRefs = useRef<Record<string, HTMLElement | null>>({});
 
   useEffect(() => {
     const storage = loadShinromiiStorage();
     setGradeRecords(storage.gradeRecords);
     setQualifications(storage.qualifications);
+  }, []);
+
+  useEffect(() => {
+    if (window.location.hash !== "#grades") {
+      return;
+    }
+
+    const frame = window.requestAnimationFrame(() => {
+      gradesSectionRef.current?.scrollIntoView({
+        behavior: "smooth",
+        block: "start",
+      });
+    });
+
+    return () => window.cancelAnimationFrame(frame);
   }, []);
 
   const sortedGradeRecords = useMemo(() => sortGradeRecords(gradeRecords), [gradeRecords]);
@@ -344,6 +363,11 @@ export function GradesClient() {
     setGradeRecords(nextRecords);
     saveGradeRecords(nextRecords);
 
+    if (selectedGradeId === record.id) {
+      setSelectedGradeId(null);
+      setPendingGradeScrollId(null);
+    }
+
     if (gradeEditingId === record.id) {
       closeGradeEditor();
     }
@@ -419,6 +443,104 @@ export function GradesClient() {
     }
   }
 
+  function toggleGradeDetail(id: string) {
+    setSelectedGradeId((current) => {
+      const nextId = current === id ? null : id;
+
+      if (nextId) {
+        setPendingGradeScrollId(nextId);
+      } else {
+        setPendingGradeScrollId(null);
+      }
+
+      return nextId;
+    });
+  }
+
+  function renderGradeDetail(record: GradeRecord) {
+    return (
+      <section
+        ref={(node) => {
+          gradeDetailRefs.current[record.id] = node;
+        }}
+        className="detail-card inline-detail-card inline-grade-detail-card"
+      >
+        <div className="detail-section-header">
+          <div>
+            <p className="eyebrow">評定詳細</p>
+            <p className="item-title">{record.subject}</p>
+            <p className="item-subtitle">
+              {record.schoolYear} / {record.term}
+            </p>
+          </div>
+          <span className="record-grade-badge">{record.grade}</span>
+        </div>
+
+        <div className="detail-section-list top-gap">
+          <section className="detail-section">
+            <p className="feedback-label">基本情報</p>
+            <div className="detail-entry top-gap">
+              <span className="detail-entry-label">学年</span>
+              <span className="detail-entry-value">{record.schoolYear}</span>
+            </div>
+            <div className="detail-entry">
+              <span className="detail-entry-label">学期</span>
+              <span className="detail-entry-value">{record.term}</span>
+            </div>
+            <div className="detail-entry">
+              <span className="detail-entry-label">科目名</span>
+              <span className="detail-entry-value">{record.subject}</span>
+            </div>
+            <div className="detail-entry">
+              <span className="detail-entry-label">評定</span>
+              <span className="detail-entry-value">{record.grade}</span>
+            </div>
+          </section>
+
+          <section className="detail-section">
+            <p className="feedback-label">メモ</p>
+            <div className="detail-entry top-gap">
+              <span className="detail-entry-label">登録メモ</span>
+              <span className="detail-entry-value preserve-lines">
+                {record.memo || "まだ入力されていません"}
+              </span>
+            </div>
+            <div className="detail-entry">
+              <span className="detail-entry-label">作成日</span>
+              <span className="detail-entry-value">{formatDate(record.createdAt)}</span>
+            </div>
+            <div className="detail-entry">
+              <span className="detail-entry-label">更新日</span>
+              <span className="detail-entry-value">{formatDate(record.updatedAt)}</span>
+            </div>
+          </section>
+        </div>
+      </section>
+    );
+  }
+
+  useEffect(() => {
+    if (!pendingGradeScrollId || pendingGradeScrollId !== selectedGradeId) {
+      return;
+    }
+
+    const element = gradeDetailRefs.current[pendingGradeScrollId];
+
+    if (!element) {
+      return;
+    }
+
+    const frame = window.requestAnimationFrame(() => {
+      element.scrollIntoView({
+        behavior: "smooth",
+        block: "start",
+      });
+      setPendingGradeScrollId(null);
+    });
+
+    return () => window.cancelAnimationFrame(frame);
+  }, [pendingGradeScrollId, selectedGradeId]);
+
   return (
     <div className="page-stack">
       <section className="page-hero tone-grades">
@@ -475,7 +597,7 @@ export function GradesClient() {
         )}
       </section>
 
-      <section className="panel">
+      <section ref={gradesSectionRef} id="grades" className="panel">
         <div className="row-between gap-sm align-start">
           <div className="compare-header no-margin">
             <span className="soft-pill">localStorage 保存</span>
@@ -609,25 +731,37 @@ export function GradesClient() {
 
                 <div className="list-stack top-gap">
                   {group.records.map((record) => (
-                    <article key={record.id} className="record-row">
-                      <div>
-                        <p className="item-title small">{record.subject}</p>
-                        <p className="item-subtitle">
-                          {record.memo || "メモはまだ入力されていません"}
-                        </p>
-                      </div>
-                      <span className="record-grade-badge">{record.grade}</span>
-                      <div className="list-actions">
-                        <button type="button" className="card-action subtle" onClick={() => openEditGrade(record)}>
-                          <UiIcon name="edit" className="action-icon" />
-                          編集
-                        </button>
-                        <button type="button" className="card-action danger" onClick={() => handleDeleteGrade(record)}>
-                          <UiIcon name="delete" className="action-icon" />
-                          削除
-                        </button>
-                      </div>
-                    </article>
+                    <div key={record.id} className="detail-stack">
+                      <article className="record-row">
+                        <div>
+                          <p className="item-title small">{record.subject}</p>
+                          <p className="item-subtitle">
+                            {record.memo || "メモはまだ入力されていません"}
+                          </p>
+                        </div>
+                        <span className="record-grade-badge">{record.grade}</span>
+                        <div className="list-actions">
+                          <button
+                            type="button"
+                            className="card-action subtle"
+                            onClick={() => toggleGradeDetail(record.id)}
+                          >
+                            <UiIcon name="detail" className="action-icon" />
+                            {selectedGradeId === record.id ? "詳細を閉じる" : "詳細"}
+                          </button>
+                          <button type="button" className="card-action subtle" onClick={() => openEditGrade(record)}>
+                            <UiIcon name="edit" className="action-icon" />
+                            編集
+                          </button>
+                          <button type="button" className="card-action danger" onClick={() => handleDeleteGrade(record)}>
+                            <UiIcon name="delete" className="action-icon" />
+                            削除
+                          </button>
+                        </div>
+                      </article>
+
+                      {selectedGradeId === record.id ? renderGradeDetail(record) : null}
+                    </div>
                   ))}
                 </div>
               </article>
