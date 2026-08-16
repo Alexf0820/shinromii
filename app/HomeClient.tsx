@@ -1,11 +1,16 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { UiIcon } from "@/components/UiIcon";
 import { recentItems } from "@/data/mockData";
+import {
+  formatBackupFileName,
+  parseShinromiiBackupJson,
+  stringifyShinromiiBackup,
+} from "@/lib/shinromii-backup";
 import type { ShinromiiStorage } from "@/lib/shinromii-storage";
-import { loadShinromiiStorage } from "@/lib/shinromii-storage";
+import { loadShinromiiStorage, saveShinromiiStorage } from "@/lib/shinromii-storage";
 
 const schoolYearRank = {
   高1: 1,
@@ -69,6 +74,8 @@ const shortcutItems = [
 
 export function HomeClient() {
   const [storage, setStorage] = useState<ShinromiiStorage | null>(createFallbackSummary());
+  const [dataManagementMessage, setDataManagementMessage] = useState<string | null>(null);
+  const restoreInputRef = useRef<HTMLInputElement | null>(null);
 
   useEffect(() => {
     setStorage(loadShinromiiStorage());
@@ -133,6 +140,63 @@ export function HomeClient() {
       tone: "campus",
     },
   ];
+
+  function handleBackupExport() {
+    const current = loadShinromiiStorage();
+    const backupJson = stringifyShinromiiBackup(current);
+    const blob = new Blob([backupJson], { type: "application/json" });
+    const objectUrl = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+
+    link.href = objectUrl;
+    link.download = formatBackupFileName(new Date());
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+
+    window.setTimeout(() => {
+      URL.revokeObjectURL(objectUrl);
+    }, 1000);
+
+    setDataManagementMessage("バックアップJSONを書き出しました。");
+  }
+
+  async function handleBackupImport(fileList: FileList | null) {
+    const file = fileList?.[0];
+
+    if (!file) {
+      return;
+    }
+
+    try {
+      const raw = await file.text();
+      const parsed = parseShinromiiBackupJson(raw);
+
+      if (!parsed.ok) {
+        window.alert(parsed.error);
+        setDataManagementMessage(parsed.error);
+        return;
+      }
+
+      const confirmed = window.confirm(
+        "現在のSHINROMIIデータは、選択したバックアップの内容に置き換えられます。よろしいですか？",
+      );
+
+      if (!confirmed) {
+        setDataManagementMessage("バックアップの読み込みをキャンセルしました。");
+        return;
+      }
+
+      saveShinromiiStorage(parsed.storage);
+      setStorage(parsed.storage);
+      setDataManagementMessage("バックアップを読み込み、データを置き換えました。");
+      window.alert("バックアップを読み込みました。");
+    } catch {
+      const message = "バックアップファイルの読み込みに失敗しました。";
+      window.alert(message);
+      setDataManagementMessage(message);
+    }
+  }
 
   return (
     <div className="page-stack home-page">
@@ -221,6 +285,57 @@ export function HomeClient() {
               <p className="muted-text">{item.description}</p>
             </article>
           ))}
+        </div>
+      </section>
+
+      <section className="panel section-panel">
+        <SectionTitle title="データ管理" detail="家族間で使う通常バックアップをJSONで扱う" />
+        <div className="editor-card">
+          <div className="list-stack">
+            <div>
+              <p className="item-title small">通常バックアップ</p>
+              <p className="muted-text">
+                端末内の進路データをJSONで書き出し、別端末で読み込めます。添付ファイル本体は対象外です。
+              </p>
+            </div>
+
+            <div className="action-row">
+              <button type="button" className="action-button primary" onClick={handleBackupExport}>
+                <UiIcon name="download" className="action-icon" />
+                バックアップを書き出す
+              </button>
+              <button
+                type="button"
+                className="action-button"
+                onClick={() => restoreInputRef.current?.click()}
+              >
+                <UiIcon name="upload" className="action-icon" />
+                バックアップを読み込む
+              </button>
+            </div>
+
+            <input
+              ref={restoreInputRef}
+              type="file"
+              accept="application/json,.json"
+              hidden
+              onChange={(event) => {
+                void handleBackupImport(event.target.files);
+                event.target.value = "";
+              }}
+            />
+
+            <p className="muted-text">
+              読み込みは全置換です。現在のデータを残したい場合は、先に書き出しを行ってください。
+            </p>
+
+            {dataManagementMessage ? (
+              <div className="info-strip">
+                <p className="item-title small">バックアップ状況</p>
+                <p>{dataManagementMessage}</p>
+              </div>
+            ) : null}
+          </div>
         </div>
       </section>
     </div>

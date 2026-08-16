@@ -8,8 +8,8 @@ import type {
   UniversityCandidate,
 } from "@/data/mockData";
 
-const STORAGE_KEY = "SHINROMII::storage::v1";
-const STORAGE_VERSION = 4;
+export const STORAGE_KEY = "SHINROMII::storage::v1";
+export const STORAGE_VERSION = 4;
 const AI_NOTES_SORT_KEY = "SHINROMII::ai-notes-sort::v1";
 const UNIVERSITY_SORT_KEY = "SHINROMII::university-sort::v1";
 
@@ -55,7 +55,7 @@ function buildDefaultEvaluations() {
   }, {});
 }
 
-function buildDefaultStorage(): ShinromiiStorage {
+export function buildDefaultStorage(): ShinromiiStorage {
   return {
     version: STORAGE_VERSION,
     aiNotes,
@@ -65,6 +65,69 @@ function buildDefaultStorage(): ShinromiiStorage {
     qualifications,
     openCampusEvents,
   };
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null;
+}
+
+function coerceStorageValues(parsed: Partial<ShinromiiStorage>, fallback: ShinromiiStorage): ShinromiiStorage {
+  return {
+    version: STORAGE_VERSION,
+    aiNotes: Array.isArray(parsed.aiNotes) ? parsed.aiNotes : fallback.aiNotes,
+    campusEvaluations:
+      parsed.campusEvaluations && typeof parsed.campusEvaluations === "object"
+        ? parsed.campusEvaluations
+        : fallback.campusEvaluations,
+    universityCandidates: Array.isArray(parsed.universityCandidates)
+      ? parsed.universityCandidates
+      : fallback.universityCandidates,
+    gradeRecords: Array.isArray(parsed.gradeRecords)
+      ? parsed.gradeRecords
+      : fallback.gradeRecords,
+    qualifications: Array.isArray(parsed.qualifications)
+      ? parsed.qualifications
+      : fallback.qualifications,
+    openCampusEvents: Array.isArray(parsed.openCampusEvents)
+      ? parsed.openCampusEvents
+      : fallback.openCampusEvents,
+  };
+}
+
+export function parseBackupStorageData(candidate: unknown): ShinromiiStorage | null {
+  const fallback = buildDefaultStorage();
+
+  if (!isRecord(candidate)) {
+    return null;
+  }
+
+  const requiredKeys = [
+    "aiNotes",
+    "campusEvaluations",
+    "universityCandidates",
+    "gradeRecords",
+    "qualifications",
+    "openCampusEvents",
+  ] as const;
+
+  const hasRequiredShape = requiredKeys.every((key) => key in candidate);
+
+  if (!hasRequiredShape) {
+    return null;
+  }
+
+  if (
+    !Array.isArray(candidate.aiNotes) ||
+    !isRecord(candidate.campusEvaluations) ||
+    !Array.isArray(candidate.universityCandidates) ||
+    !Array.isArray(candidate.gradeRecords) ||
+    !Array.isArray(candidate.qualifications) ||
+    !Array.isArray(candidate.openCampusEvents)
+  ) {
+    return null;
+  }
+
+  return coerceStorageValues(candidate as Partial<ShinromiiStorage>, fallback);
 }
 
 function canUseStorage() {
@@ -90,88 +153,22 @@ export function loadShinromiiStorage(): ShinromiiStorage {
     >;
 
     if (parsed.version === 1) {
-      const legacy = parsed as Partial<ShinromiiStorageV1>;
-
-      return {
-        version: STORAGE_VERSION,
-        aiNotes: Array.isArray(legacy.aiNotes) ? legacy.aiNotes : fallback.aiNotes,
-        campusEvaluations:
-          legacy.campusEvaluations && typeof legacy.campusEvaluations === "object"
-            ? legacy.campusEvaluations
-            : fallback.campusEvaluations,
-        universityCandidates: fallback.universityCandidates,
-        gradeRecords: fallback.gradeRecords,
-        qualifications: fallback.qualifications,
-        openCampusEvents: fallback.openCampusEvents,
-      };
+      return coerceStorageValues(parsed as Partial<ShinromiiStorageV1>, fallback);
     }
 
     if (parsed.version === 2) {
-      const legacy = parsed as Partial<ShinromiiStorageV2>;
-
-      return {
-        version: STORAGE_VERSION,
-        aiNotes: Array.isArray(legacy.aiNotes) ? legacy.aiNotes : fallback.aiNotes,
-        campusEvaluations:
-          legacy.campusEvaluations && typeof legacy.campusEvaluations === "object"
-            ? legacy.campusEvaluations
-            : fallback.campusEvaluations,
-        universityCandidates: Array.isArray(legacy.universityCandidates)
-          ? legacy.universityCandidates
-          : fallback.universityCandidates,
-        gradeRecords: fallback.gradeRecords,
-        qualifications: fallback.qualifications,
-        openCampusEvents: fallback.openCampusEvents,
-      };
+      return coerceStorageValues(parsed as Partial<ShinromiiStorageV2>, fallback);
     }
 
     if (parsed.version === 3) {
-      const legacy = parsed as Partial<ShinromiiStorageV3>;
-
-      return {
-        version: STORAGE_VERSION,
-        aiNotes: Array.isArray(legacy.aiNotes) ? legacy.aiNotes : fallback.aiNotes,
-        campusEvaluations:
-          legacy.campusEvaluations && typeof legacy.campusEvaluations === "object"
-            ? legacy.campusEvaluations
-            : fallback.campusEvaluations,
-        universityCandidates: Array.isArray(legacy.universityCandidates)
-          ? legacy.universityCandidates
-          : fallback.universityCandidates,
-        gradeRecords: Array.isArray(legacy.gradeRecords)
-          ? legacy.gradeRecords
-          : fallback.gradeRecords,
-        qualifications: Array.isArray(legacy.qualifications)
-          ? legacy.qualifications
-          : fallback.qualifications,
-        openCampusEvents: fallback.openCampusEvents,
-      };
+      return coerceStorageValues(parsed as Partial<ShinromiiStorageV3>, fallback);
     }
 
     if (parsed.version !== STORAGE_VERSION) {
       return fallback;
     }
 
-    return {
-      version: STORAGE_VERSION,
-      aiNotes: Array.isArray(parsed.aiNotes) ? parsed.aiNotes : fallback.aiNotes,
-      campusEvaluations:
-        parsed.campusEvaluations && typeof parsed.campusEvaluations === "object"
-          ? parsed.campusEvaluations
-          : fallback.campusEvaluations,
-      universityCandidates: Array.isArray(parsed.universityCandidates)
-        ? parsed.universityCandidates
-        : fallback.universityCandidates,
-      gradeRecords: Array.isArray(parsed.gradeRecords)
-        ? parsed.gradeRecords
-        : fallback.gradeRecords,
-      qualifications: Array.isArray(parsed.qualifications)
-        ? parsed.qualifications
-        : fallback.qualifications,
-      openCampusEvents: Array.isArray(parsed.openCampusEvents)
-        ? parsed.openCampusEvents
-        : fallback.openCampusEvents,
-    };
+    return coerceStorageValues(parsed as Partial<ShinromiiStorage>, fallback);
   } catch {
     return fallback;
   }
