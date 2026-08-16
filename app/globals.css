@@ -1087,6 +1087,10 @@ a {
   margin-top: -2px;
 }
 
+.inline-oc-detail-card {
+  scroll-margin-top: 18px;
+}
+
 .record-list {
   display: grid;
   gap: 12px;
