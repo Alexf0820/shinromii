@@ -59,6 +59,8 @@ export function buildShinromiiBackup(
       gradeRecords: storage.gradeRecords,
       qualifications: storage.qualifications,
       openCampusEvents: storage.openCampusEvents,
+      profile: storage.profile,
+      setupCompleted: storage.setupCompleted,
     },
   };
 }
@@ -75,35 +77,36 @@ export function parseShinromiiBackupJson(raw: string): ParseBackupResult {
   } catch {
     return {
       ok: false,
-      error: "JSONの読み込みに失敗しました。SHINROMIIのバックアップJSONを選択してください。",
+      error:
+        "バックアップファイルを読み込めませんでした。SHINROMiiで作成したバックアップファイルか確認してください。",
     };
   }
 
   if (!isRecord(parsed)) {
     return {
       ok: false,
-      error: "バックアップの形式が正しくありません。",
+      error: "このファイルはSHINROMiiのバックアップとして読み込めませんでした。",
     };
   }
 
   if (parsed.app !== SHINROMII_BACKUP_APP) {
     return {
       ok: false,
-      error: "SHINROMII用バックアップではありません。",
+      error: "このファイルはSHINROMiiのバックアップではありません。",
     };
   }
 
   if (parsed.backupVersion !== SHINROMII_BACKUP_VERSION) {
     return {
       ok: false,
-      error: "このバックアップ形式には対応していません。",
+      error: "このバックアップには対応していません。SHINROMiiで保存したバックアップファイルか確認してください。",
     };
   }
 
   if (typeof parsed.createdAt !== "string" || typeof parsed.storageVersion !== "number") {
     return {
       ok: false,
-      error: "バックアップの基本情報が不足しています。",
+      error: "バックアップファイルの内容が足りないため、復元できませんでした。",
     };
   }
 
@@ -112,7 +115,7 @@ export function parseShinromiiBackupJson(raw: string): ParseBackupResult {
   if (!storage) {
     return {
       ok: false,
-      error: "バックアップ内のデータ構造が正しくありません。",
+      error: "バックアップファイルの内容を読み込めませんでした。",
     };
   }
 

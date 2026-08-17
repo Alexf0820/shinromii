@@ -1,6 +1,7 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState, type KeyboardEvent } from "react";
+import { CardActionBar } from "@/components/CardActionBar";
 import { SectionHeader } from "@/components/SectionHeader";
 import { ScoreSelector } from "@/components/ScoreSelector";
 import { UiIcon } from "@/components/UiIcon";
@@ -13,6 +14,13 @@ import {
   saveUniversitySortOrder,
 } from "@/lib/shinromii-storage";
 import type { UniversitySortOrder } from "@/lib/shinromii-storage";
+
+function handleCardKeyActivate(event: KeyboardEvent, action: () => void) {
+  if (event.key === "Enter" || event.key === " ") {
+    event.preventDefault();
+    action();
+  }
+}
 
 const evaluationOptions = ["かなり高い", "高い", "検討中", "低い"] as const;
 
@@ -74,6 +82,11 @@ function formFromCandidate(candidate: UniversityCandidate): CandidateFormState {
   };
 }
 
+/** Copy forms are keyed apart from edit forms so both can share editRefs. */
+function copyEditorKey(candidateId: string) {
+  return `copy-${candidateId}`;
+}
+
 function shorten(text: string, maxLength: number) {
   const normalized = text.replace(/\s+/g, " ").trim();
   return normalized.length > maxLength ? `${normalized.slice(0, maxLength)}...` : normalized;
@@ -93,8 +106,9 @@ function renderStars(score: number) {
 
 export function UniversityCandidatesClient() {
   const [candidates, setCandidates] = useState<UniversityCandidate[]>(initialCandidates);
-  const [selectedId, setSelectedId] = useState<string | null>(initialCandidates[0]?.id ?? null);
+  const [selectedId, setSelectedId] = useState<string | null>(null);
   const [editingId, setEditingId] = useState<string | null>(null);
+  const [copyingId, setCopyingId] = useState<string | null>(null);
   const [isCreating, setIsCreating] = useState(false);
   const [sortOrder, setSortOrder] = useState<UniversitySortOrder>("interest");
   const [form, setForm] = useState<CandidateFormState>(createEmptyForm());
@@ -104,7 +118,6 @@ export function UniversityCandidatesClient() {
   useEffect(() => {
     const storage = loadShinromiiStorage();
     setCandidates(storage.universityCandidates);
-    setSelectedId(storage.universityCandidates[0]?.id ?? null);
     setSortOrder(loadUniversitySortOrder());
   }, []);
 
@@ -132,11 +145,6 @@ export function UniversityCandidatesClient() {
     });
   }, [candidates, sortOrder]);
 
-  const selectedCandidate = useMemo(
-    () => candidates.find((item) => item.id === selectedId) ?? null,
-    [candidates, selectedId],
-  );
-
   function updateForm<K extends keyof CandidateFormState>(key: K, value: CandidateFormState[K]) {
     setForm((current) => ({
       ...current,
@@ -147,6 +155,7 @@ export function UniversityCandidatesClient() {
   function openCreate() {
     setIsCreating(true);
     setEditingId(null);
+    setCopyingId(null);
     setPendingEditScrollId(null);
     setForm(createEmptyForm());
   }
@@ -154,14 +163,26 @@ export function UniversityCandidatesClient() {
   function openEdit(candidate: UniversityCandidate) {
     setIsCreating(false);
     setEditingId(candidate.id);
+    setCopyingId(null);
     setSelectedId(null);
     setPendingEditScrollId(candidate.id);
+    setForm(formFromCandidate(candidate));
+  }
+
+  /** Prefills the add form from an existing candidate; nothing is saved yet. */
+  function openCopy(candidate: UniversityCandidate) {
+    setIsCreating(false);
+    setEditingId(null);
+    setCopyingId(candidate.id);
+    setSelectedId(null);
+    setPendingEditScrollId(copyEditorKey(candidate.id));
     setForm(formFromCandidate(candidate));
   }
 
   function closeEditor() {
     setIsCreating(false);
     setEditingId(null);
+    setCopyingId(null);
     setPendingEditScrollId(null);
     setForm(createEmptyForm());
   }
@@ -212,10 +233,10 @@ export function UniversityCandidatesClient() {
     saveUniversityCandidates(nextCandidates);
 
     if (selectedId === candidate.id) {
-      setSelectedId(nextCandidates[0]?.id ?? null);
+      setSelectedId(null);
     }
 
-    if (editingId === candidate.id) {
+    if (editingId === candidate.id || copyingId === candidate.id) {
       closeEditor();
     }
   }
@@ -226,7 +247,7 @@ export function UniversityCandidatesClient() {
   }
 
   function toggleDetail(id: string) {
-    if (editingId) {
+    if (editingId || copyingId) {
       closeEditor();
     }
 
@@ -387,41 +408,41 @@ export function UniversityCandidatesClient() {
 
   function renderCandidateDetail(candidate: UniversityCandidate) {
     return (
-      <section className="detail-card inline-detail-card">
-        <div className="detail-section-header">
-          <div>
-            <p className="eyebrow">候補詳細</p>
-            <p className="item-title">{candidate.university}</p>
-            <p className="item-subtitle">
+      <section className="uni-detail-card inline-detail-card">
+        <div className="uni-detail-head">
+          <div className="uni-detail-heading">
+            <p className="uni-detail-eyebrow">候補詳細</p>
+            <p className="uni-detail-name">{candidate.university}</p>
+            <p className="uni-detail-faculty">
               {candidate.faculty}
               {candidate.department ? ` / ${candidate.department}` : ""}
             </p>
           </div>
-          <div className="score-display">
+          <div className="uni-detail-score">
             {renderStars(candidate.interest)}
-            <span className="item-subtitle">{candidate.interest.toFixed(1)}</span>
+            <span className="uni-detail-score-value">{candidate.interest.toFixed(1)}</span>
           </div>
         </div>
 
-        <div className="detail-section-list top-gap">
-          <section className="detail-section">
-            <p className="feedback-label">基本情報</p>
-            <div className="detail-entry top-gap">
-              <span className="detail-entry-label">大学名</span>
-              <span className="detail-entry-value">{candidate.university}</span>
+        <div className="uni-detail-sections">
+          <section className="uni-detail-section">
+            <p className="uni-detail-section-title">基本情報</p>
+            <div className="uni-detail-entry">
+              <span className="uni-detail-entry-label">大学名</span>
+              <span className="uni-detail-entry-value">{candidate.university}</span>
             </div>
-            <div className="detail-entry">
-              <span className="detail-entry-label">学部・学科</span>
-              <span className="detail-entry-value">
+            <div className="uni-detail-entry">
+              <span className="uni-detail-entry-label">学部・学科</span>
+              <span className="uni-detail-entry-value">
                 {candidate.faculty}
                 {candidate.department ? ` / ${candidate.department}` : ""}
               </span>
             </div>
-            <div className="detail-entry">
-              <span className="detail-entry-label">URL</span>
-              <span className="detail-entry-value">
+            <div className="uni-detail-entry">
+              <span className="uni-detail-entry-label">URL</span>
+              <span className="uni-detail-entry-value">
                 {candidate.url ? (
-                  <a className="text-link inline-link" href={candidate.url}>
+                  <a className="uni-detail-link" href={candidate.url}>
                     {candidate.url}
                   </a>
                 ) : (
@@ -431,45 +452,45 @@ export function UniversityCandidatesClient() {
             </div>
           </section>
 
-          <section className="detail-section">
-            <p className="feedback-label">評価</p>
-            <div className="detail-entry top-gap">
-              <span className="detail-entry-label">気になる度</span>
-              <span className="detail-entry-value">{renderStars(candidate.interest)}</span>
+          <section className="uni-detail-section">
+            <p className="uni-detail-section-title">評価</p>
+            <div className="uni-detail-entry">
+              <span className="uni-detail-entry-label">気になる度</span>
+              <span className="uni-detail-entry-value">{renderStars(candidate.interest)}</span>
             </div>
-            <div className="detail-entry">
-              <span className="detail-entry-label">本人評価</span>
-              <span className="detail-entry-value">{candidate.studentScore}</span>
+            <div className="uni-detail-entry">
+              <span className="uni-detail-entry-label">本人評価</span>
+              <span className="uni-detail-entry-value">{candidate.studentScore}</span>
             </div>
-            <div className="detail-entry">
-              <span className="detail-entry-label">家族評価</span>
-              <span className="detail-entry-value">{candidate.familyScore}</span>
+            <div className="uni-detail-entry">
+              <span className="uni-detail-entry-label">家族評価</span>
+              <span className="uni-detail-entry-value">{candidate.familyScore}</span>
             </div>
           </section>
 
-          <section className="detail-section">
-            <p className="feedback-label">メモ</p>
-            <div className="detail-entry top-gap">
-              <span className="detail-entry-label">本人メモ</span>
-              <span className="detail-entry-value preserve-lines">
+          <section className="uni-detail-section">
+            <p className="uni-detail-section-title">メモ</p>
+            <div className="uni-detail-entry">
+              <span className="uni-detail-entry-label">本人メモ</span>
+              <span className="uni-detail-entry-value preserve-lines">
                 {candidate.studentView || "まだ入力されていません"}
               </span>
             </div>
-            <div className="detail-entry">
-              <span className="detail-entry-label">家族メモ</span>
-              <span className="detail-entry-value preserve-lines">
+            <div className="uni-detail-entry">
+              <span className="uni-detail-entry-label">家族メモ</span>
+              <span className="uni-detail-entry-value preserve-lines">
                 {candidate.familyView || "まだ入力されていません"}
               </span>
             </div>
-            <div className="detail-entry">
-              <span className="detail-entry-label">志望理由</span>
-              <span className="detail-entry-value preserve-lines">
+            <div className="uni-detail-entry">
+              <span className="uni-detail-entry-label">志望理由</span>
+              <span className="uni-detail-entry-value preserve-lines">
                 {candidate.reason || "まだ入力されていません"}
               </span>
             </div>
-            <div className="detail-entry">
-              <span className="detail-entry-label">将来メモ</span>
-              <span className="detail-entry-value preserve-lines">
+            <div className="uni-detail-entry">
+              <span className="uni-detail-entry-label">将来メモ</span>
+              <span className="uni-detail-entry-value preserve-lines">
                 {candidate.futureNote || "まだ入力されていません"}
               </span>
             </div>
@@ -479,8 +500,10 @@ export function UniversityCandidatesClient() {
     );
   }
 
+  const openEditorKey = editingId ?? (copyingId ? copyEditorKey(copyingId) : null);
+
   useEffect(() => {
-    if (!pendingEditScrollId || pendingEditScrollId !== editingId) {
+    if (!pendingEditScrollId || pendingEditScrollId !== openEditorKey) {
       return;
     }
 
@@ -499,147 +522,152 @@ export function UniversityCandidatesClient() {
     });
 
     return () => window.cancelAnimationFrame(frame);
-  }, [editingId, pendingEditScrollId]);
+  }, [openEditorKey, pendingEditScrollId]);
 
   return (
-    <div className="page-stack">
-      <section className="page-hero tone-university">
-        <div className="page-hero-copy">
-          <p className="eyebrow">大学・学部候補</p>
-          <h2 className="hero-title">候補を比べて、気持ちを整理する。</h2>
-          <p className="hero-description">
-            気になる度、本人評価、家族評価をカード単位で見渡しやすくまとめます。
-          </p>
-          <div className="hero-stats-inline">
-            <span className="hero-stat-chip">
-              <strong>{candidates.length}校</strong>
-              <span className="item-subtitle">保存済み</span>
-            </span>
-            <span className="hero-stat-chip">
-              <strong>{selectedCandidate ? selectedCandidate.university : "未選択"}</strong>
-              <span className="item-subtitle">現在の詳細</span>
-            </span>
+    <div className="uni-page">
+      <section className="list-section">
+        <div className="list-section-head">
+          <div className="list-section-copy">
+            <h2 className="list-section-title">大学・学部候補</h2>
+            <p className="list-section-note">{candidates.length}校を保存中</p>
           </div>
-        </div>
-      </section>
-
-      <section className="panel">
-        <div className="row-between gap-sm align-start">
-          <div className="compare-header no-margin">
-            <span className="soft-pill">localStorage 保存</span>
-            <p className="muted-text">
-              候補の追加、詳細確認、編集、削除、並び替えまでできます。
-            </p>
-          </div>
-          <button type="button" className="action-button primary" onClick={openCreate}>
-            <UiIcon name="plus" className="action-icon" />
-            候補を追加
+          <button
+            type="button"
+            className="list-add-button"
+            onClick={openCreate}
+            aria-label="候補を追加"
+          >
+            <UiIcon name="plus" className="list-add-icon" />
           </button>
         </div>
-      </section>
 
-      {isCreating
-        ? renderCandidateEditor("候補を追加", "実際の進路検討で見返しやすい内容だけを入力")
-        : null}
+        <label className="uni-sort">
+          <span className="uni-sort-label">並び順</span>
+          <select
+            className="uni-sort-select"
+            value={sortOrder}
+            onChange={(event) => handleSortChange(event.target.value as UniversitySortOrder)}
+          >
+            <option value="interest">気になる度が高い順</option>
+            <option value="newest">新しい順</option>
+            <option value="oldest">古い順</option>
+            <option value="name">大学名順</option>
+          </select>
+        </label>
 
-      <section className="panel">
-        <SectionHeader title="候補一覧" description="比較しやすい順に並べ替えながら見返せます" />
-        <div className="sort-bar">
-          <label className="sort-control">
-            <span className="field-label">並び順</span>
-            <select
-              className="text-input"
-              value={sortOrder}
-              onChange={(event) => handleSortChange(event.target.value as UniversitySortOrder)}
-            >
-              <option value="interest">気になる度が高い順</option>
-              <option value="newest">新しい順</option>
-              <option value="oldest">古い順</option>
-              <option value="name">大学名順</option>
-            </select>
-          </label>
-        </div>
+        {isCreating
+          ? renderCandidateEditor("候補を追加", "実際の進路検討で見返しやすい内容だけを入力")
+          : null}
 
-        <div className="list-stack">
-          {sortedCandidates.map((item) => (
-            <div key={item.id} className="detail-stack">
-              <article
-                className={`candidate-card tone-university ${selectedId === item.id ? "selected-card" : ""}`}
-              >
-                <div className="candidate-topline">
-                  <div className="candidate-main">
-                    <span className="candidate-icon-badge">
-                      <UiIcon name="university" className="list-item-icon" />
-                    </span>
-                    <div className="candidate-summary">
-                      <p className="item-title">{item.university}</p>
-                      <p className="item-subtitle">
-                        {item.faculty}
-                        {item.department ? ` / ${item.department}` : ""}
-                      </p>
+        <div className="uni-list">
+          {sortedCandidates.length === 0 ? (
+            <div className="empty-state">
+              <p className="item-title small">まだ大学・学部候補はありません</p>
+              <p className="muted-text">気になる大学から気軽に登録できます。</p>
+            </div>
+          ) : (
+            sortedCandidates.map((item) => (
+              <div key={item.id} className="detail-stack uni-stack">
+                <article
+                  className={`uni-card ${selectedId === item.id || editingId === item.id ? "is-open" : ""}`}
+                >
+                  <div
+                    className="card-tap-area"
+                    role="button"
+                    tabIndex={0}
+                    aria-expanded={selectedId === item.id}
+                    aria-label={`${item.university}の詳細`}
+                    onClick={() => toggleDetail(item.id)}
+                    onKeyDown={(event) => handleCardKeyActivate(event, () => toggleDetail(item.id))}
+                  >
+                    <div className="uni-card-head">
+                      <span className="uni-card-icon">
+                        <UiIcon name="university" className="uni-card-icon-svg" />
+                      </span>
+                      <div className="uni-card-copy">
+                        <p className="uni-card-name">{item.university}</p>
+                        <p className="uni-card-faculty">
+                          {item.faculty}
+                          {item.department ? ` / ${item.department}` : ""}
+                        </p>
+                      </div>
+                      <span className="heart-shell" aria-hidden="true">
+                        ♡
+                      </span>
                     </div>
+
+                    <div className="uni-card-score">
+                      {renderStars(item.interest)}
+                      <span className="uni-card-score-value">{item.interest.toFixed(1)}</span>
+                    </div>
+
+                    <div className="uni-card-badges">
+                      <span className="pill-person">本人 {item.studentScore}</span>
+                      <span className="pill-family">家族 {item.familyScore}</span>
+                      <span className="pill-updated">
+                        最終更新 {item.createdAt.replaceAll("-", "/")}
+                      </span>
+                    </div>
+
+                    <p className="uni-card-memo">
+                      <span className="uni-card-memo-label">本人メモ</span>
+                      {item.studentView ? shorten(item.studentView, 88) : "まだ入力されていません"}
+                    </p>
                   </div>
-                  <span className="heart-shell" aria-hidden="true">
-                    ♡
-                  </span>
-                </div>
 
-                <div className="score-display">
-                  {renderStars(item.interest)}
-                  <span className="item-subtitle">{item.interest.toFixed(1)}</span>
-                </div>
-
-                <div className="badge-row">
-                  <span className="pill-person">本人 {item.studentScore}</span>
-                  <span className="pill-family">家族 {item.familyScore}</span>
-                  <span className="pill-updated">最終更新 {item.createdAt.replaceAll("-", "/")}</span>
-                </div>
-
-                <div className="note-card">
-                  <p className="feedback-label">本人メモ</p>
-                  <p>{item.studentView ? shorten(item.studentView, 88) : "まだ入力されていません"}</p>
-                </div>
-
-                <div className="list-actions">
                   {item.url ? (
-                    <a className="card-action subtle" href={item.url}>
-                      <UiIcon name="link" className="action-icon" />
+                    <a className="uni-card-link" href={item.url} onClick={(event) => event.stopPropagation()}>
+                      <UiIcon name="link" className="subject-action-icon" />
                       大学ページを見る
                     </a>
                   ) : null}
-                  <button
-                    type="button"
-                    className="card-action subtle"
-                    onClick={() => toggleDetail(item.id)}
-                  >
-                    <UiIcon name="detail" className="action-icon" />
-                    {selectedId === item.id ? "詳細を閉じる" : "詳細"}
-                  </button>
-                  <button
-                    type="button"
-                    className="card-action subtle"
-                    onClick={() => (editingId === item.id ? closeEditor() : openEdit(item))}
-                  >
-                    <UiIcon name="edit" className="action-icon" />
-                    {editingId === item.id ? "編集を閉じる" : "編集"}
-                  </button>
-                  <button type="button" className="card-action danger" onClick={() => handleDelete(item)}>
-                    <UiIcon name="delete" className="action-icon" />
-                    削除
-                  </button>
-                </div>
-              </article>
 
-              {selectedId === item.id ? renderCandidateDetail(item) : null}
-              {editingId === item.id
-                ? renderCandidateEditor(
-                    `${item.university}を編集`,
-                    "実際の進路検討で見返しやすい内容だけを入力",
-                    item.id,
-                  )
-                : null}
-            </div>
-          ))}
+                  <CardActionBar
+                    actions={[
+                      {
+                        icon: "detail",
+                        label: selectedId === item.id ? "閉じる" : "詳細",
+                        onClick: () => toggleDetail(item.id),
+                      },
+                      {
+                        icon: "edit",
+                        label: editingId === item.id ? "閉じる" : "編集",
+                        onClick: () => (editingId === item.id ? closeEditor() : openEdit(item)),
+                      },
+                      {
+                        icon: "copy",
+                        label: copyingId === item.id ? "閉じる" : "コピー",
+                        onClick: () => (copyingId === item.id ? closeEditor() : openCopy(item)),
+                      },
+                      {
+                        icon: "delete",
+                        label: "削除",
+                        onClick: () => handleDelete(item),
+                        variant: "danger",
+                      },
+                    ]}
+                  />
+                </article>
+
+                {selectedId === item.id ? renderCandidateDetail(item) : null}
+                {editingId === item.id
+                  ? renderCandidateEditor(
+                      `${item.university}を編集`,
+                      "実際の進路検討で見返しやすい内容だけを入力",
+                      item.id,
+                    )
+                  : null}
+                {copyingId === item.id
+                  ? renderCandidateEditor(
+                      `${item.university}をコピーして追加`,
+                      "学部・学科などを変更して保存すると、新しい候補として追加されます",
+                      copyEditorKey(item.id),
+                    )
+                  : null}
+              </div>
+            ))
+          )}
         </div>
       </section>
     </div>

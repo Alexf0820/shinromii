@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
+import { CardActionBar } from "@/components/CardActionBar";
 import { SectionHeader } from "@/components/SectionHeader";
 import { UiIcon } from "@/components/UiIcon";
 import { gradeRecords as initialGradeRecords, qualifications as initialQualifications } from "@/data/mockData";
@@ -11,6 +12,14 @@ import type {
   QualificationRecord,
   QualificationStatus,
 } from "@/data/mockData";
+import {
+  examCount,
+  examTotal,
+  gradeFromExamScores,
+  hasAnyExamScore,
+  normalizeExamScores,
+} from "@/lib/grading-rule";
+import type { ExamScores } from "@/lib/grading-rule";
 import {
   loadShinromiiStorage,
   saveGradeRecords,
@@ -40,6 +49,8 @@ type GradeFormState = {
   subject: string;
   grade: number;
   memo: string;
+  midtermScore: string;
+  finalScore: string;
 };
 
 type QualificationFormState = {
@@ -69,7 +80,36 @@ function createEmptyGradeForm(): GradeFormState {
     subject: "",
     grade: 3,
     memo: "",
+    midtermScore: "",
+    finalScore: "",
   };
+}
+
+function parseScoreInput(value: string): number | null {
+  const trimmed = value.trim();
+
+  if (!trimmed) {
+    return null;
+  }
+
+  const parsed = Number(trimmed);
+
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
+function formScores(form: GradeFormState): ExamScores {
+  return {
+    midterm: parseScoreInput(form.midtermScore),
+    final: parseScoreInput(form.finalScore),
+  };
+}
+
+function recordScores(record: GradeRecord) {
+  return normalizeExamScores(record.scores);
+}
+
+function formatScore(score: number | null) {
+  return score === null ? "未実施" : `${score}点`;
 }
 
 function createEmptyQualificationForm(): QualificationFormState {
@@ -83,12 +123,16 @@ function createEmptyQualificationForm(): QualificationFormState {
 }
 
 function formFromGradeRecord(record: GradeRecord): GradeFormState {
+  const scores = recordScores(record);
+
   return {
     schoolYear: record.schoolYear,
     term: record.term,
     subject: record.subject,
     grade: record.grade,
     memo: record.memo,
+    midtermScore: scores?.midterm === null || scores?.midterm === undefined ? "" : String(scores.midterm),
+    finalScore: scores?.final === null || scores?.final === undefined ? "" : String(scores.final),
   };
 }
 
@@ -172,7 +216,10 @@ function qualificationStatusClass(status: QualificationStatus) {
   return "considering";
 }
 
+type GradesTab = "grades" | "qualifications";
+
 export function GradesClient() {
+  const [activeTab, setActiveTab] = useState<GradesTab>("grades");
   const [gradeRecords, setGradeRecords] = useState<GradeRecord[]>(initialGradeRecords);
   const [qualifications, setQualifications] = useState<QualificationRecord[]>(initialQualifications);
   const [selectedGradeId, setSelectedGradeId] = useState<string | null>(null);
@@ -251,10 +298,9 @@ export function GradesClient() {
   }, [sortedGradeRecords]);
 
   const latestGroup = gradeGroups[0] ?? null;
-  const latestQualification = sortedQualifications[0] ?? null;
 
-  const summaryCards = useMemo(() => {
-    const cards: { label: string; value: string; note: string }[] = [];
+  const summaryStats = useMemo(() => {
+    const stats: { label: string; value: string }[] = [];
     const overallAverage = average(gradeRecords.map((item) => item.grade));
 
     schoolYearOptions.forEach((schoolYear) => {
@@ -263,36 +309,56 @@ export function GradesClient() {
       );
 
       if (yearAverage !== null) {
-        cards.push({
+        stats.push({
           label: `${schoolYear}平均`,
           value: formatAverage(yearAverage),
-          note: `${schoolYear}の登録科目`,
         });
       }
     });
 
-    cards.push({
-      label: "記録済み資格",
-      value: `${qualifications.length}件`,
-      note: qualifications.length > 0 ? "資格・検定" : "まだ未登録",
-    });
-
     if (overallAverage !== null) {
-      cards.push({
-        label: "全期間平均",
+      stats.push({
+        label: "全期間",
         value: formatAverage(overallAverage),
-        note: `${gradeRecords.length}件から算出`,
       });
     }
 
-    return cards;
-  }, [gradeRecords, qualifications.length]);
+    return stats;
+  }, [gradeRecords]);
+
+  const gradeFormScoreNote = useMemo(() => {
+    const scores = formScores(gradeForm);
+    const autoGrade = gradeFromExamScores(scores);
+
+    if (autoGrade === null) {
+      return "得点を入力すると評定を自動計算します。中間が実施されていない科目は空欄のままにしてください。";
+    }
+
+    const total = examTotal(scores);
+
+    if (examCount(scores) >= 2) {
+      return `中間 ${scores.midterm} ＋ 期末 ${scores.final} = 合計 ${total}点 → 評定 ${autoGrade}`;
+    }
+
+    const label = scores.midterm === null ? "期末のみ" : "中間のみ";
+
+    return `${label} ${total}点 → 評定 ${autoGrade}`;
+  }, [gradeForm]);
 
   function updateGradeForm<K extends keyof GradeFormState>(key: K, value: GradeFormState[K]) {
     setGradeForm((current) => ({
       ...current,
       [key]: value,
     }));
+  }
+
+  function updateGradeScore(key: "midtermScore" | "finalScore", value: string) {
+    setGradeForm((current) => {
+      const next = { ...current, [key]: value };
+      const autoGrade = gradeFromExamScores(formScores(next));
+
+      return autoGrade === null ? next : { ...next, grade: autoGrade };
+    });
   }
 
   function updateQualificationForm<K extends keyof QualificationFormState>(
@@ -339,15 +405,19 @@ export function GradesClient() {
       ? gradeRecords.find((item) => item.id === gradeEditingId) ?? null
       : null;
 
+    const scores = formScores(gradeForm);
+    const autoGrade = gradeFromExamScores(scores);
+
     const nextRecord: GradeRecord = {
       id: gradeEditingId ?? createId("grade"),
       schoolYear: gradeForm.schoolYear,
       term: gradeForm.term,
       subject: gradeForm.subject.trim(),
-      grade: gradeForm.grade,
+      grade: autoGrade ?? gradeForm.grade,
       memo: gradeForm.memo.trim(),
       createdAt: currentRecord?.createdAt ?? now,
       updatedAt: now,
+      ...(hasAnyExamScore(scores) ? { scores } : {}),
     };
 
     const nextRecords = gradeEditingId
@@ -473,6 +543,43 @@ export function GradesClient() {
     });
   }
 
+  function renderGradeScoreSection(record: GradeRecord) {
+    const scores = recordScores(record);
+
+    if (!scores) {
+      return null;
+    }
+
+    const total = examTotal(scores);
+    const autoGrade = gradeFromExamScores(scores);
+
+    return (
+      <section className="detail-section">
+        <p className="feedback-label">テストの得点</p>
+        <div className="detail-entry top-gap">
+          <span className="detail-entry-label">中間</span>
+          <span className="detail-entry-value">{formatScore(scores.midterm)}</span>
+        </div>
+        <div className="detail-entry">
+          <span className="detail-entry-label">期末</span>
+          <span className="detail-entry-value">{formatScore(scores.final)}</span>
+        </div>
+        <div className="detail-entry">
+          <span className="detail-entry-label">合計</span>
+          <span className="detail-entry-value">
+            {total}点（{examCount(scores)}回受験）
+          </span>
+        </div>
+        {autoGrade === null ? null : (
+          <div className="detail-entry">
+            <span className="detail-entry-label">自動評定</span>
+            <span className="detail-entry-value">{autoGrade}</span>
+          </div>
+        )}
+      </section>
+    );
+  }
+
   function renderGradeDetail(record: GradeRecord) {
     return (
       <section
@@ -512,6 +619,8 @@ export function GradesClient() {
               <span className="detail-entry-value">{record.grade}</span>
             </div>
           </section>
+
+          {renderGradeScoreSection(record)}
 
           <section className="detail-section">
             <p className="feedback-label">メモ</p>
@@ -607,6 +716,32 @@ export function GradesClient() {
               </select>
             </label>
           </div>
+
+          <div className="field-grid">
+            <label className="field-block">
+              <span className="field-label">中間（未実施なら空欄）</span>
+              <input
+                className="text-input"
+                type="number"
+                inputMode="numeric"
+                value={gradeForm.midtermScore}
+                onChange={(event) => updateGradeScore("midtermScore", event.target.value)}
+              />
+            </label>
+
+            <label className="field-block">
+              <span className="field-label">期末</span>
+              <input
+                className="text-input"
+                type="number"
+                inputMode="numeric"
+                value={gradeForm.finalScore}
+                onChange={(event) => updateGradeScore("finalScore", event.target.value)}
+              />
+            </label>
+          </div>
+
+          <p className="field-help">{gradeFormScoreNote}</p>
 
           <label className="field-block">
             <span className="field-label">メモ（任意）</span>
@@ -791,240 +926,220 @@ export function GradesClient() {
   }, [pendingQualificationEditScrollId, qualificationEditingId]);
 
   return (
-    <div className="page-stack">
-      <section className="page-hero tone-grades">
-        <div className="page-hero-copy">
-          <p className="eyebrow">成績・資格</p>
-          <h2 className="hero-title">評定平均と資格の現在地を、毎日見やすく。</h2>
-          <p className="hero-description">
-            学年・学期ごとの評定と資格の進み具合を、スマホで見返しやすい形に整理します。
-          </p>
-        </div>
-      </section>
+    <div className="grades-page">
+      <div className="grades-tabs" role="tablist" aria-label="成績・資格の表示切り替え">
+        <button
+          type="button"
+          role="tab"
+          aria-selected={activeTab === "grades"}
+          className={`grades-tab ${activeTab === "grades" ? "active" : ""}`}
+          onClick={() => setActiveTab("grades")}
+        >
+          評定
+        </button>
+        <button
+          type="button"
+          role="tab"
+          aria-selected={activeTab === "qualifications"}
+          className={`grades-tab ${activeTab === "qualifications" ? "active" : ""}`}
+          onClick={() => setActiveTab("qualifications")}
+        >
+          資格・検定
+        </button>
+      </div>
 
-      <section className="summary-focus-card">
-        <p className="metric-label">現在の評定平均</p>
-        <p className="metric-value">{latestGroup ? formatAverage(latestGroup.average) : "-"}</p>
-        <p className="muted-text">
-          {latestGroup ? `${latestGroup.schoolYear} ${latestGroup.term}` : "まだ評定データはありません"}
-        </p>
-      </section>
-
-      <section className="summary-grid">
-        {summaryCards.map((item) => (
-          <article key={item.label} className="summary-card tone-grades">
-            <p className="metric-label">{item.label}</p>
-            <p className="stat-value">{item.value}</p>
-            <p className="muted-text">{item.note}</p>
-          </article>
-        ))}
-      </section>
-
-      <section className="panel">
-        <SectionHeader title="最近の資格" description="直近で登録した資格・検定を上部で確認" />
-        {latestQualification ? (
-          <article className="list-card qualification-card">
-            <div className="row-between gap-sm align-start">
-              <div>
-                <p className="item-title">{latestQualification.name}</p>
-                <p className="item-subtitle">{latestQualification.scoreOrLevel}</p>
-              </div>
-              <span className={`status-pill ${qualificationStatusClass(latestQualification.status)}`}>
-                {latestQualification.status}
-              </span>
-            </div>
-            <div className="qualification-meta">
-              <span className="mini-badge">{formatDate(latestQualification.examDate)}</span>
-            </div>
-            <p className="muted-text">{latestQualification.memo || "メモはまだ入力されていません"}</p>
-          </article>
-        ) : (
-          <div className="empty-state">
-            <p className="item-title small">まだ資格・検定の記録はありません</p>
-            <p className="muted-text">下の「資格を追加」から記録を始められます。</p>
-          </div>
-        )}
-      </section>
-
-      <section ref={gradesSectionRef} id="grades" className="panel">
-        <div className="row-between gap-sm align-start">
-          <div className="compare-header no-margin">
-            <span className="soft-pill">localStorage 保存</span>
-            <p className="muted-text">
-              学年・学期ごとに評定を記録し、自動で平均を確認できます。
+      {activeTab === "grades" ? (
+        <>
+          <section className="grade-summary-card">
+            <p className="grade-summary-label">最新の評定平均</p>
+            <p className="grade-summary-value">
+              {latestGroup ? formatAverage(latestGroup.average) : "-"}
             </p>
-          </div>
-          <button type="button" className="action-button primary" onClick={openCreateGrade}>
-            <UiIcon name="plus" className="action-icon" />
-            評定を追加
-          </button>
-        </div>
-      </section>
-
-      {isCreatingGrade
-        ? renderGradeEditor("評定を追加", "学年・学期・科目ごとにあとから編集できます")
-        : null}
-
-      <section className="panel">
-        <SectionHeader
-          title="学年・学期ごとの記録"
-          description="高3から高1の順で、同じ学年内は新しい学期を上に表示"
-        />
-        <div className="record-list">
-          {gradeGroups.length === 0 ? (
-            <div className="empty-state">
-              <p className="item-title small">まだ評定の記録はありません</p>
-              <p className="muted-text">最初の学期と科目を登録すると平均も自動表示されます。</p>
-            </div>
-          ) : (
-            gradeGroups.map((group, index) => (
-              <article key={group.key} className="term-card">
-                <div className="term-card-header">
-                  <div>
-                    <p className="item-title">
-                      {group.schoolYear} {group.term}
-                    </p>
-                    <p className="item-subtitle">{group.records.length}科目</p>
+            <p className="grade-summary-note">
+              {latestGroup
+                ? `${latestGroup.schoolYear} ${latestGroup.term}`
+                : "まだ評定データはありません"}
+            </p>
+            {summaryStats.length > 0 ? (
+              <div className="grade-summary-row">
+                {summaryStats.map((item) => (
+                  <div key={item.label} className="grade-summary-stat">
+                    <span className="grade-summary-stat-label">{item.label}</span>
+                    <span className="grade-summary-stat-value">{item.value}</span>
                   </div>
-                  <div>
-                    {index === 0 ? <span className="soft-pill">最新</span> : null}
-                    <p className="term-average-large">{formatAverage(group.average)}</p>
-                  </div>
-                </div>
-
-                <div className="list-stack top-gap">
-                  {group.records.map((record) => (
-                    <div key={record.id} className="detail-stack">
-                      <article className="record-row">
-                        <div>
-                          <p className="item-title small">{record.subject}</p>
-                          <p className="item-subtitle">
-                            {record.memo || "メモはまだ入力されていません"}
-                          </p>
-                        </div>
-                        <span className="record-grade-badge">{record.grade}</span>
-                        <div className="list-actions">
-                          <button
-                            type="button"
-                            className="card-action subtle"
-                            onClick={() => toggleGradeDetail(record.id)}
-                          >
-                            <UiIcon name="detail" className="action-icon" />
-                            {selectedGradeId === record.id ? "詳細を閉じる" : "詳細"}
-                          </button>
-                          <button
-                            type="button"
-                            className="card-action subtle"
-                            onClick={() =>
-                              gradeEditingId === record.id ? closeGradeEditor() : openEditGrade(record)
-                            }
-                          >
-                            <UiIcon name="edit" className="action-icon" />
-                            {gradeEditingId === record.id ? "編集を閉じる" : "編集"}
-                          </button>
-                          <button type="button" className="card-action danger" onClick={() => handleDeleteGrade(record)}>
-                            <UiIcon name="delete" className="action-icon" />
-                            削除
-                          </button>
-                        </div>
-                      </article>
-
-                      {selectedGradeId === record.id ? renderGradeDetail(record) : null}
-                      {gradeEditingId === record.id
-                        ? renderGradeEditor(
-                            `${record.subject}を編集`,
-                            "学年・学期・科目ごとにあとから編集できます",
-                            record.id,
-                          )
-                        : null}
-                    </div>
-                  ))}
-                </div>
-              </article>
-            ))
-          )}
-        </div>
-      </section>
-
-      <section className="panel">
-        <div className="row-between gap-sm align-start">
-          <div className="compare-header no-margin">
-            <span className="soft-pill">資格・検定</span>
-            <p className="muted-text">英検以外も含めて、状態付きで一覧管理できます。</p>
-          </div>
-          <button type="button" className="action-button primary" onClick={openCreateQualification}>
-            <UiIcon name="plus" className="action-icon" />
-            資格を追加
-          </button>
-        </div>
-      </section>
-
-      {isCreatingQualification
-        ? renderQualificationEditor("資格を追加", "取得済み、受験予定、結果待ちを分けて保存")
-        : null}
-
-      <section className="panel">
-        <SectionHeader title="資格・検定一覧" description="日付の新しい順で表示" />
-        <div className="list-stack">
-          {sortedQualifications.length === 0 ? (
-            <div className="empty-state">
-              <p className="item-title small">まだ資格・検定の記録はありません</p>
-              <p className="muted-text">受験予定からでも先に登録できます。</p>
-            </div>
-          ) : (
-            sortedQualifications.map((record) => (
-              <div key={record.id} className="detail-stack">
-                <article className="list-card qualification-card">
-                  <div className="row-between gap-sm align-start">
-                    <div>
-                      <p className="item-title">{record.name}</p>
-                      <p className="item-subtitle">{record.scoreOrLevel}</p>
-                    </div>
-                    <span className={`status-pill ${qualificationStatusClass(record.status)}`}>
-                      {record.status}
-                    </span>
-                  </div>
-                  <div className="qualification-meta">
-                    <span className="mini-badge">{formatDate(record.examDate)}</span>
-                    <span className="mini-badge">{record.scoreOrLevel}</span>
-                  </div>
-                  <p className="muted-text">{record.memo || "メモはまだ入力されていません"}</p>
-                  <div className="list-actions">
-                    <button
-                      type="button"
-                      className="card-action subtle"
-                      onClick={() =>
-                        qualificationEditingId === record.id
-                          ? closeQualificationEditor()
-                          : openEditQualification(record)
-                      }
-                    >
-                      <UiIcon name="edit" className="action-icon" />
-                      {qualificationEditingId === record.id ? "編集を閉じる" : "編集"}
-                    </button>
-                    <button
-                      type="button"
-                      className="card-action danger"
-                      onClick={() => handleDeleteQualification(record)}
-                    >
-                      <UiIcon name="delete" className="action-icon" />
-                      削除
-                    </button>
-                  </div>
-                </article>
-
-                {qualificationEditingId === record.id
-                  ? renderQualificationEditor(
-                      `${record.name}を編集`,
-                      "取得済み、受験予定、結果待ちを分けて保存",
-                      record.id,
-                    )
-                  : null}
+                ))}
               </div>
-            ))
-          )}
-        </div>
-      </section>
+            ) : null}
+          </section>
+
+          <section ref={gradesSectionRef} id="grades" className="grades-section">
+            <div className="grades-section-head">
+              <div className="grades-section-copy">
+                <h2 className="grades-section-title">学年・学期ごとの記録</h2>
+                <p className="grades-section-note">高3から高1の順で表示</p>
+              </div>
+              <button
+                type="button"
+                className="grades-add-button"
+                onClick={openCreateGrade}
+                aria-label="評定を追加"
+              >
+                <UiIcon name="plus" className="grades-add-icon" />
+              </button>
+            </div>
+
+            {isCreatingGrade
+              ? renderGradeEditor("評定を追加", "学年・学期・科目ごとにあとから編集できます")
+              : null}
+
+            <div className="term-list">
+              {gradeGroups.length === 0 ? (
+                <div className="empty-state">
+                  <p className="item-title small">まだ評定の記録はありません</p>
+                  <p className="muted-text">最初の学期と科目を登録すると平均も自動表示されます。</p>
+                </div>
+              ) : (
+                gradeGroups.map((group, index) => (
+                  <article key={group.key} className="term-card">
+                    <div className="term-card-head">
+                      <div className="term-card-heading">
+                        <p className="term-card-name">
+                          {group.schoolYear} {group.term}
+                          {index === 0 ? <span className="term-latest-badge">最新</span> : null}
+                        </p>
+                        <p className="term-card-count">{group.records.length}科目</p>
+                      </div>
+                      <p className="term-card-average">{formatAverage(group.average)}</p>
+                    </div>
+
+                    <div className="subject-list">
+                      {group.records.map((record) => (
+                        <div key={record.id} className="detail-stack subject-stack">
+                          <article className="subject-row">
+                            <div className="subject-row-head">
+                              <p className="subject-name">{record.subject}</p>
+                              <span className="subject-grade">{record.grade}</span>
+                            </div>
+                            {record.memo ? <p className="subject-memo">{record.memo}</p> : null}
+                            <CardActionBar
+                              actions={[
+                                {
+                                  icon: "detail",
+                                  label: selectedGradeId === record.id ? "閉じる" : "詳細",
+                                  onClick: () => toggleGradeDetail(record.id),
+                                },
+                                {
+                                  icon: "edit",
+                                  label: gradeEditingId === record.id ? "閉じる" : "編集",
+                                  onClick: () =>
+                                    gradeEditingId === record.id
+                                      ? closeGradeEditor()
+                                      : openEditGrade(record),
+                                },
+                                {
+                                  icon: "delete",
+                                  label: "削除",
+                                  onClick: () => handleDeleteGrade(record),
+                                  variant: "danger",
+                                },
+                              ]}
+                            />
+                          </article>
+
+                          {selectedGradeId === record.id ? renderGradeDetail(record) : null}
+                          {gradeEditingId === record.id
+                            ? renderGradeEditor(
+                                `${record.subject}を編集`,
+                                "学年・学期・科目ごとにあとから編集できます",
+                                record.id,
+                              )
+                            : null}
+                        </div>
+                      ))}
+                    </div>
+                  </article>
+                ))
+              )}
+            </div>
+          </section>
+        </>
+      ) : (
+        <section className="grades-section">
+          <div className="grades-section-head">
+            <div className="grades-section-copy">
+              <h2 className="grades-section-title">資格・検定</h2>
+              <p className="grades-section-note">日付の新しい順で表示</p>
+            </div>
+            <button
+              type="button"
+              className="grades-add-button"
+              onClick={openCreateQualification}
+              aria-label="資格を追加"
+            >
+              <UiIcon name="plus" className="grades-add-icon" />
+            </button>
+          </div>
+
+          {isCreatingQualification
+            ? renderQualificationEditor("資格を追加", "取得済み、受験予定、結果待ちを分けて保存")
+            : null}
+
+          <div className="qual-list">
+            {sortedQualifications.length === 0 ? (
+              <div className="empty-state">
+                <p className="item-title small">まだ資格・検定の記録はありません</p>
+                <p className="muted-text">受験予定からでも先に登録できます。</p>
+              </div>
+            ) : (
+              sortedQualifications.map((record) => (
+                <div key={record.id} className="detail-stack subject-stack">
+                  <article className="qual-card">
+                    <div className="qual-card-head">
+                      <div className="qual-card-copy">
+                        <p className="qual-name">
+                          {record.name}
+                          <span className="qual-score">{record.scoreOrLevel}</span>
+                        </p>
+                        <p className="qual-date">{formatDate(record.examDate)}</p>
+                      </div>
+                      <span className={`status-pill ${qualificationStatusClass(record.status)}`}>
+                        {record.status}
+                      </span>
+                    </div>
+                    {record.memo ? <p className="qual-memo">{record.memo}</p> : null}
+                    <CardActionBar
+                      actions={[
+                        {
+                          icon: "edit",
+                          label: qualificationEditingId === record.id ? "閉じる" : "編集",
+                          onClick: () =>
+                            qualificationEditingId === record.id
+                              ? closeQualificationEditor()
+                              : openEditQualification(record),
+                        },
+                        {
+                          icon: "delete",
+                          label: "削除",
+                          onClick: () => handleDeleteQualification(record),
+                          variant: "danger",
+                        },
+                      ]}
+                    />
+                  </article>
+
+                  {qualificationEditingId === record.id
+                    ? renderQualificationEditor(
+                        `${record.name}を編集`,
+                        "取得済み、受験予定、結果待ちを分けて保存",
+                        record.id,
+                      )
+                    : null}
+                </div>
+              ))
+            )}
+          </div>
+        </section>
+      )}
     </div>
   );
 }

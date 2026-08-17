@@ -1,7 +1,10 @@
 "use client";
 
+import Image from "next/image";
 import Link from "next/link";
+import { APP_VERSION_LABEL } from "@/lib/app-version";
 import { useEffect, useMemo, useRef, useState } from "react";
+import { BrandAccountLink } from "@/components/BrandAccountLink";
 import { UiIcon } from "@/components/UiIcon";
 import { recentItems } from "@/data/mockData";
 import {
@@ -11,6 +14,11 @@ import {
 } from "@/lib/shinromii-backup";
 import type { ShinromiiStorage } from "@/lib/shinromii-storage";
 import { loadShinromiiStorage, saveShinromiiStorage } from "@/lib/shinromii-storage";
+
+const HERO_IMAGE = "/images/shinromii-home-hero.png";
+const HERO_IMAGE_WIDTH = 1024;
+const HERO_IMAGE_HEIGHT = 661;
+const HERO_IMAGE_SIZES = "(max-width: 639px) 100vw, 920px";
 
 const schoolYearRank = {
   高1: 1,
@@ -37,53 +45,69 @@ function formatAverage(value: number | null) {
   return value === null ? "-" : value.toFixed(1);
 }
 
+function formatMonthDay(isoDate: string) {
+  const [, month, day] = isoDate.split("-");
+
+  if (!month || !day) {
+    return isoDate;
+  }
+
+  return `${Number(month)}/${Number(day)}`;
+}
+
+function formatTodayLabel(date: Date) {
+  return `${date.getFullYear()}年${date.getMonth() + 1}月${date.getDate()}日`;
+}
+
 function createFallbackSummary(): ShinromiiStorage | null {
   return null;
 }
 
-const shortcutItems = [
+const featureItems = [
   {
     href: "/universities",
     title: "大学・学部候補",
-    description: "気になる大学を比較して整理する",
-    icon: "university" as const,
+    description: ["気になる大学を", "比較・整理する"],
+    icon: "university-fill" as const,
     tone: "university",
   },
   {
     href: "/open-campus",
     title: "オープンキャンパス",
-    description: "参加記録や評価を残す",
+    description: ["参加記録や評価を", "残す"],
     icon: "campus" as const,
     tone: "campus",
   },
   {
     href: "/ai-notes",
     title: "AI相談メモ",
-    description: "相談内容と答えを見返す",
-    icon: "ai" as const,
+    description: ["AIとの相談内容を", "記録・管理する"],
+    icon: "ai-fill" as const,
     tone: "ai",
   },
   {
     href: "/grades",
     title: "成績・資格",
-    description: "評定平均と資格をまとめる",
-    icon: "grades" as const,
+    description: ["評定や資格を", "記録・管理する"],
+    icon: "grades-fill" as const,
     tone: "grades",
   },
 ];
 
 export function HomeClient() {
   const [storage, setStorage] = useState<ShinromiiStorage | null>(createFallbackSummary());
+  const [todayLabel, setTodayLabel] = useState<string | null>(null);
   const [dataManagementMessage, setDataManagementMessage] = useState<string | null>(null);
   const restoreInputRef = useRef<HTMLInputElement | null>(null);
 
   useEffect(() => {
     setStorage(loadShinromiiStorage());
+    setTodayLabel(formatTodayLabel(new Date()));
   }, []);
 
-  const latestGradeAverage = useMemo(() => {
+  const latestGrade = useMemo(() => {
     if (!storage || storage.gradeRecords.length === 0) {
-      return null;
+      return { value: null as number | null, termLabel: null as string | null };
     }
 
     const sorted = [...storage.gradeRecords].sort((a, b) => {
@@ -99,7 +123,26 @@ export function HomeClient() {
       .filter((item) => item.schoolYear === latest.schoolYear && item.term === latest.term)
       .map((item) => item.grade);
 
-    return average(target);
+    return {
+      value: average(target),
+      termLabel: `${latest.schoolYear} ${latest.term}`,
+    };
+  }, [storage]);
+
+  const latestQualification = useMemo(() => {
+    if (!storage || storage.qualifications.length === 0) {
+      return null;
+    }
+
+    return [...storage.qualifications].sort((a, b) => b.examDate.localeCompare(a.examDate))[0];
+  }, [storage]);
+
+  const upcomingCampusCount = useMemo(() => {
+    if (!storage) {
+      return null;
+    }
+
+    return storage.openCampusEvents.filter((item) => item.status !== "参加済み").length;
   }, [storage]);
 
   const recentNotes = useMemo(() => {
@@ -114,30 +157,37 @@ export function HomeClient() {
 
   const summaryItems = [
     {
+      href: "/grades#grades",
       label: "評定平均",
-      value: formatAverage(latestGradeAverage),
-      note: "最新学期",
-      tone: "grades",
+      value: formatAverage(latestGrade.value),
+      unit: "",
+      note: latestGrade.termLabel ? `最新 ${latestGrade.termLabel}` : "未登録",
     },
     {
+      href: "/grades",
       label: "資格・検定",
-      value: storage ? `${storage.qualifications.length}件` : "-",
-      note: "記録済み",
-      tone: "grades",
+      value: latestQualification
+        ? `${latestQualification.name}${latestQualification.scoreOrLevel}`
+        : storage
+          ? "0"
+          : "-",
+      unit: latestQualification ? "" : storage ? "件" : "",
+      note: latestQualification ? latestQualification.status : "未登録",
+      compactValue: Boolean(latestQualification),
     },
     {
+      href: "/universities",
       label: "大学候補",
-      value: storage ? `${storage.universityCandidates.length}校` : "-",
-      note: "比較中",
-      tone: "university",
+      value: storage ? `${storage.universityCandidates.length}` : "-",
+      unit: storage ? "校" : "",
+      note: "登録済み",
     },
     {
+      href: "/open-campus",
       label: "OC参加予定",
-      value: storage
-        ? `${storage.openCampusEvents.filter((item) => item.status !== "参加済み").length}件`
-        : "-",
+      value: upcomingCampusCount === null ? "-" : `${upcomingCampusCount}`,
+      unit: upcomingCampusCount === null ? "" : "件",
       note: "今後の予定",
-      tone: "campus",
     },
   ];
 
@@ -158,7 +208,7 @@ export function HomeClient() {
       URL.revokeObjectURL(objectUrl);
     }, 1000);
 
-    setDataManagementMessage("バックアップJSONを書き出しました。");
+    setDataManagementMessage("バックアップを保存しました。");
   }
 
   async function handleBackupImport(fileList: FileList | null) {
@@ -179,138 +229,167 @@ export function HomeClient() {
       }
 
       const confirmed = window.confirm(
-        "現在のSHINROMIIデータは、選択したバックアップの内容に置き換えられます。よろしいですか？",
+        "今のSHINROMiiのデータは、選んだバックアップの内容に置き換わります。よろしいですか？",
       );
 
       if (!confirmed) {
-        setDataManagementMessage("バックアップの読み込みをキャンセルしました。");
+        setDataManagementMessage("バックアップからの復元をキャンセルしました。");
         return;
       }
 
       saveShinromiiStorage(parsed.storage);
       setStorage(parsed.storage);
-      setDataManagementMessage("バックアップを読み込み、データを置き換えました。");
-      window.alert("バックアップを読み込みました。");
+      setDataManagementMessage("バックアップから復元し、保存データを置き換えました。");
+      window.alert("バックアップから復元しました。");
     } catch {
-      const message = "バックアップファイルの読み込みに失敗しました。";
+      const message =
+        "バックアップファイルを読み込めませんでした。SHINROMiiで作成したバックアップファイルか確認してください。";
       window.alert(message);
       setDataManagementMessage(message);
     }
   }
 
   return (
-    <div className="page-stack home-page">
+    <div className="home-page">
       <section className="home-hero">
-        <div className="home-hero-copy">
-          <p className="eyebrow">SHINROMII Ver.0.54</p>
-          <h1>わたしの進路ノート</h1>
-          <p className="hero-copy">
-            未来の自分に向けて、今のわたしができることを整える。
-          </p>
-          <span className="hero-mini-badge">UI Ver.2</span>
+        <Image
+          className="home-hero-fill"
+          src={HERO_IMAGE}
+          alt=""
+          aria-hidden="true"
+          width={HERO_IMAGE_WIDTH}
+          height={HERO_IMAGE_HEIGHT}
+          sizes={HERO_IMAGE_SIZES}
+          priority
+        />
+        <div className="home-hero-frame">
+          <Image
+            className="home-hero-photo"
+            src={HERO_IMAGE}
+            alt="未来の自分に、今の自分ができることを。"
+            width={HERO_IMAGE_WIDTH}
+            height={HERO_IMAGE_HEIGHT}
+            sizes={HERO_IMAGE_SIZES}
+            priority
+          />
         </div>
-        <div className="home-hero-visual" aria-hidden="true">
-          <div className="hero-orb hero-orb-main" />
-          <div className="hero-orb hero-orb-sub" />
-          <div className="hero-silhouette" />
-        </div>
-      </section>
-
-      <section className="panel section-panel">
-        <SectionTitle title="現在のわたし" detail="今日の進路状況をひと目で確認" />
-        <div className="summary-grid">
-          {summaryItems.map((item) =>
-            item.label === "評定平均" ? (
-              <Link key={item.label} href="/grades#grades" className={`summary-card tone-${item.tone}`}>
-                <p className="metric-label">{item.label}</p>
-                <p className="stat-value">{item.value}</p>
-                <p className="muted-text">{item.note}</p>
-              </Link>
-            ) : (
-              <article key={item.label} className={`summary-card tone-${item.tone}`}>
-                <p className="metric-label">{item.label}</p>
-                <p className="stat-value">{item.value}</p>
-                <p className="muted-text">{item.note}</p>
-              </article>
-            ),
-          )}
-        </div>
-      </section>
-
-      <section className="shortcut-grid">
-        {shortcutItems.map((item) => (
-          <Link key={item.href} href={item.href} className={`shortcut-card tone-${item.tone}`}>
-            <span className="shortcut-icon-wrap">
-              <UiIcon name={item.icon} className="shortcut-icon" />
-            </span>
-            <span className="shortcut-copy">
-              <strong>{item.title}</strong>
-              <small>{item.description}</small>
-            </span>
-            <UiIcon name="chevron-right" className="shortcut-arrow" />
-          </Link>
-        ))}
-      </section>
-
-      <section className="panel section-panel">
-        <SectionTitle title="最近のメモ" detail="直近のAI相談メモから見返す" />
-        <div className="list-stack">
-          {recentNotes.length === 0 ? (
-            <div className="empty-state">
-              <p className="item-title small">まだAI相談メモはありません</p>
-              <p className="muted-text">相談を追加するとここに最近のメモが表示されます。</p>
+        <div className="home-hero-inner">
+          <div className="home-hero-head">
+            <div className="home-hero-brand">
+              <p className="home-brand">SHINROMii</p>
+              <p className="home-brand-sub">わたしの進路ノート</p>
             </div>
-          ) : (
-            recentNotes.map((note) => (
-              <article key={note.id} className="list-card compact-card">
-                <div className="row-between gap-sm align-start">
-                  <div>
-                    <p className="item-title small">{note.title}</p>
-                    <p className="item-subtitle">
-                      {note.provider} / {note.consultedAt.replaceAll("-", ".")}
-                    </p>
-                  </div>
-                  <span className="soft-pill">参考度 {note.helpful}</span>
-                </div>
-                <p className="muted-text top-gap">{note.summary}</p>
-              </article>
-            ))
-          )}
+            <div className="home-hero-meta">
+              <BrandAccountLink />
+              <span className="home-version">{APP_VERSION_LABEL}</span>
+            </div>
+          </div>
         </div>
-        <Link href="/ai-notes" className="text-link inline-link">
-          すべてのAI相談メモを見る
-          <UiIcon name="chevron-right" className="inline-link-icon" />
-        </Link>
       </section>
 
-      <section className="panel section-panel">
-        <SectionTitle title="最近更新した情報" detail="追加した内容を整理して表示" />
-        <div className="timeline-list">
-          {recentItems.map((item) => (
-            <article key={item.title} className="timeline-item">
-              <p className="timeline-date">{item.date}</p>
-              <p className="item-title small">{item.title}</p>
-              <p className="muted-text">{item.description}</p>
-            </article>
+      <section className="home-now-card">
+        <div className="home-now-head">
+          <h2>現在のわたし</h2>
+          {todayLabel ? <span className="home-now-date">（{todayLabel} 現在）</span> : null}
+        </div>
+        <div className="home-now-grid">
+          {summaryItems.map((item) => (
+            <Link key={item.label} href={item.href} className="home-stat-tile">
+              <span className="home-stat-label">{item.label}</span>
+              <span className={`home-stat-value ${item.compactValue ? "compact" : ""}`}>
+                {item.value}
+                {item.unit ? <small>{item.unit}</small> : null}
+              </span>
+              <span className="home-stat-note">{item.note}</span>
+            </Link>
           ))}
         </div>
       </section>
 
-      <section className="panel section-panel">
-        <SectionTitle title="データ管理" detail="家族間で使う通常バックアップをJSONで扱う" />
-        <div className="editor-card">
-          <div className="list-stack">
-            <div>
-              <p className="item-title small">通常バックアップ</p>
-              <p className="muted-text">
-                端末内の進路データをJSONで書き出し、別端末で読み込めます。添付ファイル本体は対象外です。
-              </p>
+      <section className="home-feature-grid">
+        {featureItems.map((item) => (
+          <Link key={item.href} href={item.href} className={`home-feature-card tone-${item.tone}`}>
+            <span className="home-feature-icon" aria-hidden="true">
+              <UiIcon name={item.icon} className="home-feature-glyph" />
+            </span>
+            <span className="home-feature-body">
+              <strong>{item.title}</strong>
+              <span className="home-feature-desc">
+                {item.description.map((line) => (
+                  <span key={line}>{line}</span>
+                ))}
+              </span>
+            </span>
+            <UiIcon name="chevron-right" className="home-feature-arrow" aria-hidden="true" />
+          </Link>
+        ))}
+      </section>
+
+      <section className="home-section">
+        <h2 className="home-section-title">最近のメモ</h2>
+        <div className="home-memo-card">
+          {recentNotes.length === 0 ? (
+            <div className="home-memo-empty">
+              <p className="home-memo-title">まだAI相談メモはありません</p>
+              <p className="home-memo-summary">相談を追加すると、ここに最近のメモが表示されます。</p>
             </div>
+          ) : (
+            recentNotes.map((note) => (
+              <article key={note.id} className="home-memo-row">
+                <span className="home-memo-icon" aria-hidden="true">
+                  <UiIcon name="ai" className="home-memo-glyph" />
+                </span>
+                <div className="home-memo-body">
+                  <div className="home-memo-topline">
+                    <p className="home-memo-title">{note.title}</p>
+                    <span className="home-memo-date">{formatMonthDay(note.consultedAt)}</span>
+                  </div>
+                  <p className="home-memo-summary">{note.summary}</p>
+                </div>
+              </article>
+            ))
+          )}
+          <Link href="/ai-notes" className="home-memo-more">
+            <span>すべてのAI相談メモをみる</span>
+            <UiIcon name="chevron-right" className="home-memo-more-icon" aria-hidden="true" />
+          </Link>
+        </div>
+      </section>
+
+      <section className="home-section home-section-sub">
+        <details className="home-fold">
+          <summary className="home-fold-summary">
+            <span>最近更新した情報</span>
+            <UiIcon name="chevron-right" className="home-fold-icon" aria-hidden="true" />
+          </summary>
+          <div className="home-fold-body">
+            {recentItems.map((item) => (
+              <article key={item.title} className="home-update-row">
+                <p className="home-update-date">{item.date}</p>
+                <p className="home-update-title">{item.title}</p>
+                <p className="home-update-text">{item.description}</p>
+              </article>
+            ))}
+          </div>
+        </details>
+
+        <details className="home-fold">
+          <summary className="home-fold-summary">
+            <span>大切なデータをバックアップ</span>
+            <UiIcon name="chevron-right" className="home-fold-icon" aria-hidden="true" />
+          </summary>
+          <div className="home-fold-body">
+            <p className="home-fold-text">
+              機種変更や別の端末で使うときのために、現在のSHINROMiiのデータをファイルとして保存できます。
+            </p>
+            <p className="home-fold-text">
+              バックアップファイルは自分の端末に保存されます。SHINROMiiのサーバーには保存されません。
+            </p>
 
             <div className="action-row">
               <button type="button" className="action-button primary" onClick={handleBackupExport}>
                 <UiIcon name="download" className="action-icon" />
-                バックアップを書き出す
+                バックアップを保存
               </button>
               <button
                 type="button"
@@ -318,7 +397,7 @@ export function HomeClient() {
                 onClick={() => restoreInputRef.current?.click()}
               >
                 <UiIcon name="upload" className="action-icon" />
-                バックアップを読み込む
+                バックアップから復元
               </button>
             </div>
 
@@ -333,8 +412,8 @@ export function HomeClient() {
               }}
             />
 
-            <p className="muted-text">
-              読み込みは全置換です。現在のデータを残したい場合は、先に書き出しを行ってください。
+            <p className="home-fold-text">
+              復元すると、今の内容はバックアップの内容に置き換わります。今のデータを残したい場合は、先にバックアップを保存してください。添付ファイル本体はバックアップに含まれません。
             </p>
 
             {dataManagementMessage ? (
@@ -344,19 +423,8 @@ export function HomeClient() {
               </div>
             ) : null}
           </div>
-        </div>
+        </details>
       </section>
-    </div>
-  );
-}
-
-function SectionTitle({ title, detail }: { title: string; detail: string }) {
-  return (
-    <div className="section-header home-section-header">
-      <div>
-        <h2>{title}</h2>
-        <p>{detail}</p>
-      </div>
     </div>
   );
 }

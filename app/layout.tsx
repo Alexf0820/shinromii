@@ -2,9 +2,10 @@ import type { Metadata, Viewport } from "next";
 import type { ReactNode } from "react";
 import "./globals.css";
 import { AppShell } from "@/components/AppShell";
+import { APP_VERSION_LABEL } from "@/lib/app-version";
 
 export const metadata: Metadata = {
-  title: "SHINROMII Ver.0.54",
+  title: `SHINROMii ${APP_VERSION_LABEL}`,
   description: "高校生と家族のための進路情報UIベース",
 };
 

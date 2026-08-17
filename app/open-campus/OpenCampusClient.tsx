@@ -1,6 +1,7 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState, type KeyboardEvent } from "react";
+import { CardActionBar } from "@/components/CardActionBar";
 import { SectionHeader } from "@/components/SectionHeader";
 import { ScoreSelector } from "@/components/ScoreSelector";
 import { UiIcon } from "@/components/UiIcon";
@@ -68,6 +69,13 @@ type EventFormState = {
   links: OpenCampusLink[];
   attachments: OpenCampusAttachmentMeta[];
 };
+
+function handleCardKeyActivate(event: KeyboardEvent, action: () => void) {
+  if (event.key === "Enter" || event.key === " ") {
+    event.preventDefault();
+    action();
+  }
+}
 
 function createId(prefix: string) {
   if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") {
@@ -242,10 +250,6 @@ function revokeObjectUrls(urls: string[]) {
   urls.forEach((url) => {
     URL.revokeObjectURL(url);
   });
-}
-
-function stopEvent(event: React.MouseEvent<HTMLElement>) {
-  event.stopPropagation();
 }
 
 export function OpenCampusClient() {
@@ -440,16 +444,12 @@ export function OpenCampusClient() {
     return () => window.cancelAnimationFrame(frame);
   }, [editingEventId, pendingEditScrollId]);
 
-  function persistEvents(nextEvents: OpenCampusEvent[]) {
-    setEvents(nextEvents);
-    setSelectedId(nextEvents[0]?.id ?? null);
-    saveOpenCampusEvents(nextEvents);
-  }
-
   function openCreateEvent() {
     setIsCreatingEvent(true);
     setEditingEventId(null);
     setEditingEvaluationId(null);
+    setSelectedId(null);
+    setPendingScrollId(null);
     setPendingEditScrollId(null);
     setEventForm(createEmptyEventForm());
     setEvaluationForm(createEmptyEvaluation());
@@ -461,6 +461,7 @@ export function OpenCampusClient() {
   function openEditEvent(event: OpenCampusEvent) {
     setIsCreatingEvent(false);
     setEditingEventId(event.id);
+    setEditingEvaluationId(null);
     setSelectedId(null);
     setPendingScrollId(null);
     setPendingEditScrollId(event.id);
@@ -481,6 +482,9 @@ export function OpenCampusClient() {
   }
 
   function openEvaluationEditor(event: OpenCampusEvent) {
+    setIsCreatingEvent(false);
+    setEditingEventId(null);
+    setPendingEditScrollId(null);
     setEditingEvaluationId(event.id);
     setSelectedId(event.id);
     setEvaluationForm(formFromEvaluation(evaluations[event.id] ?? createEmptyEvaluation()));
@@ -564,6 +568,10 @@ export function OpenCampusClient() {
       closeEventEditor();
     }
 
+    if (editingEvaluationId) {
+      closeEvaluationEditor();
+    }
+
     setSelectedId((current) => {
       const nextId = current === id ? null : id;
 
@@ -575,6 +583,100 @@ export function OpenCampusClient() {
 
       return nextId;
     });
+  }
+
+  function renderEventCard(event: OpenCampusEvent) {
+    const evaluation = evaluations[event.id] ?? createEmptyEvaluation();
+    const isOpen = selectedId === event.id || editingEventId === event.id || editingEvaluationId === event.id;
+    const timeLabel =
+      event.startTime && event.endTime
+        ? `${event.startTime}-${event.endTime}`
+        : event.startTime || "";
+
+    return (
+      <article className={`oc-card ${isOpen ? "is-open" : ""}`}>
+        <div
+          className="card-tap-area"
+          role="button"
+          tabIndex={0}
+          aria-expanded={selectedId === event.id}
+          aria-label={`${event.university}の詳細`}
+          onClick={() => toggleDetail(event.id)}
+          onKeyDown={(eventDom) => handleCardKeyActivate(eventDom, () => toggleDetail(event.id))}
+        >
+          <div className="oc-card-head">
+            <span className="oc-card-icon">
+              <UiIcon name="campus" className="oc-card-icon-svg" />
+            </span>
+            <div className="oc-card-copy">
+              <p className="oc-card-name">{event.university}</p>
+              <p className="oc-card-faculty">
+                {event.facultyDepartment ? `${event.facultyDepartment} / ` : ""}
+                {event.eventName}
+              </p>
+            </div>
+            <span
+              className={`status-pill oc-status ${
+                event.status === "参加済み"
+                  ? "done"
+                  : event.status === "予約済み"
+                    ? "reserved"
+                    : "considering"
+              }`}
+            >
+              {event.status}
+            </span>
+          </div>
+
+          <p className="oc-card-meta">
+            {formatEventDate(event.eventDate)}
+            {timeLabel ? `  ${timeLabel}` : ""}
+          </p>
+
+          {event.status === "参加済み" ? (
+            <div className="oc-card-score">
+              {renderStars(evaluation.overall)}
+              <span className="oc-card-score-value">
+                {evaluation.overall ? `総合 ${evaluation.overall}` : "未評価"}
+              </span>
+            </div>
+          ) : null}
+        </div>
+
+        <CardActionBar
+          actions={[
+            {
+              icon: "detail",
+              label: selectedId === event.id ? "閉じる" : "詳細",
+              onClick: () => toggleDetail(event.id),
+            },
+            {
+              icon: "edit",
+              label: editingEventId === event.id ? "閉じる" : "編集",
+              onClick: () => (editingEventId === event.id ? closeEventEditor() : openEditEvent(event)),
+            },
+            ...(event.status === "参加済み"
+              ? [
+                  {
+                    icon: "star" as const,
+                    label: editingEvaluationId === event.id ? "閉じる" : "評価する",
+                    onClick: () =>
+                      editingEvaluationId === event.id
+                        ? closeEvaluationEditor()
+                        : openEvaluationEditor(event),
+                  },
+                ]
+              : []),
+            {
+              icon: "delete",
+              label: "削除",
+              onClick: () => void handleDeleteEvent(event),
+              variant: "danger" as const,
+            },
+          ]}
+        />
+      </article>
+    );
   }
 
   function renderEventEditor(title: string, description: string, editorId?: string) {
@@ -813,7 +915,7 @@ export function OpenCampusClient() {
             {!attachmentsAvailable ? (
               <div className="empty-state top-gap">
                 <p className="item-title small">添付ファイル機能は利用できません</p>
-                <p className="muted-text">このブラウザでは IndexedDB が使えないため、添付保存を無効化しています。</p>
+                <p className="muted-text">この端末では、添付ファイルを保存できません。</p>
               </div>
             ) : null}
 
@@ -899,7 +1001,7 @@ export function OpenCampusClient() {
         ref={(node) => {
           detailRefs.current[event.id] = node;
         }}
-        className="detail-card inline-detail-card inline-oc-detail-card"
+        className="detail-card inline-detail-card inline-oc-detail-card oc-detail-card"
       >
         <div className="detail-section-header">
           <div>
@@ -994,14 +1096,16 @@ export function OpenCampusClient() {
 
           <section className="detail-section">
             <p className="feedback-label">当日リンク</p>
-            <div className="list-stack top-gap">
+            <div className="oc-day-links">
               {event.links.length === 0 ? (
                 <p className="muted-text">まだリンクはありません。</p>
               ) : (
                 event.links.map((link) => (
-                  <a key={link.id} className="card-action subtle" href={link.url}>
-                    <UiIcon name="link" className="action-icon" />
-                    {link.label}
+                  <a key={link.id} className="oc-day-link" href={link.url}>
+                    <span>{link.label || "リンクを開く"}</span>
+                    <span className="oc-day-link-arrow" aria-hidden="true">
+                      ↗
+                    </span>
                   </a>
                 ))
               )}
@@ -1191,6 +1295,91 @@ export function OpenCampusClient() {
               </div>
             </section>
           ) : null}
+        </div>
+      </section>
+    );
+  }
+
+  function renderEvaluationEditor(event: OpenCampusEvent) {
+    return (
+      <section className="panel inline-detail-card inline-editor-card">
+        <SectionHeader title="参加後評価を編集" description="参加済みOCの評価を更新" />
+        <div className="form-stack">
+          <ScoreSelector
+            label="総合評価"
+            value={evaluationForm.overall}
+            onChange={(value) => updateEvaluationField("overall", value)}
+          />
+
+          {(Object.entries(categoryLabels) as [CampusEvaluationCategory, string][]).map(
+            ([key, label]) => (
+              <ScoreSelector
+                key={key}
+                label={label}
+                value={evaluationForm.categoryScores[key]}
+                onChange={(value) => updateEvaluationCategory(key, value)}
+              />
+            ),
+          )}
+
+          <label className="field-block">
+            <span className="field-label">良かったところ</span>
+            <textarea
+              className="text-area"
+              rows={3}
+              value={evaluationForm.goodPoint}
+              onChange={(event) => updateEvaluationField("goodPoint", event.target.value)}
+            />
+          </label>
+
+          <label className="field-block">
+            <span className="field-label">微妙だったところ</span>
+            <textarea
+              className="text-area"
+              rows={3}
+              value={evaluationForm.badPoint}
+              onChange={(event) => updateEvaluationField("badPoint", event.target.value)}
+            />
+          </label>
+
+          <label className="field-block">
+            <span className="field-label">本人の感想</span>
+            <textarea
+              className="text-area"
+              rows={4}
+              value={evaluationForm.studentComment}
+              onChange={(event) => updateEvaluationField("studentComment", event.target.value)}
+            />
+          </label>
+
+          <label className="field-block">
+            <span className="field-label">家族の感想</span>
+            <textarea
+              className="text-area"
+              rows={4}
+              value={evaluationForm.familyComment}
+              onChange={(event) => updateEvaluationField("familyComment", event.target.value)}
+            />
+          </label>
+
+          <label className="field-block">
+            <span className="field-label">自由メモ</span>
+            <textarea
+              className="text-area"
+              rows={3}
+              value={evaluationForm.freeNote}
+              onChange={(event) => updateEvaluationField("freeNote", event.target.value)}
+            />
+          </label>
+
+          <div className="action-row">
+            <button type="button" className="action-button primary" onClick={handleSaveEvaluation}>
+              保存する
+            </button>
+            <button type="button" className="action-button" onClick={closeEvaluationEditor}>
+              キャンセル
+            </button>
+          </div>
         </div>
       </section>
     );
@@ -1401,7 +1590,8 @@ export function OpenCampusClient() {
     saveCampusEvaluations(nextEvaluations);
 
     if (selectedId === event.id) {
-      setSelectedId(nextEvents[0]?.id ?? null);
+      setSelectedId(null);
+      setPendingScrollId(null);
     }
 
     if (editingEventId === event.id) {
@@ -1529,126 +1719,39 @@ export function OpenCampusClient() {
   }
 
   return (
-    <div className="page-stack">
-      <section className="page-hero tone-campus">
-        <div className="page-hero-copy">
-          <p className="eyebrow">オープンキャンパス</p>
-          <h2 className="hero-title">予定管理から当日の資料確認、参加後の評価までまとめる。</h2>
-          <p className="hero-description">
-            追加、詳細、編集、削除、URL、添付、評価まで1画面の流れで扱えます。
-          </p>
-          <div className="hero-stats-inline">
-            <span className="hero-stat-chip">
-              <strong>{plannedEvents.length}件</strong>
-              <span className="item-subtitle">これから行く予定</span>
-            </span>
-            <span className="hero-stat-chip">
-              <strong>{completedEvents.length}件</strong>
-              <span className="item-subtitle">参加済み</span>
-            </span>
-          </div>
-        </div>
-      </section>
-
-      <section className="panel">
-        <div className="row-between gap-sm align-start">
-          <div className="compare-header no-margin">
-            <span className="soft-pill">localStorage + IndexedDB</span>
-            <p className="muted-text">
-              OC本体は localStorage、添付本体は IndexedDB に保存します。
+    <div className="oc-page">
+      <section className="list-section">
+        <div className="list-section-head">
+          <div className="list-section-copy">
+            <h2 className="list-section-title">これから行く予定</h2>
+            <p className="list-section-note">
+              {plannedEvents.length > 0 ? `${plannedEvents.length}件` : "検討中・予約済み"}
             </p>
           </div>
-          <button type="button" className="action-button primary" onClick={openCreateEvent}>
-            <UiIcon name="plus" className="action-icon" />
-            オープンキャンパスを追加
+          <button
+            type="button"
+            className="list-add-button"
+            onClick={openCreateEvent}
+            aria-label="オープンキャンパスを追加"
+          >
+            <UiIcon name="plus" className="list-add-icon" />
           </button>
         </div>
-      </section>
 
-      {isCreatingEvent
-        ? renderEventEditor("オープンキャンパスを追加", "日程、状態、当日リンク、資料をまとめて保存")
-        : null}
+        {isCreatingEvent
+          ? renderEventEditor("オープンキャンパスを追加", "日程、状態、当日リンク、資料をまとめて保存")
+          : null}
 
-      <section className="panel">
-        <SectionHeader title="これから行く予定" description="検討中と予約済みの予定をまとめて管理" />
-        <div className="list-stack">
+        <div className="oc-list">
           {plannedEvents.length === 0 ? (
             <div className="empty-state">
               <p className="item-title small">まだ予定OCはありません</p>
-              <p className="muted-text">上のボタンから新しく追加できます。</p>
+              <p className="muted-text">右上の＋から追加できます。</p>
             </div>
           ) : (
             plannedEvents.map((event) => (
-              <div key={event.id} className="detail-stack">
-                <article
-                  className={`candidate-card tone-campus ${selectedId === event.id ? "selected-card" : ""}`}
-                  onClick={() => setSelectedId(event.id)}
-                >
-                  <div className="candidate-topline">
-                    <div className="candidate-main">
-                      <span className="candidate-icon-badge">
-                        <UiIcon name="campus" className="list-item-icon" />
-                      </span>
-                      <div className="candidate-summary">
-                        <p className="item-title">{event.university}</p>
-                        <p className="item-subtitle">
-                          {event.facultyDepartment ? `${event.facultyDepartment} / ` : ""}
-                          {event.eventName}
-                        </p>
-                      </div>
-                    </div>
-                    <span className={`status-pill ${event.status === "予約済み" ? "reserved" : "considering"}`}>
-                      {event.status}
-                    </span>
-                  </div>
-
-                  <div className="qualification-meta">
-                    <span className="mini-badge">{formatEventDateTime(event)}</span>
-                  </div>
-
-                  <p className="muted-text">{event.dayMemo || event.accessMemo || "まだメモはありません"}</p>
-
-                  <div className="list-actions">
-                    <button
-                      type="button"
-                      className="card-action subtle"
-                      onClick={(eventDom) => {
-                        stopEvent(eventDom);
-                        toggleDetail(event.id);
-                      }}
-                    >
-                      <UiIcon name="detail" className="action-icon" />
-                      {selectedId === event.id ? "詳細を閉じる" : "詳細"}
-                    </button>
-                    <button
-                      type="button"
-                      className="card-action subtle"
-                      onClick={(eventDom) => {
-                        stopEvent(eventDom);
-                        if (editingEventId === event.id) {
-                          closeEventEditor();
-                        } else {
-                          openEditEvent(event);
-                        }
-                      }}
-                    >
-                      <UiIcon name="edit" className="action-icon" />
-                      {editingEventId === event.id ? "編集を閉じる" : "編集"}
-                    </button>
-                    <button
-                      type="button"
-                      className="card-action danger"
-                      onClick={(eventDom) => {
-                        stopEvent(eventDom);
-                        void handleDeleteEvent(event);
-                      }}
-                    >
-                      <UiIcon name="delete" className="action-icon" />
-                      削除
-                    </button>
-                  </div>
-                </article>
-
+              <div key={event.id} className="detail-stack oc-stack">
+                {renderEventCard(event)}
                 {selectedId === event.id ? renderDetailBlock(event) : null}
                 {editingEventId === event.id
                   ? renderEventEditor(
@@ -1657,120 +1760,44 @@ export function OpenCampusClient() {
                       event.id,
                     )
                   : null}
+                {editingEvaluationId === event.id ? renderEvaluationEditor(event) : null}
               </div>
             ))
           )}
         </div>
       </section>
 
-      <section className="panel">
-        <SectionHeader title="参加済み" description="評価と感想まで記録したOCを確認" />
-        <div className="list-stack">
+      <section className="list-section">
+        <div className="list-section-head">
+          <div className="list-section-copy">
+            <h2 className="list-section-title">参加済み</h2>
+            <p className="list-section-note">
+              {completedEvents.length > 0 ? `${completedEvents.length}件` : "評価と感想を記録"}
+            </p>
+          </div>
+        </div>
+
+        <div className="oc-list">
           {completedEvents.length === 0 ? (
             <div className="empty-state">
               <p className="item-title small">まだ参加済みOCはありません</p>
               <p className="muted-text">状態を「参加済み」にするとここへ移動します。</p>
             </div>
           ) : (
-            completedEvents.map((event) => {
-              const evaluation = evaluations[event.id] ?? createEmptyEvaluation();
-
-              return (
-                <div key={event.id} className="detail-stack">
-                  <article
-                    className={`candidate-card tone-campus ${selectedId === event.id ? "selected-card" : ""}`}
-                    onClick={() => setSelectedId(event.id)}
-                  >
-                    <div className="candidate-topline">
-                      <div className="candidate-main">
-                        <span className="candidate-icon-badge">
-                          <UiIcon name="campus" className="list-item-icon" />
-                        </span>
-                        <div className="candidate-summary">
-                          <p className="item-title">{event.university}</p>
-                          <p className="item-subtitle">
-                            {event.facultyDepartment ? `${event.facultyDepartment} / ` : ""}
-                            {event.eventName}
-                          </p>
-                        </div>
-                      </div>
-                      <span className={`status-pill ${evaluation.overall ? "done" : "considering"}`}>
-                        {evaluation.overall ? `総合 ${evaluation.overall}` : "未評価"}
-                      </span>
-                    </div>
-
-                    <div className="summary-line">
-                      {renderStars(evaluation.overall)}
-                      <span className="mini-badge">{formatEventDateTime(event)}</span>
-                    </div>
-
-                    <div className="note-card">
-                      <p className="feedback-label">良かったところ</p>
-                      <p>{evaluation.goodPoint || "まだ入力されていません"}</p>
-                    </div>
-
-                    <div className="list-actions">
-                      <button
-                        type="button"
-                        className="card-action subtle"
-                        onClick={(eventDom) => {
-                          stopEvent(eventDom);
-                          toggleDetail(event.id);
-                        }}
-                      >
-                        <UiIcon name="detail" className="action-icon" />
-                        {selectedId === event.id ? "詳細を閉じる" : "詳細"}
-                      </button>
-                      <button
-                        type="button"
-                        className="card-action subtle"
-                        onClick={(eventDom) => {
-                          stopEvent(eventDom);
-                          if (editingEventId === event.id) {
-                            closeEventEditor();
-                          } else {
-                            openEditEvent(event);
-                          }
-                        }}
-                      >
-                        <UiIcon name="edit" className="action-icon" />
-                        {editingEventId === event.id ? "編集を閉じる" : "編集"}
-                      </button>
-                      <button
-                        type="button"
-                        className="card-action subtle"
-                        onClick={(eventDom) => {
-                          stopEvent(eventDom);
-                          openEvaluationEditor(event);
-                        }}
-                      >
-                        評価する
-                      </button>
-                      <button
-                        type="button"
-                        className="card-action danger"
-                        onClick={(eventDom) => {
-                          stopEvent(eventDom);
-                          void handleDeleteEvent(event);
-                        }}
-                      >
-                        <UiIcon name="delete" className="action-icon" />
-                        削除
-                      </button>
-                    </div>
-                  </article>
-
-                  {selectedId === event.id ? renderDetailBlock(event) : null}
-                  {editingEventId === event.id
-                    ? renderEventEditor(
-                        `${event.university}を編集`,
-                        "日程、状態、当日リンク、資料をまとめて保存",
-                        event.id,
-                      )
-                    : null}
-                </div>
-              );
-            })
+            completedEvents.map((event) => (
+              <div key={event.id} className="detail-stack oc-stack">
+                {renderEventCard(event)}
+                {selectedId === event.id ? renderDetailBlock(event) : null}
+                {editingEventId === event.id
+                  ? renderEventEditor(
+                      `${event.university}を編集`,
+                      "日程、状態、当日リンク、資料をまとめて保存",
+                      event.id,
+                    )
+                  : null}
+                {editingEvaluationId === event.id ? renderEvaluationEditor(event) : null}
+              </div>
+            ))
           )}
         </div>
       </section>
@@ -1806,89 +1833,6 @@ export function OpenCampusClient() {
             />
           </div>
         </div>
-      ) : null}
-
-      {editingEvaluationId && selectedEvent?.id === editingEvaluationId ? (
-        <section className="panel">
-          <SectionHeader title="参加後評価を編集" description="参加済みOCの評価を更新" />
-          <div className="form-stack">
-            <ScoreSelector
-              label="総合評価"
-              value={evaluationForm.overall}
-              onChange={(value) => updateEvaluationField("overall", value)}
-            />
-
-            {(Object.entries(categoryLabels) as [CampusEvaluationCategory, string][]).map(
-              ([key, label]) => (
-                <ScoreSelector
-                  key={key}
-                  label={label}
-                  value={evaluationForm.categoryScores[key]}
-                  onChange={(value) => updateEvaluationCategory(key, value)}
-                />
-              ),
-            )}
-
-            <label className="field-block">
-              <span className="field-label">良かったところ</span>
-              <textarea
-                className="text-area"
-                rows={3}
-                value={evaluationForm.goodPoint}
-                onChange={(event) => updateEvaluationField("goodPoint", event.target.value)}
-              />
-            </label>
-
-            <label className="field-block">
-              <span className="field-label">微妙だったところ</span>
-              <textarea
-                className="text-area"
-                rows={3}
-                value={evaluationForm.badPoint}
-                onChange={(event) => updateEvaluationField("badPoint", event.target.value)}
-              />
-            </label>
-
-            <label className="field-block">
-              <span className="field-label">本人の感想</span>
-              <textarea
-                className="text-area"
-                rows={4}
-                value={evaluationForm.studentComment}
-                onChange={(event) => updateEvaluationField("studentComment", event.target.value)}
-              />
-            </label>
-
-            <label className="field-block">
-              <span className="field-label">家族の感想</span>
-              <textarea
-                className="text-area"
-                rows={4}
-                value={evaluationForm.familyComment}
-                onChange={(event) => updateEvaluationField("familyComment", event.target.value)}
-              />
-            </label>
-
-            <label className="field-block">
-              <span className="field-label">自由メモ</span>
-              <textarea
-                className="text-area"
-                rows={3}
-                value={evaluationForm.freeNote}
-                onChange={(event) => updateEvaluationField("freeNote", event.target.value)}
-              />
-            </label>
-
-            <div className="action-row">
-              <button type="button" className="action-button primary" onClick={handleSaveEvaluation}>
-                保存する
-              </button>
-              <button type="button" className="action-button" onClick={closeEvaluationEditor}>
-                キャンセル
-              </button>
-            </div>
-          </div>
-        </section>
       ) : null}
     </div>
   );

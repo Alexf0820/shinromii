@@ -1,3 +1,6 @@
+import { gradeFromExamScores } from "@/lib/grading-rule";
+import type { ExamScores } from "@/lib/grading-rule";
+
 export type DashboardStat = {
   label: string;
   value: string;
@@ -52,6 +55,8 @@ export type GradeRecord = {
   memo: string;
   createdAt: string;
   updatedAt: string;
+  /** 中間・期末の素点。中間が未実施の科目は midterm が null になる。 */
+  scores?: ExamScores;
 };
 
 export type QualificationStatus = "取得済み" | "受験予定" | "結果待ち";
@@ -192,88 +197,42 @@ export const upcomingCampus: CampusSummary = {
   note: "模擬授業と在学生トークが中心。家族1名同伴予定。",
 };
 
-export const gradeRecords: GradeRecord[] = [
+/**
+ * 高1 1学期の実データ。midterm が null の科目は中間テストが実施されていない。
+ * 評定は保存値を持たず、学校の計算ルール（lib/grading-rule）から算出する。
+ */
+const firstYearFirstTerm: { id: string; subject: string; scores: ExamScores }[] = [
+  { id: "grade-h1-1-modern-japanese", subject: "現代の国語", scores: { midterm: 68, final: 66 } },
+  { id: "grade-h1-1-language-culture", subject: "言語文化", scores: { midterm: 74, final: 52 } },
+  { id: "grade-h1-1-history", subject: "歴史総合", scores: { midterm: 44, final: 61 } },
+  { id: "grade-h1-1-public", subject: "公共", scores: { midterm: 62, final: 73 } },
+  { id: "grade-h1-1-math-1", subject: "数学I", scores: { midterm: 83, final: 77 } },
+  { id: "grade-h1-1-math-a", subject: "数学A", scores: { midterm: 52, final: 56 } },
+  { id: "grade-h1-1-chemistry", subject: "化学基礎", scores: { midterm: 65, final: 57 } },
+  { id: "grade-h1-1-biology", subject: "生物基礎", scores: { midterm: 72, final: 47 } },
+  { id: "grade-h1-1-pe", subject: "体育", scores: { midterm: null, final: 63 } },
+  { id: "grade-h1-1-health", subject: "保健", scores: { midterm: null, final: 86 } },
   {
-    id: "grade-h2-1-japanese",
-    schoolYear: "高2",
-    term: "1学期",
-    subject: "現代文",
-    grade: 4,
-    memo: "記述は安定。小論文も意識したい。",
-    createdAt: "2026-08-10",
-    updatedAt: "2026-08-10",
+    id: "grade-h1-1-english-communication",
+    subject: "英語コミュニケーションI",
+    scores: { midterm: 92, final: 84 },
   },
-  {
-    id: "grade-h2-1-english",
-    schoolYear: "高2",
-    term: "1学期",
-    subject: "英語",
-    grade: 5,
-    memo: "英検対策との相乗効果あり。",
-    createdAt: "2026-08-10",
-    updatedAt: "2026-08-10",
-  },
-  {
-    id: "grade-h2-1-math",
-    schoolYear: "高2",
-    term: "1学期",
-    subject: "数学",
-    grade: 3,
-    memo: "演習量を増やしたい。",
-    createdAt: "2026-08-10",
-    updatedAt: "2026-08-10",
-  },
-  {
-    id: "grade-h2-1-info",
-    schoolYear: "高2",
-    term: "1学期",
-    subject: "情報",
-    grade: 5,
-    memo: "得意分野として維持したい。",
-    createdAt: "2026-08-10",
-    updatedAt: "2026-08-10",
-  },
-  {
-    id: "grade-h1-3-japanese",
-    schoolYear: "高1",
-    term: "3学期",
-    subject: "国語",
-    grade: 4,
-    memo: "",
-    createdAt: "2026-08-08",
-    updatedAt: "2026-08-08",
-  },
-  {
-    id: "grade-h1-3-english",
-    schoolYear: "高1",
-    term: "3学期",
-    subject: "英語",
-    grade: 4,
-    memo: "",
-    createdAt: "2026-08-08",
-    updatedAt: "2026-08-08",
-  },
-  {
-    id: "grade-h1-3-math",
-    schoolYear: "高1",
-    term: "3学期",
-    subject: "数学",
-    grade: 3,
-    memo: "",
-    createdAt: "2026-08-08",
-    updatedAt: "2026-08-08",
-  },
-  {
-    id: "grade-h1-3-biology",
-    schoolYear: "高1",
-    term: "3学期",
-    subject: "生物",
-    grade: 4,
-    memo: "",
-    createdAt: "2026-08-08",
-    updatedAt: "2026-08-08",
-  },
+  { id: "grade-h1-1-logic-expression", subject: "論理・表現I", scores: { midterm: null, final: 74 } },
+  { id: "grade-h1-1-home-economics", subject: "家庭基礎", scores: { midterm: null, final: 46 } },
+  { id: "grade-h1-1-information", subject: "情報I", scores: { midterm: null, final: 72 } },
 ];
+
+export const gradeRecords: GradeRecord[] = firstYearFirstTerm.map(({ id, subject, scores }) => ({
+  id,
+  schoolYear: "高1",
+  term: "1学期",
+  subject,
+  grade: gradeFromExamScores(scores) ?? 3,
+  memo: "",
+  createdAt: "2026-08-16",
+  updatedAt: "2026-08-16",
+  scores,
+}));
 
 export const qualifications: QualificationRecord[] = [
   {

@@ -1,6 +1,7 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState, type KeyboardEvent } from "react";
+import { CardActionBar } from "@/components/CardActionBar";
 import { SectionHeader } from "@/components/SectionHeader";
 import { ScoreSelector } from "@/components/ScoreSelector";
 import { UiIcon } from "@/components/UiIcon";
@@ -74,6 +75,13 @@ function formFromNote(note: AiNote): FormState {
   };
 }
 
+function handleCardKeyActivate(event: KeyboardEvent, action: () => void) {
+  if (event.key === "Enter" || event.key === " ") {
+    event.preventDefault();
+    action();
+  }
+}
+
 function shorten(text: string, length: number) {
   const normalized = text.replace(/\s+/g, " ").trim();
   return normalized.length > length ? `${normalized.slice(0, length)}...` : normalized;
@@ -85,25 +93,23 @@ function formatNoteDate(date: string) {
 
 export function AiNotesClient() {
   const [notes, setNotes] = useState<AiNote[]>(initialAiNotes);
-  const [selectedId, setSelectedId] = useState<string | null>(initialAiNotes[0]?.id ?? null);
+  const [selectedId, setSelectedId] = useState<string | null>(null);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [isCreating, setIsCreating] = useState(false);
   const [form, setForm] = useState<FormState>(createEmptyForm());
   const [sortOrder, setSortOrder] = useState<AiNotesSortOrder>("newest");
+  const [searchQuery, setSearchQuery] = useState("");
+  const [pendingScrollId, setPendingScrollId] = useState<string | null>(null);
   const [pendingEditScrollId, setPendingEditScrollId] = useState<string | null>(null);
+  const detailRefs = useRef<Record<string, HTMLElement | null>>({});
   const editRefs = useRef<Record<string, HTMLElement | null>>({});
 
   useEffect(() => {
     const stored = loadShinromiiStorage().aiNotes;
     setNotes(stored);
-    setSelectedId(stored[0]?.id ?? null);
+    setSelectedId(null);
     setSortOrder(loadAiNotesSortOrder());
   }, []);
-
-  const selectedNote = useMemo(
-    () => notes.find((item) => item.id === selectedId) ?? null,
-    [notes, selectedId],
-  );
 
   const sortedNotes = useMemo(() => {
     const next = [...notes];
@@ -125,11 +131,29 @@ export function AiNotesClient() {
     return next.sort((a, b) => b.consultedAt.localeCompare(a.consultedAt));
   }, [notes, sortOrder]);
 
+  const visibleNotes = useMemo(() => {
+    const query = searchQuery.trim().toLowerCase();
+
+    if (!query) {
+      return sortedNotes;
+    }
+
+    return sortedNotes.filter((item) => {
+      const haystack = [item.title, item.summary, item.provider, item.relatedSchool]
+        .join(" ")
+        .toLowerCase();
+
+      return haystack.includes(query);
+    });
+  }, [searchQuery, sortedNotes]);
+
   const formTitle = isCreating ? "相談メモを追加" : "相談メモを編集";
 
   function openCreate() {
     setIsCreating(true);
     setEditingId(null);
+    setSelectedId(null);
+    setPendingScrollId(null);
     setPendingEditScrollId(null);
     setForm(createEmptyForm());
   }
@@ -197,7 +221,8 @@ export function AiNotesClient() {
     saveAiNotes(nextNotes);
 
     if (selectedId === note.id) {
-      setSelectedId(nextNotes[0]?.id ?? null);
+      setSelectedId(null);
+      setPendingScrollId(null);
     }
 
     if (editingId === note.id) {
@@ -215,7 +240,81 @@ export function AiNotesClient() {
       closeEditor();
     }
 
-    setSelectedId((current) => (current === id ? null : id));
+    setSelectedId((current) => {
+      const nextId = current === id ? null : id;
+
+      if (nextId) {
+        setPendingScrollId(nextId);
+      } else {
+        setPendingScrollId(null);
+      }
+
+      return nextId;
+    });
+  }
+
+  function renderNoteDetail(note: AiNote) {
+    return (
+      <section
+        ref={(node) => {
+          detailRefs.current[note.id] = node;
+        }}
+        className="ai-detail-card inline-detail-card"
+      >
+        <div className="ai-detail-head">
+          <div>
+            <p className="ai-detail-eyebrow">相談詳細</p>
+            <p className="ai-detail-title">{note.title}</p>
+            <p className="ai-detail-meta">
+              {note.provider} / {formatNoteDate(note.consultedAt)}
+            </p>
+          </div>
+          <span className="ai-card-helpful">参考度 {note.helpful}</span>
+        </div>
+
+        <div className="ai-detail-sections">
+          <section className="ai-detail-section">
+            <p className="ai-detail-section-title">相談内容</p>
+            <p className="ai-detail-prose preserve-lines">
+              {note.consultationBody || "未入力"}
+            </p>
+          </section>
+
+          <section className="ai-detail-section">
+            <p className="ai-detail-section-title">AIの回答</p>
+            <p className="ai-detail-answer preserve-lines">{note.answerBody}</p>
+          </section>
+
+          <section className="ai-detail-section">
+            <p className="ai-detail-section-title">整理メモ</p>
+            <div className="uni-detail-entry">
+              <span className="uni-detail-entry-label">要約</span>
+              <span className="uni-detail-entry-value preserve-lines">{note.summary}</span>
+            </div>
+            <div className="uni-detail-entry">
+              <span className="uni-detail-entry-label">自由メモ</span>
+              <span className="uni-detail-entry-value preserve-lines">
+                {note.freeNote || "まだ入力されていません"}
+              </span>
+            </div>
+          </section>
+
+          <section className="ai-detail-section">
+            <p className="ai-detail-section-title">関連情報</p>
+            <div className="uni-detail-entry">
+              <span className="uni-detail-entry-label">関連候補</span>
+              <span className="uni-detail-entry-value">
+                {note.relatedSchool || "未入力"}
+              </span>
+            </div>
+            <div className="uni-detail-entry">
+              <span className="uni-detail-entry-label">参考度</span>
+              <span className="uni-detail-entry-value">{note.helpful}</span>
+            </div>
+          </section>
+        </div>
+      </section>
+    );
   }
 
   function renderEditor(title: string, description: string, editorId?: string) {
@@ -344,6 +443,28 @@ export function AiNotesClient() {
   }
 
   useEffect(() => {
+    if (!pendingScrollId || pendingScrollId !== selectedId) {
+      return;
+    }
+
+    const element = detailRefs.current[pendingScrollId];
+
+    if (!element) {
+      return;
+    }
+
+    const frame = window.requestAnimationFrame(() => {
+      element.scrollIntoView({
+        behavior: "smooth",
+        block: "start",
+      });
+      setPendingScrollId(null);
+    });
+
+    return () => window.cancelAnimationFrame(frame);
+  }, [pendingScrollId, selectedId]);
+
+  useEffect(() => {
     if (!pendingEditScrollId || pendingEditScrollId !== editingId) {
       return;
     }
@@ -366,125 +487,107 @@ export function AiNotesClient() {
   }, [editingId, pendingEditScrollId]);
 
   return (
-    <div className="page-stack">
-      <section className="page-hero tone-ai">
-        <div className="page-hero-copy">
-          <p className="eyebrow">AI相談メモ</p>
-          <h2 className="hero-title">相談内容と答えを、あとから見返しやすく。</h2>
-          <p className="hero-description">
-            タイトル、相談先、要約、参考度をすぐ確認できる形で整理します。
-          </p>
-          <div className="hero-stats-inline">
-            <span className="hero-stat-chip">
-              <strong>{notes.length}件</strong>
-              <span className="item-subtitle">保存済み</span>
-            </span>
-            <span className="hero-stat-chip">
-              <strong>{selectedNote ? selectedNote.provider : "ChatGPT"}</strong>
-              <span className="item-subtitle">現在の詳細</span>
-            </span>
+    <div className="ai-page">
+      <section className="list-section">
+        <div className="list-section-head">
+          <div className="list-section-copy">
+            <h2 className="list-section-title">AI相談メモ</h2>
+            <p className="list-section-note">
+              {notes.length > 0 ? `${notes.length}件を保存中` : "相談結果をあとから見返す"}
+            </p>
           </div>
-        </div>
-      </section>
-
-      <section className="panel">
-        <div className="form-stack">
-          <button type="button" className="cta-button" onClick={openCreate}>
-            <span className="cta-icon" aria-hidden="true">
-              <UiIcon name="plus" />
-            </span>
-            <span className="cta-copy">
-              <strong>相談を追加する</strong>
-              <small>新しい相談メモを作成</small>
-            </span>
+          <button type="button" className="list-add-button" onClick={openCreate} aria-label="相談を追加">
+            <UiIcon name="plus" className="list-add-icon" />
           </button>
-
-          <div className="row-between gap-sm align-start">
-            <div className="compare-header no-margin">
-              <span className="soft-pill">localStorage 保存</span>
-              <p className="muted-text">
-                一覧から詳細確認、追加・編集・削除までできます。
-              </p>
-            </div>
-          </div>
         </div>
-      </section>
 
-      {isCreating ? renderEditor(formTitle, "長文回答もそのまま貼り付けて保存できます") : null}
+        <label className="ai-search">
+          <span className="uni-sort-label">検索</span>
+          <input
+            className="ai-search-input"
+            type="search"
+            value={searchQuery}
+            onChange={(event) => setSearchQuery(event.target.value)}
+            placeholder="タイトル・要約・相談先・関連大学"
+          />
+        </label>
 
-      <section className="panel">
-        <SectionHeader title="相談一覧" description="タイトル、相談先、日付、要約だけを見やすく表示" />
-        <div className="sort-bar">
-          <label className="sort-control">
-            <span className="field-label">並び順</span>
-            <select
-              className="text-input"
-              value={sortOrder}
-              onChange={(event) => handleSortChange(event.target.value as AiNotesSortOrder)}
-            >
-              <option value="newest">新しい順</option>
-              <option value="oldest">古い順</option>
-              <option value="helpful">参考度が高い順</option>
-            </select>
-          </label>
-        </div>
-        <div className="list-stack">
+        <label className="uni-sort">
+          <span className="uni-sort-label">並び順</span>
+          <select
+            className="uni-sort-select"
+            value={sortOrder}
+            onChange={(event) => handleSortChange(event.target.value as AiNotesSortOrder)}
+          >
+            <option value="newest">新しい順</option>
+            <option value="oldest">古い順</option>
+            <option value="helpful">参考度が高い順</option>
+          </select>
+        </label>
+
+        {isCreating ? renderEditor(formTitle, "長文回答もそのまま貼り付けて保存できます") : null}
+
+        <div className="ai-list">
           {notes.length === 0 ? (
             <div className="empty-state">
-              <p className="item-title">まだ相談メモがありません</p>
-              <p className="muted-text">上の「相談を追加」から保存できます。</p>
+              <p className="item-title small">まだ相談メモがありません</p>
+              <p className="muted-text">右上の＋から保存できます。</p>
+            </div>
+          ) : visibleNotes.length === 0 ? (
+            <div className="empty-state">
+              <p className="item-title small">該当する相談メモがありません</p>
+              <p className="muted-text">検索条件を変えてみてください。</p>
             </div>
           ) : (
-            sortedNotes.map((item) => (
-              <div key={item.id} className="detail-stack">
-                <article
-                  className={`candidate-card ai-note-card tone-ai ${selectedId === item.id ? "selected-card" : ""}`}
-                >
-                  <div className="ai-note-top">
-                    <div className="candidate-main">
-                      <span className="candidate-icon-badge">
-                        <UiIcon name="ai" className="list-item-icon" />
+            visibleNotes.map((item) => (
+              <div key={item.id} className="detail-stack ai-stack">
+                <article className={`ai-card ${selectedId === item.id || editingId === item.id ? "is-open" : ""}`}>
+                  <div
+                    className="card-tap-area"
+                    role="button"
+                    tabIndex={0}
+                    aria-expanded={selectedId === item.id}
+                    aria-label={`${item.title}の詳細`}
+                    onClick={() => toggleDetail(item.id)}
+                    onKeyDown={(event) => handleCardKeyActivate(event, () => toggleDetail(item.id))}
+                  >
+                    <div className="ai-card-head">
+                      <span className="ai-card-icon">
+                        <UiIcon name="ai" className="ai-card-icon-svg" />
                       </span>
-                      <div className="candidate-summary">
-                        <p className="item-title">{item.title}</p>
-                        <p className="item-subtitle">
+                      <div className="ai-card-copy">
+                        <p className="ai-card-title">{item.title}</p>
+                        <p className="ai-card-meta">
                           {item.provider} / {formatNoteDate(item.consultedAt)}
                         </p>
                       </div>
+                      <span className="ai-card-helpful">参考度 {item.helpful}</span>
                     </div>
-                    <span className="rating-badge">参考度 {item.helpful}</span>
+                    <p className="ai-card-summary">{shorten(item.summary, 72)}</p>
                   </div>
-
-                  <div className="badge-row">
-                    <span className="soft-pill ai-provider-chip">{item.provider}</span>
-                    {item.relatedSchool ? <span className="mini-badge">{item.relatedSchool}</span> : null}
-                  </div>
-
-                  <div className="note-card">
-                    <p className="feedback-label">短い要約</p>
-                    <p>{shorten(item.summary, 96)}</p>
-                  </div>
-
-                  <div className="list-actions">
-                    <button type="button" className="card-action subtle" onClick={() => toggleDetail(item.id)}>
-                      <UiIcon name="detail" className="action-icon" />
-                      {selectedId === item.id ? "詳細を閉じる" : "詳細"}
-                    </button>
-                    <button
-                      type="button"
-                      className="card-action subtle"
-                      onClick={() => (editingId === item.id ? closeEditor() : openEdit(item))}
-                    >
-                      <UiIcon name="edit" className="action-icon" />
-                      {editingId === item.id ? "編集を閉じる" : "編集"}
-                    </button>
-                    <button type="button" className="card-action danger" onClick={() => handleDelete(item)}>
-                      <UiIcon name="delete" className="action-icon" />
-                      削除
-                    </button>
-                  </div>
+                  <CardActionBar
+                    actions={[
+                      {
+                        icon: "detail",
+                        label: selectedId === item.id ? "閉じる" : "詳細",
+                        onClick: () => toggleDetail(item.id),
+                      },
+                      {
+                        icon: "edit",
+                        label: editingId === item.id ? "閉じる" : "編集",
+                        onClick: () => (editingId === item.id ? closeEditor() : openEdit(item)),
+                      },
+                      {
+                        icon: "delete",
+                        label: "削除",
+                        onClick: () => handleDelete(item),
+                        variant: "danger",
+                      },
+                    ]}
+                  />
                 </article>
 
+                {selectedId === item.id ? renderNoteDetail(item) : null}
                 {editingId === item.id
                   ? renderEditor(`${item.title}を編集`, "長文回答もそのまま貼り付けて保存できます", item.id)
                   : null}
@@ -493,65 +596,6 @@ export function AiNotesClient() {
           )}
         </div>
       </section>
-
-      {selectedNote && (
-        <section className="detail-card">
-          <div className="detail-section-header">
-            <div>
-              <p className="eyebrow">相談詳細</p>
-              <p className="item-title">{selectedNote.title}</p>
-              <p className="item-subtitle">
-                {selectedNote.provider} / {formatNoteDate(selectedNote.consultedAt)}
-              </p>
-            </div>
-            <span className="rating-badge">参考度 {selectedNote.helpful}</span>
-          </div>
-
-          <div className="detail-section-list top-gap">
-            <section className="detail-section">
-              <p className="feedback-label">基本情報</p>
-              <div className="detail-entry top-gap">
-                <span className="detail-entry-label">相談先</span>
-                <span className="detail-entry-value">{selectedNote.provider}</span>
-              </div>
-              <div className="detail-entry">
-                <span className="detail-entry-label">相談日</span>
-                <span className="detail-entry-value">{formatNoteDate(selectedNote.consultedAt)}</span>
-              </div>
-              {selectedNote.relatedSchool ? (
-                <div className="detail-entry">
-                  <span className="detail-entry-label">関連候補</span>
-                  <span className="detail-entry-value">{selectedNote.relatedSchool}</span>
-                </div>
-              ) : null}
-            </section>
-
-            <section className="detail-section">
-              <p className="feedback-label">相談内容</p>
-              <p className="preserve-lines top-gap">
-                {selectedNote.consultationBody || "未入力"}
-              </p>
-            </section>
-
-            <section className="detail-section">
-              <p className="feedback-label">AIの回答全文</p>
-              <p className="preserve-lines top-gap">{selectedNote.answerBody}</p>
-            </section>
-
-            <section className="detail-section">
-              <p className="feedback-label">要約メモ</p>
-              <p className="preserve-lines top-gap">{selectedNote.summary}</p>
-            </section>
-
-            {selectedNote.freeNote ? (
-              <section className="detail-section">
-                <p className="feedback-label">自由メモ</p>
-                <p className="preserve-lines top-gap">{selectedNote.freeNote}</p>
-              </section>
-            ) : null}
-          </div>
-        </section>
-      )}
     </div>
   );
 }

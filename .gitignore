@@ -25,3 +25,6 @@ pnpm-debug.log*
 # misc generated files
 *.tsbuildinfo
 .vercel
+
+# local screenshot / browser check artifacts
+.img-tmp/
