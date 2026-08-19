@@ -1,5 +1,8 @@
 import { aiNotes, campusDone, gradeRecords, openCampusEvents, qualifications, universities } from "@/data/mockData";
+import { normalizeEikenScores } from "@/lib/eiken";
 import { normalizeExamScores } from "@/lib/grading-rule";
+import { migrateLegacyDummyQualifications } from "@/lib/qualification-dummy-migration";
+import { recordAutosaveSnapshot } from "@/lib/shinromii-autosave";
 import type {
   AiNote,
   CampusEvaluation,
@@ -126,6 +129,45 @@ function normalizeGradeRecords(records: GradeRecord[]): GradeRecord[] {
   });
 }
 
+/** 英検スコアは後から足した任意項目。無い古いデータはそのまま読む。 */
+function normalizeQualifications(records: QualificationRecord[]): QualificationRecord[] {
+  return records.map((record) => {
+    const next: QualificationRecord = {
+      ...record,
+      examDate: typeof record?.examDate === "string" ? record.examDate : "",
+    };
+    const eikenScores = normalizeEikenScores(record?.eikenScores);
+
+    if (eikenScores) {
+      next.eikenScores = eikenScores;
+    } else {
+      delete next.eikenScores;
+    }
+
+    if (record?.kind === "eiken") {
+      next.kind = "eiken";
+    } else {
+      delete next.kind;
+    }
+
+    return next;
+  });
+}
+
+function storageSnapshotPayload(storage: ShinromiiStorage) {
+  return {
+    version: STORAGE_VERSION,
+    aiNotes: storage.aiNotes,
+    campusEvaluations: storage.campusEvaluations,
+    universityCandidates: storage.universityCandidates,
+    gradeRecords: storage.gradeRecords,
+    qualifications: storage.qualifications,
+    openCampusEvents: storage.openCampusEvents,
+    profile: storage.profile,
+    setupCompleted: storage.setupCompleted,
+  };
+}
+
 type CoerceOptions = {
   /** 既存端末の移行時のみ、学年の初期値を高校1年にする。成績データは触らない。 */
   existingInstallation?: boolean;
@@ -156,7 +198,7 @@ function coerceStorageValues(
       ? normalizeGradeRecords(parsed.gradeRecords)
       : fallback.gradeRecords,
     qualifications: Array.isArray(parsed.qualifications)
-      ? parsed.qualifications
+      ? normalizeQualifications(parsed.qualifications)
       : fallback.qualifications,
     openCampusEvents: Array.isArray(parsed.openCampusEvents)
       ? parsed.openCampusEvents
@@ -208,6 +250,22 @@ function canUseStorage() {
   return typeof window !== "undefined" && typeof window.localStorage !== "undefined";
 }
 
+function persistMigratedDummyQualifications(storage: ShinromiiStorage): ShinromiiStorage {
+  const migrated = migrateLegacyDummyQualifications(storage.qualifications);
+
+  if (!migrated.changed) {
+    return storage;
+  }
+
+  const next = {
+    ...storage,
+    qualifications: migrated.records,
+  };
+
+  saveShinromiiStorage(next);
+  return next;
+}
+
 export function loadShinromiiStorage(): ShinromiiStorage {
   const fallback = buildDefaultStorage();
 
@@ -232,46 +290,58 @@ export function loadShinromiiStorage(): ShinromiiStorage {
     >;
 
     if (parsed.version === 1) {
-      return coerceStorageValues(parsed as Partial<ShinromiiStorageV1>, fallback, {
-        existingInstallation: true,
-      });
+      return persistMigratedDummyQualifications(
+        coerceStorageValues(parsed as Partial<ShinromiiStorageV1>, fallback, {
+          existingInstallation: true,
+        }),
+      );
     }
 
     if (parsed.version === 2) {
-      return coerceStorageValues(parsed as Partial<ShinromiiStorageV2>, fallback, {
-        existingInstallation: true,
-      });
+      return persistMigratedDummyQualifications(
+        coerceStorageValues(parsed as Partial<ShinromiiStorageV2>, fallback, {
+          existingInstallation: true,
+        }),
+      );
     }
 
     if (parsed.version === 3) {
-      return replaceLegacyDummyGrades(
-        coerceStorageValues(parsed as Partial<ShinromiiStorageV3>, fallback, {
-          existingInstallation: true,
-        }),
-        fallback,
+      return persistMigratedDummyQualifications(
+        replaceLegacyDummyGrades(
+          coerceStorageValues(parsed as Partial<ShinromiiStorageV3>, fallback, {
+            existingInstallation: true,
+          }),
+          fallback,
+        ),
       );
     }
 
     if (parsed.version === 4) {
-      return replaceLegacyDummyGrades(
-        coerceStorageValues(parsed as Partial<ShinromiiStorageV4>, fallback, {
-          existingInstallation: true,
-        }),
-        fallback,
+      return persistMigratedDummyQualifications(
+        replaceLegacyDummyGrades(
+          coerceStorageValues(parsed as Partial<ShinromiiStorageV4>, fallback, {
+            existingInstallation: true,
+          }),
+          fallback,
+        ),
       );
     }
 
     if (parsed.version === 5) {
-      return coerceStorageValues(parsed as Partial<ShinromiiStorageV5>, fallback, {
-        existingInstallation: true,
-      });
+      return persistMigratedDummyQualifications(
+        coerceStorageValues(parsed as Partial<ShinromiiStorageV5>, fallback, {
+          existingInstallation: true,
+        }),
+      );
     }
 
     if (parsed.version !== STORAGE_VERSION) {
       return fallback;
     }
 
-    return coerceStorageValues(parsed as Partial<ShinromiiStorage>, fallback);
+    return persistMigratedDummyQualifications(
+      coerceStorageValues(parsed as Partial<ShinromiiStorage>, fallback),
+    );
   } catch {
     return fallback;
   }
@@ -282,20 +352,26 @@ export function saveShinromiiStorage(next: ShinromiiStorage) {
     return;
   }
 
-  window.localStorage.setItem(
-    STORAGE_KEY,
-    JSON.stringify({
-      version: STORAGE_VERSION,
-      aiNotes: next.aiNotes,
-      campusEvaluations: next.campusEvaluations,
-      universityCandidates: next.universityCandidates,
-      gradeRecords: next.gradeRecords,
-      qualifications: next.qualifications,
-      openCampusEvents: next.openCampusEvents,
-      profile: next.profile,
-      setupCompleted: next.setupCompleted,
-    }),
-  );
+  const payload = storageSnapshotPayload({
+    ...next,
+    version: STORAGE_VERSION,
+  });
+
+  try {
+    const raw = window.localStorage.getItem(STORAGE_KEY);
+
+    if (raw) {
+      const previous = parseBackupStorageData(JSON.parse(raw));
+
+      if (previous && JSON.stringify(storageSnapshotPayload(previous)) !== JSON.stringify(payload)) {
+        recordAutosaveSnapshot(storageSnapshotPayload(previous));
+      }
+    }
+  } catch {
+    // 履歴の失敗で本体保存は止めない
+  }
+
+  window.localStorage.setItem(STORAGE_KEY, JSON.stringify(payload));
 }
 
 export function hasExistingShinromiiInstallation() {

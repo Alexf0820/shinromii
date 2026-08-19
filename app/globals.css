@@ -1091,7 +1091,8 @@ a {
   scroll-margin-top: 18px;
 }
 
-.inline-grade-detail-card {
+.inline-grade-detail-card,
+.inline-qual-detail-card {
   scroll-margin-top: 18px;
 }
 
@@ -1807,6 +1808,48 @@ a {
   line-height: 1.55;
 }
 
+.autosave-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+}
+
+.autosave-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 10px 0;
+  border-bottom: 1px solid #f1f3f8;
+}
+
+.autosave-row:last-child {
+  border-bottom: 0;
+  padding-bottom: 2px;
+}
+
+.autosave-row-copy {
+  min-width: 0;
+}
+
+.autosave-row-time {
+  margin: 0;
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+  color: var(--ink);
+  font-size: 0.82rem;
+  font-weight: 800;
+}
+
+.autosave-restore-button {
+  min-height: 40px;
+  padding: 8px 12px;
+  font-size: 0.75rem;
+}
+
 /* ============================================================
    成績・資格 — UI Ver.2
    ============================================================ */
@@ -2229,6 +2272,36 @@ a {
   box-shadow: var(--card-shadow);
 }
 
+.qual-card.is-open {
+  border-color: rgba(37, 99, 235, 0.32);
+  box-shadow: 0 0 0 1px rgba(37, 99, 235, 0.12), var(--card-shadow);
+}
+
+.eiken-score-fold {
+  padding: 10px 12px 12px;
+  border-radius: 14px;
+  background: #f8fafc;
+  border: 1px solid var(--card-line);
+}
+
+.eiken-score-summary {
+  margin: 0;
+  color: var(--ink);
+  font-size: 0.82rem;
+  font-weight: 800;
+}
+
+.eiken-score-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+  margin-top: 10px;
+}
+
+.eiken-score-cse {
+  grid-column: 1 / -1;
+}
+
 .qual-card-head {
   display: flex;
   align-items: flex-start;
@@ -2261,6 +2334,13 @@ a {
   color: var(--primary);
   font-size: 0.86rem;
   font-weight: 800;
+}
+
+.qual-cse {
+  color: var(--primary);
+  font-size: 0.78rem;
+  font-weight: 800;
+  white-space: nowrap;
 }
 
 .qual-date {

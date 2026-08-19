@@ -12,8 +12,13 @@ import {
   parseShinromiiBackupJson,
   stringifyShinromiiBackup,
 } from "@/lib/shinromii-backup";
+import {
+  formatAutosaveDateTime,
+  loadAutosaveHistory,
+  type AutosaveHistoryEntry,
+} from "@/lib/shinromii-autosave";
 import type { ShinromiiStorage } from "@/lib/shinromii-storage";
-import { loadShinromiiStorage, saveShinromiiStorage } from "@/lib/shinromii-storage";
+import { loadShinromiiStorage, parseBackupStorageData, saveShinromiiStorage } from "@/lib/shinromii-storage";
 
 const HERO_IMAGE = "/images/shinromii-home-hero.png";
 const HERO_IMAGE_WIDTH = 1024;
@@ -98,10 +103,12 @@ export function HomeClient() {
   const [storage, setStorage] = useState<ShinromiiStorage | null>(createFallbackSummary());
   const [todayLabel, setTodayLabel] = useState<string | null>(null);
   const [dataManagementMessage, setDataManagementMessage] = useState<string | null>(null);
+  const [autosaveHistory, setAutosaveHistory] = useState<AutosaveHistoryEntry[]>([]);
   const restoreInputRef = useRef<HTMLInputElement | null>(null);
 
   useEffect(() => {
     setStorage(loadShinromiiStorage());
+    setAutosaveHistory(loadAutosaveHistory());
     setTodayLabel(formatTodayLabel(new Date()));
   }, []);
 
@@ -164,7 +171,7 @@ export function HomeClient() {
       note: latestGrade.termLabel ? `最新 ${latestGrade.termLabel}` : "未登録",
     },
     {
-      href: "/grades",
+      href: "/grades#qualifications",
       label: "資格・検定",
       value: latestQualification
         ? `${latestQualification.name}${latestQualification.scoreOrLevel}`
@@ -211,6 +218,36 @@ export function HomeClient() {
     setDataManagementMessage("バックアップを保存しました。");
   }
 
+  function refreshAutosaveHistory() {
+    setAutosaveHistory(loadAutosaveHistory());
+  }
+
+  function handleAutosaveRestore(entry: AutosaveHistoryEntry) {
+    const label = formatAutosaveDateTime(entry.savedAt);
+    const confirmed = window.confirm(
+      `${label} の状態に戻しますか？\n現在のデータは置き換わります。`,
+    );
+
+    if (!confirmed) {
+      setDataManagementMessage("自動保存の履歴からの復元をキャンセルしました。");
+      return;
+    }
+
+    const restored = parseBackupStorageData(entry.data);
+
+    if (!restored) {
+      const message = "この履歴は読み込めなかったため、現在のデータはそのままです。";
+      window.alert(message);
+      setDataManagementMessage(message);
+      return;
+    }
+
+    saveShinromiiStorage(restored);
+    setStorage(restored);
+    setAutosaveHistory(loadAutosaveHistory());
+    setDataManagementMessage("自動保存の履歴から復元しました。");
+  }
+
   async function handleBackupImport(fileList: FileList | null) {
     const file = fileList?.[0];
 
@@ -239,6 +276,7 @@ export function HomeClient() {
 
       saveShinromiiStorage(parsed.storage);
       setStorage(parsed.storage);
+      setAutosaveHistory(loadAutosaveHistory());
       setDataManagementMessage("バックアップから復元し、保存データを置き換えました。");
       window.alert("バックアップから復元しました。");
     } catch {
@@ -373,17 +411,57 @@ export function HomeClient() {
           </div>
         </details>
 
-        <details className="home-fold">
+        <details
+          className="home-fold"
+          onToggle={(event) => {
+            if (event.currentTarget.open) {
+              refreshAutosaveHistory();
+            }
+          }}
+        >
           <summary className="home-fold-summary">
             <span>大切なデータをバックアップ</span>
             <UiIcon name="chevron-right" className="home-fold-icon" aria-hidden="true" />
           </summary>
           <div className="home-fold-body">
+            <p className="item-title small">自動保存の履歴</p>
             <p className="home-fold-text">
-              機種変更や別の端末で使うときのために、現在のSHINROMiiのデータをファイルとして保存できます。
+              最近の状態を、この端末に3件まで自動で保存しています。
             </p>
             <p className="home-fold-text">
-              バックアップファイルは自分の端末に保存されます。SHINROMiiのサーバーには保存されません。
+              誤って消したときや、少し前の内容に戻したいときに、この端末の中だけで使えます。
+            </p>
+
+            {autosaveHistory.length === 0 ? (
+              <p className="home-fold-text">まだ自動保存の履歴はありません。データを保存すると、ここに残ります。</p>
+            ) : (
+              <div className="autosave-list">
+                {autosaveHistory.map((entry, index) => (
+                  <div key={entry.id} className="autosave-row">
+                    <div className="autosave-row-copy">
+                      <p className="autosave-row-time">
+                        {formatAutosaveDateTime(entry.savedAt)}
+                        {index === 0 ? <span className="term-latest-badge">最新</span> : null}
+                      </p>
+                    </div>
+                    <button
+                      type="button"
+                      className="action-button autosave-restore-button"
+                      onClick={() => handleAutosaveRestore(entry)}
+                    >
+                      この状態に戻す
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            <p className="item-title small">バックアップ</p>
+            <p className="home-fold-text">
+              機種変更、別の端末、家族への受け渡しには、ファイルとして保存するバックアップを使います。
+            </p>
+            <p className="home-fold-text">
+              バックアップは自分の端末にファイルとして残ります。SHINROMiiのサーバーには保存されません。
             </p>
 
             <div className="action-row">
@@ -418,7 +496,7 @@ export function HomeClient() {
 
             {dataManagementMessage ? (
               <div className="info-strip">
-                <p className="item-title small">バックアップ状況</p>
+                <p className="item-title small">データの状況</p>
                 <p>{dataManagementMessage}</p>
               </div>
             ) : null}

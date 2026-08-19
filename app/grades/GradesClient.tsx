@@ -1,17 +1,28 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState, type KeyboardEvent } from "react";
 import { CardActionBar } from "@/components/CardActionBar";
 import { SectionHeader } from "@/components/SectionHeader";
 import { UiIcon } from "@/components/UiIcon";
 import { gradeRecords as initialGradeRecords, qualifications as initialQualifications } from "@/data/mockData";
 import type {
+  EikenCefr,
   GradeRecord,
   GradeSchoolYear,
   GradeTerm,
   QualificationRecord,
   QualificationStatus,
 } from "@/data/mockData";
+import {
+  EIKEN_CEFR_LEVELS,
+  eikenLevelRank,
+  eikenScoresFromInputs,
+  formatEikenCseCardScore,
+  isEikenQualification,
+  isEikenQualificationName,
+  parseEikenExamNote,
+  qualificationEikenScores,
+} from "@/lib/eiken";
 import {
   examCount,
   examTotal,
@@ -25,6 +36,13 @@ import {
   saveGradeRecords,
   saveQualifications,
 } from "@/lib/shinromii-storage";
+
+function handleCardKeyActivate(event: KeyboardEvent, action: () => void) {
+  if (event.key === "Enter" || event.key === " ") {
+    event.preventDefault();
+    action();
+  }
+}
 
 const schoolYearOptions: GradeSchoolYear[] = ["高1", "高2", "高3"];
 const termOptions: GradeTerm[] = ["1学期", "2学期", "3学期", "学年末"];
@@ -59,6 +77,12 @@ type QualificationFormState = {
   examDate: string;
   status: QualificationStatus;
   memo: string;
+  cseScore: string;
+  readingScore: string;
+  listeningScore: string;
+  writingScore: string;
+  speakingScore: string;
+  cefr: "" | EikenCefr;
 };
 
 function createId(prefix: string) {
@@ -116,9 +140,15 @@ function createEmptyQualificationForm(): QualificationFormState {
   return {
     name: "",
     scoreOrLevel: "",
-    examDate: todayString(),
+    examDate: "",
     status: "取得済み",
     memo: "",
+    cseScore: "",
+    readingScore: "",
+    listeningScore: "",
+    writingScore: "",
+    speakingScore: "",
+    cefr: "",
   };
 }
 
@@ -136,13 +166,25 @@ function formFromGradeRecord(record: GradeRecord): GradeFormState {
   };
 }
 
+function scoreToInput(value: number | undefined) {
+  return value === undefined ? "" : String(value);
+}
+
 function formFromQualification(record: QualificationRecord): QualificationFormState {
+  const eikenScores = qualificationEikenScores(record);
+
   return {
     name: record.name,
     scoreOrLevel: record.scoreOrLevel,
     examDate: record.examDate,
     status: record.status,
     memo: record.memo,
+    cseScore: scoreToInput(eikenScores?.cse),
+    readingScore: scoreToInput(eikenScores?.reading),
+    listeningScore: scoreToInput(eikenScores?.listening),
+    writingScore: scoreToInput(eikenScores?.writing),
+    speakingScore: scoreToInput(eikenScores?.speaking),
+    cefr: eikenScores?.cefr ?? "",
   };
 }
 
@@ -200,6 +242,12 @@ function sortQualifications(records: QualificationRecord[]) {
       return b.examDate.localeCompare(a.examDate);
     }
 
+    const levelDiff = eikenLevelRank(b.scoreOrLevel) - eikenLevelRank(a.scoreOrLevel);
+
+    if (levelDiff !== 0) {
+      return levelDiff;
+    }
+
     return b.updatedAt.localeCompare(a.updatedAt);
   });
 }
@@ -224,6 +272,7 @@ export function GradesClient() {
   const [qualifications, setQualifications] = useState<QualificationRecord[]>(initialQualifications);
   const [selectedGradeId, setSelectedGradeId] = useState<string | null>(null);
   const [gradeEditingId, setGradeEditingId] = useState<string | null>(null);
+  const [selectedQualificationId, setSelectedQualificationId] = useState<string | null>(null);
   const [qualificationEditingId, setQualificationEditingId] = useState<string | null>(null);
   const [isCreatingGrade, setIsCreatingGrade] = useState(false);
   const [isCreatingQualification, setIsCreatingQualification] = useState(false);
@@ -233,16 +282,24 @@ export function GradesClient() {
   );
   const [pendingGradeScrollId, setPendingGradeScrollId] = useState<string | null>(null);
   const [pendingGradeEditScrollId, setPendingGradeEditScrollId] = useState<string | null>(null);
+  const [pendingQualificationScrollId, setPendingQualificationScrollId] = useState<string | null>(null);
   const [pendingQualificationEditScrollId, setPendingQualificationEditScrollId] = useState<string | null>(null);
   const gradesSectionRef = useRef<HTMLElement | null>(null);
   const gradeDetailRefs = useRef<Record<string, HTMLElement | null>>({});
   const gradeEditRefs = useRef<Record<string, HTMLElement | null>>({});
+  const qualificationDetailRefs = useRef<Record<string, HTMLElement | null>>({});
   const qualificationEditRefs = useRef<Record<string, HTMLElement | null>>({});
 
   useEffect(() => {
     const storage = loadShinromiiStorage();
     setGradeRecords(storage.gradeRecords);
     setQualifications(storage.qualifications);
+  }, []);
+
+  useEffect(() => {
+    if (window.location.hash === "#qualifications") {
+      setActiveTab("qualifications");
+    }
   }, []);
 
   useEffect(() => {
@@ -455,12 +512,16 @@ export function GradesClient() {
   function openCreateQualification() {
     setIsCreatingQualification(true);
     setQualificationEditingId(null);
+    setSelectedQualificationId(null);
+    setPendingQualificationScrollId(null);
     setPendingQualificationEditScrollId(null);
     setQualificationForm(createEmptyQualificationForm());
   }
 
   function openEditQualification(record: QualificationRecord) {
     setIsCreatingQualification(false);
+    setSelectedQualificationId(null);
+    setPendingQualificationScrollId(null);
     setQualificationEditingId(record.id);
     setPendingQualificationEditScrollId(record.id);
     setQualificationForm(formFromQualification(record));
@@ -479,19 +540,26 @@ export function GradesClient() {
       return;
     }
 
-    if (!qualificationForm.examDate) {
-      window.alert("取得日または受験日を入力してください。");
-      return;
-    }
-
     const now = todayString();
     const currentRecord = qualificationEditingId
       ? qualifications.find((item) => item.id === qualificationEditingId) ?? null
       : null;
 
+    const name = qualificationForm.name.trim();
+    const eikenScores = isEikenQualificationName(name)
+      ? eikenScoresFromInputs({
+          cse: qualificationForm.cseScore,
+          reading: qualificationForm.readingScore,
+          listening: qualificationForm.listeningScore,
+          writing: qualificationForm.writingScore,
+          speaking: qualificationForm.speakingScore,
+          cefr: qualificationForm.cefr,
+        })
+      : undefined;
+
     const nextRecord: QualificationRecord = {
       id: qualificationEditingId ?? createId("qualification"),
-      name: qualificationForm.name.trim(),
+      name,
       scoreOrLevel: qualificationForm.scoreOrLevel.trim(),
       examDate: qualificationForm.examDate,
       status: qualificationForm.status,
@@ -499,6 +567,14 @@ export function GradesClient() {
       createdAt: currentRecord?.createdAt ?? now,
       updatedAt: now,
     };
+
+    if (isEikenQualificationName(name)) {
+      nextRecord.kind = "eiken";
+    }
+
+    if (eikenScores) {
+      nextRecord.eikenScores = eikenScores;
+    }
 
     const nextQualifications = qualificationEditingId
       ? qualifications.map((item) => (item.id === qualificationEditingId ? nextRecord : item))
@@ -523,6 +599,30 @@ export function GradesClient() {
     if (qualificationEditingId === record.id) {
       closeQualificationEditor();
     }
+
+    if (selectedQualificationId === record.id) {
+      setSelectedQualificationId(null);
+      setPendingQualificationScrollId(null);
+    }
+  }
+
+  function toggleQualificationDetail(id: string) {
+    if (qualificationEditingId) {
+      closeQualificationEditor();
+    }
+
+    setIsCreatingQualification(false);
+    setSelectedQualificationId((current) => {
+      const nextId = current === id ? null : id;
+
+      if (nextId) {
+        setPendingQualificationScrollId(nextId);
+      } else {
+        setPendingQualificationScrollId(null);
+      }
+
+      return nextId;
+    });
   }
 
   function toggleGradeDetail(id: string) {
@@ -766,6 +866,90 @@ export function GradesClient() {
     );
   }
 
+  function renderQualificationDetail(record: QualificationRecord) {
+    const eikenScores = isEikenQualification(record) ? qualificationEikenScores(record) : undefined;
+    const examNote = isEikenQualification(record) ? parseEikenExamNote(record.memo) : null;
+    const eikenEntries = [
+      { label: "CSEスコア", value: eikenScores?.cse },
+      { label: "CEFR", value: eikenScores?.cefr },
+      { label: "Reading", value: eikenScores?.reading },
+      { label: "Listening", value: eikenScores?.listening },
+      { label: "Writing", value: eikenScores?.writing },
+      { label: "Speaking", value: eikenScores?.speaking },
+    ].filter((entry) => entry.value !== undefined);
+
+    return (
+      <section
+        ref={(node) => {
+          qualificationDetailRefs.current[record.id] = node;
+        }}
+        className="detail-card inline-detail-card inline-qual-detail-card"
+      >
+        <div className="detail-section-header">
+          <div>
+            <p className="eyebrow">資格詳細</p>
+            <p className="item-title">{record.name}</p>
+            <p className="item-subtitle">{record.scoreOrLevel}</p>
+          </div>
+          <span className={`status-pill ${qualificationStatusClass(record.status)}`}>{record.status}</span>
+        </div>
+
+        <div className="detail-section-list top-gap">
+          <section className="detail-section">
+            <p className="feedback-label">基本情報</p>
+            <div className="detail-entry top-gap">
+              <span className="detail-entry-label">資格名</span>
+              <span className="detail-entry-value">{record.name}</span>
+            </div>
+            <div className="detail-entry">
+              <span className="detail-entry-label">級 / スコア</span>
+              <span className="detail-entry-value">{record.scoreOrLevel}</span>
+            </div>
+            {record.examDate ? (
+              <div className="detail-entry">
+                <span className="detail-entry-label">取得日</span>
+                <span className="detail-entry-value">{formatDate(record.examDate)}</span>
+              </div>
+            ) : null}
+            <div className="detail-entry">
+              <span className="detail-entry-label">状態</span>
+              <span className="detail-entry-value">{record.status}</span>
+            </div>
+            {examNote ? (
+              <>
+                <div className="detail-entry">
+                  <span className="detail-entry-label">試験</span>
+                  <span className="detail-entry-value">{examNote.examName}</span>
+                </div>
+                <div className="detail-entry">
+                  <span className="detail-entry-label">年度・回</span>
+                  <span className="detail-entry-value">{examNote.examSession}</span>
+                </div>
+              </>
+            ) : record.memo ? (
+              <div className="detail-entry">
+                <span className="detail-entry-label">メモ</span>
+                <span className="detail-entry-value preserve-lines">{record.memo}</span>
+              </div>
+            ) : null}
+          </section>
+
+          {eikenEntries.length > 0 ? (
+            <section className="detail-section">
+              <p className="feedback-label">英検スコア</p>
+              {eikenEntries.map((entry, index) => (
+                <div key={entry.label} className={`detail-entry${index === 0 ? " top-gap" : ""}`}>
+                  <span className="detail-entry-label">{entry.label}</span>
+                  <span className="detail-entry-value">{entry.value}</span>
+                </div>
+              ))}
+            </section>
+          ) : null}
+        </div>
+      </section>
+    );
+  }
+
   function renderQualificationEditor(title: string, description: string, editorId?: string) {
     return (
       <section
@@ -802,7 +986,7 @@ export function GradesClient() {
 
           <div className="field-grid">
             <label className="field-block">
-              <span className="field-label">取得日または受験日</span>
+              <span className="field-label">取得日または受験日（任意）</span>
               <input
                 className="text-input"
                 type="date"
@@ -838,6 +1022,86 @@ export function GradesClient() {
               onChange={(event) => updateQualificationForm("memo", event.target.value)}
             />
           </label>
+
+          {isEikenQualificationName(qualificationForm.name) ? (
+            <div className="eiken-score-fold">
+              <p className="eiken-score-summary">英検スコア（任意）</p>
+              <div className="eiken-score-grid">
+                <label className="field-block eiken-score-cse">
+                  <span className="field-label">CSEスコア</span>
+                  <input
+                    className="text-input"
+                    type="number"
+                    inputMode="numeric"
+                    min={0}
+                    value={qualificationForm.cseScore}
+                    onChange={(event) => updateQualificationForm("cseScore", event.target.value)}
+                  />
+                </label>
+                <label className="field-block eiken-score-cse">
+                  <span className="field-label">CEFR（任意）</span>
+                  <select
+                    className="text-input"
+                    value={qualificationForm.cefr}
+                    onChange={(event) =>
+                      updateQualificationForm("cefr", event.target.value as "" | EikenCefr)
+                    }
+                  >
+                    <option value="">選択しない</option>
+                    {EIKEN_CEFR_LEVELS.map((level) => (
+                      <option key={level} value={level}>
+                        {level}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <label className="field-block">
+                  <span className="field-label">Reading</span>
+                  <input
+                    className="text-input"
+                    type="number"
+                    inputMode="numeric"
+                    min={0}
+                    value={qualificationForm.readingScore}
+                    onChange={(event) => updateQualificationForm("readingScore", event.target.value)}
+                  />
+                </label>
+                <label className="field-block">
+                  <span className="field-label">Listening</span>
+                  <input
+                    className="text-input"
+                    type="number"
+                    inputMode="numeric"
+                    min={0}
+                    value={qualificationForm.listeningScore}
+                    onChange={(event) => updateQualificationForm("listeningScore", event.target.value)}
+                  />
+                </label>
+                <label className="field-block">
+                  <span className="field-label">Writing</span>
+                  <input
+                    className="text-input"
+                    type="number"
+                    inputMode="numeric"
+                    min={0}
+                    value={qualificationForm.writingScore}
+                    onChange={(event) => updateQualificationForm("writingScore", event.target.value)}
+                  />
+                </label>
+                <label className="field-block">
+                  <span className="field-label">Speaking</span>
+                  <input
+                    className="text-input"
+                    type="number"
+                    inputMode="numeric"
+                    min={0}
+                    value={qualificationForm.speakingScore}
+                    onChange={(event) => updateQualificationForm("speakingScore", event.target.value)}
+                  />
+                </label>
+              </div>
+            </div>
+          ) : null}
 
           <div className="action-row">
             <button
@@ -924,6 +1188,28 @@ export function GradesClient() {
 
     return () => window.cancelAnimationFrame(frame);
   }, [pendingQualificationEditScrollId, qualificationEditingId]);
+
+  useEffect(() => {
+    if (!pendingQualificationScrollId || pendingQualificationScrollId !== selectedQualificationId) {
+      return;
+    }
+
+    const element = qualificationDetailRefs.current[pendingQualificationScrollId];
+
+    if (!element) {
+      return;
+    }
+
+    const frame = window.requestAnimationFrame(() => {
+      element.scrollIntoView({
+        behavior: "smooth",
+        block: "start",
+      });
+      setPendingQualificationScrollId(null);
+    });
+
+    return () => window.cancelAnimationFrame(frame);
+  }, [pendingQualificationScrollId, selectedQualificationId]);
 
   return (
     <div className="grades-page">
@@ -1091,22 +1377,40 @@ export function GradesClient() {
                 <p className="muted-text">受験予定からでも先に登録できます。</p>
               </div>
             ) : (
-              sortedQualifications.map((record) => (
+              sortedQualifications.map((record) => {
+                const cseCardScore = formatEikenCseCardScore(record);
+
+                return (
                 <div key={record.id} className="detail-stack subject-stack">
-                  <article className="qual-card">
-                    <div className="qual-card-head">
-                      <div className="qual-card-copy">
-                        <p className="qual-name">
-                          {record.name}
-                          <span className="qual-score">{record.scoreOrLevel}</span>
-                        </p>
-                        <p className="qual-date">{formatDate(record.examDate)}</p>
+                  <article
+                    className={`qual-card ${selectedQualificationId === record.id || qualificationEditingId === record.id ? "is-open" : ""}`}
+                  >
+                    <div
+                      className="card-tap-area"
+                      role="button"
+                      tabIndex={0}
+                      aria-expanded={selectedQualificationId === record.id}
+                      aria-label={`${record.name}の詳細`}
+                      onClick={() => toggleQualificationDetail(record.id)}
+                      onKeyDown={(event) =>
+                        handleCardKeyActivate(event, () => toggleQualificationDetail(record.id))
+                      }
+                    >
+                      <div className="qual-card-head">
+                        <div className="qual-card-copy">
+                          <p className="qual-name">
+                            {record.name}
+                            <span className="qual-score">{record.scoreOrLevel}</span>
+                            {cseCardScore ? <span className="qual-cse">{cseCardScore}</span> : null}
+                          </p>
+                          {record.examDate ? <p className="qual-date">{formatDate(record.examDate)}</p> : null}
+                        </div>
+                        <span className={`status-pill ${qualificationStatusClass(record.status)}`}>
+                          {record.status}
+                        </span>
                       </div>
-                      <span className={`status-pill ${qualificationStatusClass(record.status)}`}>
-                        {record.status}
-                      </span>
+                      {record.memo ? <p className="qual-memo">{record.memo}</p> : null}
                     </div>
-                    {record.memo ? <p className="qual-memo">{record.memo}</p> : null}
                     <CardActionBar
                       actions={[
                         {
@@ -1127,6 +1431,7 @@ export function GradesClient() {
                     />
                   </article>
 
+                  {selectedQualificationId === record.id ? renderQualificationDetail(record) : null}
                   {qualificationEditingId === record.id
                     ? renderQualificationEditor(
                         `${record.name}を編集`,
@@ -1135,7 +1440,8 @@ export function GradesClient() {
                       )
                     : null}
                 </div>
-              ))
+                );
+              })
             )}
           </div>
         </section>

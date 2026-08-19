@@ -61,6 +61,17 @@ export type GradeRecord = {
 
 export type QualificationStatus = "取得済み" | "受験予定" | "結果待ち";
 
+export type EikenCefr = "A1" | "A2" | "B1" | "B2" | "C1" | "C2";
+
+export type EikenScores = {
+  cse?: number;
+  reading?: number;
+  listening?: number;
+  writing?: number;
+  speaking?: number;
+  cefr?: EikenCefr;
+};
+
 export type QualificationRecord = {
   id: string;
   name: string;
@@ -70,6 +81,9 @@ export type QualificationRecord = {
   memo: string;
   createdAt: string;
   updatedAt: string;
+  /** 将来の資格タイプ用。未設定でも英検名から判定する。 */
+  kind?: "eiken";
+  eikenScores?: EikenScores;
 };
 
 export type UniversityCandidate = {
@@ -236,24 +250,61 @@ export const gradeRecords: GradeRecord[] = firstYearFirstTerm.map(({ id, subject
 
 export const qualifications: QualificationRecord[] = [
   {
-    id: "qualification-eiken-pre2",
+    id: "qualification-eiken-2-pass-2026",
     name: "英検",
-    scoreOrLevel: "準2級",
-    examDate: "2026-06-15",
+    scoreOrLevel: "2級",
+    examDate: "",
     status: "取得済み",
-    memo: "次は2級を目標にしたい。",
-    createdAt: "2026-06-15",
-    updatedAt: "2026-06-15",
+    memo: "英検S-CBT / 2026年度 第1回",
+    createdAt: "2026-06-01",
+    updatedAt: "2026-06-01",
+    kind: "eiken",
+    eikenScores: {
+      cse: 2021,
+      reading: 477,
+      listening: 529,
+      writing: 543,
+      speaking: 472,
+      cefr: "B1",
+    },
   },
   {
-    id: "qualification-kanken-2",
-    name: "漢検",
-    scoreOrLevel: "2級",
-    examDate: "2025-11-20",
+    id: "qualification-eiken-pre2-pass-2024",
+    name: "英検",
+    scoreOrLevel: "準2級",
+    examDate: "",
     status: "取得済み",
-    memo: "",
-    createdAt: "2025-11-20",
-    updatedAt: "2025-11-20",
+    memo: "英検S-CBT / 2024年度 第1回",
+    createdAt: "2024-04-01",
+    updatedAt: "2024-04-01",
+    kind: "eiken",
+    eikenScores: {
+      cse: 1740,
+      reading: 414,
+      listening: 466,
+      writing: 449,
+      speaking: 411,
+      cefr: "A2",
+    },
+  },
+  {
+    id: "qualification-eiken-3-pass-2022",
+    name: "英検",
+    scoreOrLevel: "3級",
+    examDate: "",
+    status: "取得済み",
+    memo: "英検S-CBT / 2022年度 第3回",
+    createdAt: "2022-12-01",
+    updatedAt: "2022-12-01",
+    kind: "eiken",
+    eikenScores: {
+      cse: 1687,
+      reading: 364,
+      listening: 462,
+      writing: 473,
+      speaking: 388,
+      cefr: "A1",
+    },
   },
 ];
 
