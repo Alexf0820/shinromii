@@ -149,7 +149,9 @@ export function HomeClient() {
       return null;
     }
 
-    return storage.openCampusEvents.filter((item) => item.status !== "参加済み").length;
+    return storage.openCampusEvents.filter(
+      (item) => item.status === "検討中" || item.status === "予約済み",
+    ).length;
   }, [storage]);
 
   const recentNotes = useMemo(() => {

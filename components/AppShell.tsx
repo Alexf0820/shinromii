@@ -3,7 +3,7 @@
 import type { ComponentProps, ReactNode } from "react";
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import { BrandAccountLink } from "@/components/BrandAccountLink";
 import { FirstSetup } from "@/components/FirstSetup";
 import { MobileNav } from "@/components/MobileNav";
@@ -11,7 +11,7 @@ import { SiteFooter } from "@/components/SiteFooter";
 import { UiIcon } from "@/components/UiIcon";
 import { WelcomeStart } from "@/components/WelcomeStart";
 import { APP_VERSION_LABEL } from "@/lib/app-version";
-import { shouldShowFirstSetup } from "@/lib/shinromii-storage";
+import { shouldResumeSetup, shouldShowFirstSetup, clearResumeSetup } from "@/lib/shinromii-storage";
 
 type OnboardingStep = "none" | "welcome" | "profile";
 
@@ -101,7 +101,9 @@ type AppShellProps = {
 
 export function AppShell({ children }: AppShellProps) {
   const pathname = usePathname();
+  const router = useRouter();
   const [onboarding, setOnboarding] = useState<OnboardingStep>("none");
+  const [resumeSetup, setResumeSetup] = useState(false);
   const isAdminPath = pathname === "/admin" || pathname.startsWith("/admin/");
   const isAdminPreview = pathname.startsWith("/admin/preview");
   const isOnboarding = onboarding !== "none";
@@ -114,8 +116,17 @@ export function AppShell({ children }: AppShellProps) {
   useEffect(() => {
     if (isAdminPath) {
       setOnboarding("none");
+      setResumeSetup(false);
       return;
     }
+
+    if (shouldResumeSetup()) {
+      setResumeSetup(true);
+      setOnboarding("profile");
+      return;
+    }
+
+    setResumeSetup(false);
 
     if (!shouldShowFirstSetup()) {
       setOnboarding("none");
@@ -172,7 +183,17 @@ export function AppShell({ children }: AppShellProps) {
               onRestored={() => setOnboarding("none")}
             />
           ) : onboarding === "profile" ? (
-            <FirstSetup onFinished={() => setOnboarding("none")} />
+            <FirstSetup
+              resume={resumeSetup}
+              onFinished={() => {
+                clearResumeSetup();
+                setResumeSetup(false);
+                setOnboarding("none");
+                if (pathname !== "/") {
+                  router.push("/");
+                }
+              }}
+            />
           ) : (
             <>
               {children}

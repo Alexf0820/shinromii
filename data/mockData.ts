@@ -23,7 +23,7 @@ export type CampusSummary = {
   note: string;
 };
 
-export type OpenCampusStatus = "検討中" | "予約済み" | "参加済み";
+export type OpenCampusStatus = "検討中" | "予約済み" | "参加済み" | "不参加";
 
 export type OpenCampusLink = {
   id: string;
@@ -100,6 +100,12 @@ export type UniversityCandidate = {
   familyView: string;
   reason: string;
   futureNote: string;
+  /** マスターから登録した場合の大学ID。手入力では付けない。 */
+  universityMasterId?: string;
+  /** マスターから学部を選んだ場合の学部ID。手入力では付けない。 */
+  facultyMasterId?: string;
+  masterCheckedAt?: string;
+  masterAcademicYear?: string;
 };
 
 export type LegacyUniversityCandidate = {
@@ -139,6 +145,52 @@ export type CampusEvaluationCategory =
 
 export type CampusCategoryScores = Record<CampusEvaluationCategory, number | null>;
 
+export type OcLookForId =
+  | "class"
+  | "faculty"
+  | "students"
+  | "campus"
+  | "facility"
+  | "access"
+  | "career"
+  | "english"
+  | "exam"
+  | "other";
+
+export type OcPointTagId =
+  | "class"
+  | "faculty"
+  | "students"
+  | "campus"
+  | "facility"
+  | "teacher"
+  | "career"
+  | "english"
+  | "access"
+  | "other";
+
+export type OcSimpleMark = "great" | "good" | "ok" | "poor";
+
+export type OcAspiration = "want" | "keep" | "unsure" | "drop";
+
+export type OcTrialMatch = "as_expected" | "unexpected";
+
+export type OcSimpleRatings = {
+  campus?: OcSimpleMark;
+  students?: OcSimpleMark;
+  learning?: OcSimpleMark;
+  access?: OcSimpleMark;
+};
+
+export type OcTrialLesson = {
+  courseName?: string;
+  instructor?: string;
+  date?: string;
+  expected?: string;
+  match?: OcTrialMatch;
+  noticed?: string;
+};
+
 export type CampusEvaluation = {
   overall: number | null;
   goodPoint: string;
@@ -147,6 +199,14 @@ export type CampusEvaluation = {
   familyComment: string;
   freeNote: string;
   categoryScores: CampusCategoryScores;
+  simpleRatings?: OcSimpleRatings;
+  aspiration?: OcAspiration;
+  goodTags?: OcPointTagId[];
+  goodOther?: string;
+  concernTags?: OcPointTagId[];
+  concernOther?: string;
+  wantToKnow?: string;
+  trialLesson?: OcTrialLesson;
 };
 
 export type CampusVisit = {
@@ -175,6 +235,8 @@ export type OpenCampusEvent = {
   attachments: OpenCampusAttachmentMeta[];
   createdAt: string;
   updatedAt: string;
+  lookFor?: OcLookForId[];
+  lookForOther?: string;
 };
 
 export const dashboardStats: DashboardStat[] = [
@@ -310,49 +372,49 @@ export const qualifications: QualificationRecord[] = [
 
 export const universities: UniversityCandidate[] = [
   {
-    id: "candidate-aoba-media",
-    createdAt: "2026-08-12",
-    university: "青葉大学",
-    faculty: "情報デザイン学部",
-    department: "メディア表現学科",
-    url: "https://example.com/aoba",
-    studentScore: "かなり高い",
-    familyScore: "高い",
-    studentView: "デザインと情報の両方を学べそう。雰囲気も好み。",
-    familyView: "通学時間が現実的で、学びの幅も広そう。",
-    interest: 5,
-    reason: "情報と表現を両方学べそうで、今の興味にかなり近い。",
-    futureNote: "Web企画、広報、UX系の進路にどうつながるか確認したい。",
-  },
-  {
-    id: "candidate-hoshigaoka-management",
-    createdAt: "2026-08-10",
-    university: "星ヶ丘大学",
-    faculty: "経営学部",
-    department: "経営情報学科",
-    url: "https://example.com/hoshigaoka",
-    studentScore: "高い",
-    familyScore: "かなり高い",
-    studentView: "オープンキャンパス次第で第一候補になるかも。",
-    familyView: "サポート体制が手厚そうで安心感がある。",
-    interest: 4,
-    reason: "経営と情報の両方に触れられて進路の幅が広そう。",
-    futureNote: "就職実績とサポート内容を詳しく見たい。",
-  },
-  {
-    id: "candidate-konan-global",
-    createdAt: "2026-08-08",
-    university: "港南学院大学",
-    faculty: "国際教養学部",
-    department: "国際コミュニケーション学科",
-    url: "https://example.com/konan",
+    id: "candidate-kyoritsu-womens",
+    createdAt: "2026-08-19",
+    university: "共立女子大学",
+    faculty: "",
+    department: "",
+    url: "",
     studentScore: "検討中",
-    familyScore: "高い",
-    studentView: "英語は魅力だけど、学科選びはもう少し比較したい。",
-    familyView: "将来の進路の広さは魅力。費用感も確認したい。",
+    familyScore: "検討中",
+    studentView: "",
+    familyView: "",
     interest: 3,
-    reason: "英語を活かしやすいが、学科との相性はもう少し見たい。",
-    futureNote: "留学制度と卒業後の仕事の幅を確認したい。",
+    reason: "",
+    futureNote: "",
+  },
+  {
+    id: "candidate-showa-womens-international",
+    createdAt: "2026-08-18",
+    university: "昭和女子大学",
+    faculty: "国際学部",
+    department: "",
+    url: "",
+    studentScore: "検討中",
+    familyScore: "検討中",
+    studentView: "",
+    familyView: "",
+    interest: 3,
+    reason: "",
+    futureNote: "",
+  },
+  {
+    id: "candidate-showa-womens-integrated-info",
+    createdAt: "2026-08-17",
+    university: "昭和女子大学",
+    faculty: "総合情報学部",
+    department: "",
+    url: "",
+    studentScore: "検討中",
+    familyScore: "検討中",
+    studentView: "",
+    familyView: "",
+    interest: 3,
+    reason: "",
+    futureNote: "",
   },
 ];
 
@@ -377,23 +439,34 @@ export const campusUpcoming: CampusSummary[] = [
 
 export const campusDone: CampusVisit[] = [
   {
-    id: "campus-done-konan",
-    university: "港南学院大学",
-    program: "国際教養学部 キャンパス説明会",
-    date: "2026年7月20日 14:00-16:00",
+    id: "campus-done-otsuma-ds",
+    university: "大妻女子大学",
+    program: "データサイエンス学部 オープンキャンパス",
+    date: "",
     evaluation: {
-      overall: 4,
-      goodPoint: "学生の雰囲気が明るく、留学制度の説明がわかりやすかった。",
-      badPoint: "教室移動が少し分かりづらかった。",
-      studentComment: "英語を使う機会が多そうで気になった。",
-      familyComment: "案内の丁寧さとキャンパスの安心感が印象に残った。",
-      freeNote: "最寄り駅からの歩きやすさは現地でも確認したい。",
+      overall: null,
+      goodPoint: "先輩たちのトークが面白かった。校舎がきれいだった。",
+      badPoint: "英語にあまり力を入れていなかった。",
+      studentComment: "",
+      familyComment: "",
+      freeNote: "",
       categoryScores: {
-        atmosphere: 4,
-        curriculum: 4,
-        students: 4,
-        access: 3,
-        career: 4,
+        atmosphere: null,
+        curriculum: null,
+        students: null,
+        access: null,
+        career: null,
+      },
+      simpleRatings: {
+        campus: "great",
+      },
+      goodTags: ["students", "campus"],
+      concernTags: ["english"],
+      wantToKnow: "体育館を見てみたい",
+      trialLesson: {
+        expected: "データを沢山使う",
+        match: "as_expected",
+        noticed: "講師がフレンドリーな感じで良いと思った。",
       },
     },
   },
@@ -401,61 +474,86 @@ export const campusDone: CampusVisit[] = [
 
 export const openCampusEvents: OpenCampusEvent[] = [
   {
-    id: "campus-upcoming-hoshigaoka",
-    university: "星ヶ丘大学",
-    facultyDepartment: "経営学部",
+    id: "campus-plan-20260822-kyoritsu",
+    university: "共立女子大学",
+    facultyDepartment: "",
     eventName: "オープンキャンパス",
     eventType: "オープンキャンパス",
-    eventDate: "2026-08-24",
-    startTime: "13:00",
-    endTime: "16:00",
-    status: "予約済み",
-    companionMemo: "家族1名同伴予定",
-    meetingPlace: "正門前受付",
-    accessMemo: "駅から徒歩8分。模擬授業会場の位置も確認したい。",
-    dayMemo: "模擬授業と在学生トークが中心。",
-    links: [],
-    attachments: [],
-    createdAt: "2026-08-12",
-    updatedAt: "2026-08-12",
-  },
-  {
-    id: "campus-upcoming-aoba",
-    university: "青葉大学",
-    facultyDepartment: "情報デザイン学部",
-    eventName: "体験会",
-    eventType: "体験授業",
-    eventDate: "2026-09-07",
+    eventDate: "2026-08-22",
     startTime: "10:00",
-    endTime: "12:30",
-    status: "検討中",
-    companionMemo: "家族同伴可",
+    endTime: "10:20",
+    status: "予約済み",
+    companionMemo: "",
     meetingPlace: "",
-    accessMemo: "制作系の展示が多そう。駅からのバス有無を要確認。",
-    dayMemo: "",
+    accessMemo: "",
+    dayMemo:
+      "10:00〜10:20\n共通説明会\n\n10:20〜10:30頃\n校内・学生・大学の雰囲気を見る\n\n共立女子は今回は短時間だけ参加し、その後、昭和女子大学へ移動する予定です。",
     links: [],
     attachments: [],
-    createdAt: "2026-08-11",
-    updatedAt: "2026-08-11",
+    createdAt: "2026-08-19",
+    updatedAt: "2026-08-19",
   },
   {
-    id: "campus-done-konan",
-    university: "港南学院大学",
-    facultyDepartment: "国際教養学部",
-    eventName: "キャンパス説明会",
-    eventType: "学部説明会",
-    eventDate: "2026-07-20",
-    startTime: "14:00",
-    endTime: "16:00",
+    id: "campus-plan-20260822-showa-integrated-info",
+    university: "昭和女子大学",
+    facultyDepartment: "総合情報学部",
+    eventName: "オープンキャンパス",
+    eventType: "オープンキャンパス",
+    eventDate: "2026-08-22",
+    startTime: "",
+    endTime: "",
+    status: "予約済み",
+    companionMemo: "",
+    meetingPlace: "",
+    accessMemo: "",
+    dayMemo:
+      "11:20〜12:00\n総合情報・デジタルイノベーション体験授業\n\n13:10〜13:50\n総合情報 学部・学科説明会\n\n13:50〜14:05\n8号館などを軽く見る\n\n14:05〜14:45\nグローバルビジネス 体験授業②\n\n14:45〜\nキャンパスツアー／学部ブース／個別相談",
+    links: [],
+    attachments: [],
+    createdAt: "2026-08-19",
+    updatedAt: "2026-08-19",
+  },
+  {
+    id: "campus-plan-20260822-showa-international",
+    university: "昭和女子大学",
+    facultyDepartment: "国際学部",
+    eventName: "オープンキャンパス",
+    eventType: "オープンキャンパス",
+    eventDate: "2026-08-22",
+    startTime: "12:15",
+    endTime: "12:55",
+    status: "予約済み",
+    companionMemo: "",
+    meetingPlace: "",
+    accessMemo: "",
+    dayMemo:
+      "12:15〜12:55\n国際学部 学部説明会\n\n14:05〜14:45\nグローバルビジネス 体験授業②\n\n14:45〜\nキャンパスツアー／学部ブース／個別相談",
+    links: [],
+    attachments: [],
+    createdAt: "2026-08-19",
+    updatedAt: "2026-08-19",
+  },
+  {
+    id: "campus-done-otsuma-ds",
+    university: "大妻女子大学",
+    facultyDepartment: "データサイエンス学部",
+    eventName: "オープンキャンパス",
+    eventType: "オープンキャンパス",
+    eventDate: "",
+    startTime: "",
+    endTime: "",
     status: "参加済み",
     companionMemo: "",
     meetingPlace: "",
-    accessMemo: "最寄り駅からの動線は当日確認済み。",
-    dayMemo: "留学制度と学生の雰囲気が印象に残った。",
+    accessMemo: "最寄り：市ケ谷駅",
+    dayMemo:
+      "参加したい理由：母がこの大学に通っていたから。\n施設・設備：校舎がきれい。\n卒業後の進路：学習したことが活かせる進路。",
     links: [],
     attachments: [],
-    createdAt: "2026-07-20",
-    updatedAt: "2026-07-20",
+    createdAt: "2026-08-19",
+    updatedAt: "2026-08-19",
+    lookFor: ["faculty", "other"],
+    lookForOther: "社会情報学部とデータサイエンス学部の違いについて知りたい",
   },
 ];
 

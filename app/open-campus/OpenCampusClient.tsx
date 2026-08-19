@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState, type KeyboardEvent } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent } from "react";
 import { CardActionBar } from "@/components/CardActionBar";
 import { SectionHeader } from "@/components/SectionHeader";
 import { ScoreSelector } from "@/components/ScoreSelector";
@@ -9,6 +9,9 @@ import { openCampusEvents as initialOpenCampusEvents } from "@/data/mockData";
 import type {
   CampusEvaluation,
   CampusEvaluationCategory,
+  OcLookForId,
+  OcPointTagId,
+  OcSimpleMark,
   OpenCampusAttachmentMeta,
   OpenCampusEvent,
   OpenCampusLink,
@@ -26,6 +29,25 @@ import {
   saveCampusEvaluations,
   saveOpenCampusEvents,
 } from "@/lib/shinromii-storage";
+import {
+  aspirationLabel,
+  hasCategoryScores,
+  lookForLabel,
+  normalizeCampusEvaluation,
+  normalizeOpenCampusEvent,
+  OC_ACCESS_MARK_LABELS,
+  OC_ASPIRATION_OPTIONS,
+  OC_CAMPUS_MARK_LABELS,
+  OC_LEARNING_MARK_LABELS,
+  OC_LOOK_FOR_OPTIONS,
+  OC_POINT_TAG_OPTIONS,
+  OC_SIMPLE_MARKS,
+  OC_STUDENT_MARK_LABELS,
+  OC_TRIAL_MATCH_OPTIONS,
+  pointTagLabel,
+  shouldAskOpenCampusAttendance,
+  toggleIdList,
+} from "@/lib/oc-record";
 
 const categoryLabels: Record<CampusEvaluationCategory, string> = {
   atmosphere: "校舎・雰囲気",
@@ -68,7 +90,25 @@ type EventFormState = {
   dayMemo: string;
   links: OpenCampusLink[];
   attachments: OpenCampusAttachmentMeta[];
+  lookFor: OcLookForId[];
+  lookForOther: string;
 };
+
+function statusPillTone(status: OpenCampusStatus) {
+  if (status === "参加済み") {
+    return "done";
+  }
+
+  if (status === "予約済み") {
+    return "reserved";
+  }
+
+  if (status === "不参加") {
+    return "danger";
+  }
+
+  return "considering";
+}
 
 function handleCardKeyActivate(event: KeyboardEvent, action: () => void) {
   if (event.key === "Enter" || event.key === " ") {
@@ -104,6 +144,20 @@ function createEmptyEvaluation(): CampusEvaluation {
       access: null,
       career: null,
     },
+    simpleRatings: {},
+    goodTags: [],
+    concernTags: [],
+    goodOther: "",
+    concernOther: "",
+    wantToKnow: "",
+    trialLesson: {
+      courseName: "",
+      instructor: "",
+      date: "",
+      expected: "",
+      match: undefined,
+      noticed: "",
+    },
   };
 }
 
@@ -129,13 +183,15 @@ function createEmptyEventForm(): EventFormState {
     eventDate: todayString(),
     startTime: "",
     endTime: "",
-    status: "検討中",
+    status: "予約済み",
     companionMemo: "",
     meetingPlace: "",
     accessMemo: "",
     dayMemo: "",
     links: [],
     attachments: [],
+    lookFor: [],
+    lookForOther: "",
   };
 }
 
@@ -156,19 +212,37 @@ function formFromEvent(event: OpenCampusEvent): EventFormState {
     dayMemo: event.dayMemo,
     links: event.links,
     attachments: event.attachments,
+    lookFor: event.lookFor ?? [],
+    lookForOther: event.lookForOther ?? "",
   };
 }
 
 function formFromEvaluation(evaluation: CampusEvaluation): CampusEvaluation {
+  const empty = createEmptyEvaluation();
+
   return {
+    ...empty,
+    ...evaluation,
     overall: evaluation.overall,
-    goodPoint: evaluation.goodPoint,
-    badPoint: evaluation.badPoint,
-    studentComment: evaluation.studentComment,
-    familyComment: evaluation.familyComment,
-    freeNote: evaluation.freeNote,
+    goodPoint: evaluation.goodPoint ?? "",
+    badPoint: evaluation.badPoint ?? "",
+    studentComment: evaluation.studentComment ?? "",
+    familyComment: evaluation.familyComment ?? "",
+    freeNote: evaluation.freeNote ?? "",
     categoryScores: {
+      ...empty.categoryScores,
       ...evaluation.categoryScores,
+    },
+    simpleRatings: { ...evaluation.simpleRatings },
+    aspiration: evaluation.aspiration,
+    goodTags: evaluation.goodTags ?? [],
+    goodOther: evaluation.goodOther ?? "",
+    concernTags: evaluation.concernTags ?? [],
+    concernOther: evaluation.concernOther ?? "",
+    wantToKnow: evaluation.wantToKnow ?? "",
+    trialLesson: {
+      ...empty.trialLesson,
+      ...evaluation.trialLesson,
     },
   };
 }
@@ -187,7 +261,7 @@ function renderStars(score: number | null) {
 
 function formatEventDate(date: string) {
   if (!date) {
-    return "日付未設定";
+    return "";
   }
 
   const [year, month, day] = date.split("-");
@@ -204,15 +278,56 @@ function formatEventDateTime(event: OpenCampusEvent) {
   const hasStart = Boolean(event.startTime);
   const hasEnd = Boolean(event.endTime);
 
-  if (hasStart && hasEnd) {
+  if (date && hasStart && hasEnd) {
     return `${date} ${event.startTime}-${event.endTime}`;
   }
 
-  if (hasStart) {
+  if (date && hasStart) {
     return `${date} ${event.startTime}`;
   }
 
-  return date;
+  if (date) {
+    return date;
+  }
+
+  if (hasStart && hasEnd) {
+    return `${event.startTime}-${event.endTime}`;
+  }
+
+  if (hasStart) {
+    return event.startTime;
+  }
+
+  return "";
+}
+
+function renderNoteBlock(label: string, value?: string | null) {
+  if (!value) {
+    return null;
+  }
+
+  return (
+    <div className="review-note">
+      <span className="review-note-label">{label}</span>
+      <p className="review-note-body preserve-lines">{value}</p>
+    </div>
+  );
+}
+
+function renderChipRow(values: string[]) {
+  if (values.length === 0) {
+    return null;
+  }
+
+  return (
+    <div className="review-chips">
+      {values.map((value) => (
+        <span key={value} className="review-chip">
+          {value}
+        </span>
+      ))}
+    </div>
+  );
 }
 
 function matchesAllowedFileType(file: File) {
@@ -259,6 +374,8 @@ export function OpenCampusClient() {
   const [editingEventId, setEditingEventId] = useState<string | null>(null);
   const [editingEvaluationId, setEditingEvaluationId] = useState<string | null>(null);
   const [isCreatingEvent, setIsCreatingEvent] = useState(false);
+  const [createIntent, setCreateIntent] = useState<"upcoming" | "done">("upcoming");
+  const [pendingEvalInviteId, setPendingEvalInviteId] = useState<string | null>(null);
   const [eventForm, setEventForm] = useState<EventFormState>(createEmptyEventForm());
   const [evaluationForm, setEvaluationForm] = useState<CampusEvaluation>(createEmptyEvaluation());
   const [pendingAttachments, setPendingAttachments] = useState<PendingAttachment[]>([]);
@@ -268,10 +385,13 @@ export function OpenCampusClient() {
   const [expandedImageId, setExpandedImageId] = useState<string | null>(null);
   const [pendingScrollId, setPendingScrollId] = useState<string | null>(null);
   const [pendingEditScrollId, setPendingEditScrollId] = useState<string | null>(null);
+  const [pendingEvalScrollId, setPendingEvalScrollId] = useState<string | null>(null);
+  const [deferredAttendanceIds, setDeferredAttendanceIds] = useState<string[]>([]);
   const attachmentInputRef = useRef<HTMLInputElement | null>(null);
   const objectUrlsRef = useRef<string[]>([]);
   const detailRefs = useRef<Record<string, HTMLElement | null>>({});
   const editRefs = useRef<Record<string, HTMLElement | null>>({});
+  const evalEditorRef = useRef<HTMLElement | null>(null);
   const attachmentsAvailable = isAttachmentStorageAvailable();
 
   useEffect(() => {
@@ -295,6 +415,11 @@ export function OpenCampusClient() {
 
   const completedEvents = useMemo(
     () => events.filter((event) => event.status === "参加済み"),
+    [events],
+  );
+
+  const skippedEvents = useMemo(
+    () => events.filter((event) => event.status === "不参加"),
     [events],
   );
 
@@ -444,13 +569,51 @@ export function OpenCampusClient() {
     return () => window.cancelAnimationFrame(frame);
   }, [editingEventId, pendingEditScrollId]);
 
+  useLayoutEffect(() => {
+    if (!pendingEvalScrollId || pendingEvalScrollId !== editingEvaluationId) {
+      return;
+    }
+
+    const element = evalEditorRef.current;
+
+    if (!element) {
+      return;
+    }
+
+    element.scrollIntoView({
+      behavior: "auto",
+      block: "start",
+    });
+    setPendingEvalScrollId(null);
+  }, [editingEvaluationId, pendingEvalScrollId]);
+
+  useLayoutEffect(() => {
+    if (!pendingEvalInviteId) {
+      return;
+    }
+
+    const element = document.querySelector(".oc-eval-invite");
+
+    if (!element) {
+      return;
+    }
+
+    element.scrollIntoView({
+      behavior: "auto",
+      block: "start",
+    });
+  }, [pendingEvalInviteId]);
+
   function openCreateEvent() {
     setIsCreatingEvent(true);
+    setCreateIntent("upcoming");
+    setPendingEvalInviteId(null);
     setEditingEventId(null);
     setEditingEvaluationId(null);
     setSelectedId(null);
     setPendingScrollId(null);
     setPendingEditScrollId(null);
+    setPendingEvalScrollId(null);
     setEventForm(createEmptyEventForm());
     setEvaluationForm(createEmptyEvaluation());
     setPendingAttachments([]);
@@ -465,6 +628,7 @@ export function OpenCampusClient() {
     setSelectedId(null);
     setPendingScrollId(null);
     setPendingEditScrollId(event.id);
+    setPendingEvalScrollId(null);
     setEventForm(formFromEvent(event));
     setPendingAttachments([]);
     setRemovedAttachmentIds([]);
@@ -473,6 +637,7 @@ export function OpenCampusClient() {
 
   function closeEventEditor() {
     setIsCreatingEvent(false);
+    setCreateIntent("upcoming");
     setEditingEventId(null);
     setPendingEditScrollId(null);
     setEventForm(createEmptyEventForm());
@@ -485,14 +650,64 @@ export function OpenCampusClient() {
     setIsCreatingEvent(false);
     setEditingEventId(null);
     setPendingEditScrollId(null);
+    setPendingScrollId(null);
+    setSelectedId(null);
+    setPendingEvalInviteId(null);
     setEditingEvaluationId(event.id);
-    setSelectedId(event.id);
+    setPendingEvalScrollId(event.id);
     setEvaluationForm(formFromEvaluation(evaluations[event.id] ?? createEmptyEvaluation()));
   }
 
   function closeEvaluationEditor() {
     setEditingEvaluationId(null);
+    setPendingEvalScrollId(null);
     setEvaluationForm(createEmptyEvaluation());
+  }
+
+  function persistEventStatus(event: OpenCampusEvent, status: OpenCampusStatus) {
+    const nextEvent = normalizeOpenCampusEvent({
+      ...event,
+      status,
+      updatedAt: todayString(),
+    });
+    const nextEvents = events.map((item) => (item.id === event.id ? nextEvent : item));
+    setEvents(nextEvents);
+    saveOpenCampusEvents(nextEvents);
+    return nextEvent;
+  }
+
+  function handleAttended(event: OpenCampusEvent) {
+    persistEventStatus(event, "参加済み");
+    openEvaluationEditor(event);
+  }
+
+  function handleSkipped(event: OpenCampusEvent) {
+    persistEventStatus(event, "不参加");
+    closeEvaluationEditor();
+    setSelectedId(null);
+  }
+
+  function handleDeferAttendance(eventId: string) {
+    setDeferredAttendanceIds((current) => (current.includes(eventId) ? current : [...current, eventId]));
+  }
+
+  function setCreateKind(intent: "upcoming" | "done") {
+    setCreateIntent(intent);
+    setEventForm((current) => {
+      if (intent === "done") {
+        return {
+          ...current,
+          status: "参加済み",
+          eventDate: current.eventDate === todayString() ? "" : current.eventDate,
+        };
+      }
+
+      return {
+        ...current,
+        status: "予約済み",
+        eventDate: current.eventDate || todayString(),
+      };
+    });
   }
 
   function updateEventForm<K extends keyof EventFormState>(key: K, value: EventFormState[K]) {
@@ -553,14 +768,78 @@ export function OpenCampusClient() {
     }));
   }
 
-  function updateEvaluationCategory(category: CampusEvaluationCategory, value: number | null) {
+  function updateSimpleRating(key: keyof NonNullable<CampusEvaluation["simpleRatings"]>, value: OcSimpleMark) {
+    setEvaluationForm((current) => {
+      const currentValue = current.simpleRatings?.[key];
+      const nextRatings = { ...current.simpleRatings };
+
+      if (currentValue === value) {
+        delete nextRatings[key];
+      } else {
+        nextRatings[key] = value;
+      }
+
+      return {
+        ...current,
+        simpleRatings: nextRatings,
+      };
+    });
+  }
+
+  function updateTrialLesson<K extends keyof NonNullable<CampusEvaluation["trialLesson"]>>(
+    key: K,
+    value: NonNullable<CampusEvaluation["trialLesson"]>[K],
+  ) {
     setEvaluationForm((current) => ({
       ...current,
-      categoryScores: {
-        ...current.categoryScores,
-        [category]: value,
+      trialLesson: {
+        ...current.trialLesson,
+        [key]: value,
       },
     }));
+  }
+
+  function renderMarkButtons(
+    labels: Record<OcSimpleMark, string>,
+    value: OcSimpleMark | undefined,
+    onSelect: (mark: OcSimpleMark) => void,
+  ) {
+    return (
+      <div className="oc-simple-rating">
+        {OC_SIMPLE_MARKS.map((mark) => (
+          <button
+            key={mark}
+            type="button"
+            className={`oc-simple-rating-btn ${value === mark ? "active" : ""}`}
+            aria-pressed={value === mark}
+            onClick={() => onSelect(mark)}
+          >
+            {labels[mark]}
+          </button>
+        ))}
+      </div>
+    );
+  }
+
+  function renderTagButtons(
+    selected: OcPointTagId[],
+    onToggle: (id: OcPointTagId) => void,
+  ) {
+    return (
+      <div className="choice-chips oc-choice-chips">
+        {OC_POINT_TAG_OPTIONS.map((option) => (
+          <button
+            key={option.id}
+            type="button"
+            className={`choice-chip oc-choice-chip ${selected.includes(option.id) ? "active" : ""}`}
+            aria-pressed={selected.includes(option.id)}
+            onClick={() => onToggle(option.id)}
+          >
+            {option.label}
+          </button>
+        ))}
+      </div>
+    );
   }
 
   function toggleDetail(id: string) {
@@ -588,6 +867,7 @@ export function OpenCampusClient() {
   function renderEventCard(event: OpenCampusEvent) {
     const evaluation = evaluations[event.id] ?? createEmptyEvaluation();
     const isOpen = selectedId === event.id || editingEventId === event.id || editingEvaluationId === event.id;
+    const dateLabel = formatEventDate(event.eventDate);
     const timeLabel =
       event.startTime && event.endTime
         ? `${event.startTime}-${event.endTime}`
@@ -615,33 +895,61 @@ export function OpenCampusClient() {
                 {event.eventName}
               </p>
             </div>
-            <span
-              className={`status-pill oc-status ${
-                event.status === "参加済み"
-                  ? "done"
-                  : event.status === "予約済み"
-                    ? "reserved"
-                    : "considering"
-              }`}
-            >
+            <span className={`status-pill oc-status ${statusPillTone(event.status)}`}>
               {event.status}
             </span>
           </div>
 
-          <p className="oc-card-meta">
-            {formatEventDate(event.eventDate)}
-            {timeLabel ? `  ${timeLabel}` : ""}
-          </p>
+          {dateLabel || timeLabel ? (
+            <p className="oc-card-meta">
+              {dateLabel}
+              {timeLabel ? `${dateLabel ? "  " : ""}${timeLabel}` : ""}
+            </p>
+          ) : null}
 
-          {event.status === "参加済み" ? (
-            <div className="oc-card-score">
-              {renderStars(evaluation.overall)}
-              <span className="oc-card-score-value">
-                {evaluation.overall ? `総合 ${evaluation.overall}` : "未評価"}
-              </span>
-            </div>
+          {event.status === "参加済み" && evaluation.overall ? (
+            <div className="oc-card-score">{renderStars(evaluation.overall)}</div>
           ) : null}
         </div>
+
+        {shouldAskOpenCampusAttendance(event) && !deferredAttendanceIds.includes(event.id) ? (
+          <div className="oc-attend-prompt">
+            <p className="oc-attend-prompt-title">このOCには参加しましたか？</p>
+            <div className="oc-attend-actions">
+              <button type="button" className="card-action primary" onClick={() => handleAttended(event)}>
+                参加した
+              </button>
+              <button type="button" className="card-action" onClick={() => handleSkipped(event)}>
+                参加しなかった
+              </button>
+              <button
+                type="button"
+                className="card-action subtle oc-attend-later"
+                onClick={() => handleDeferAttendance(event.id)}
+              >
+                あとで
+              </button>
+            </div>
+          </div>
+        ) : null}
+
+        {pendingEvalInviteId === event.id ? (
+          <div className="oc-attend-prompt oc-eval-invite">
+            <p className="oc-attend-prompt-title">登録しました。続けて評価しますか？</p>
+            <div className="oc-attend-actions">
+              <button type="button" className="card-action primary" onClick={() => openEvaluationEditor(event)}>
+                30秒で評価する
+              </button>
+              <button
+                type="button"
+                className="card-action subtle oc-attend-later"
+                onClick={() => setPendingEvalInviteId(null)}
+              >
+                あとで
+              </button>
+            </div>
+          </div>
+        ) : null}
 
         <CardActionBar
           actions={[
@@ -680,6 +988,9 @@ export function OpenCampusClient() {
   }
 
   function renderEventEditor(title: string, description: string, editorId?: string) {
+    const isCreate = !editorId;
+    const isDoneCreate = isCreate && createIntent === "done";
+
     return (
       <section
         ref={(node) => {
@@ -692,6 +1003,30 @@ export function OpenCampusClient() {
         <SectionHeader title={title} description={description} />
 
         <div className="form-stack">
+          {isCreate ? (
+            <div className="field-block">
+              <span className="field-label">このOCは？</span>
+              <div className="oc-intent-toggle">
+                <button
+                  type="button"
+                  className={`choice-chip oc-choice-chip ${createIntent === "upcoming" ? "active" : ""}`}
+                  aria-pressed={createIntent === "upcoming"}
+                  onClick={() => setCreateKind("upcoming")}
+                >
+                  これから参加
+                </button>
+                <button
+                  type="button"
+                  className={`choice-chip oc-choice-chip ${createIntent === "done" ? "active" : ""}`}
+                  aria-pressed={createIntent === "done"}
+                  onClick={() => setCreateKind("done")}
+                >
+                  参加済み
+                </button>
+              </div>
+            </div>
+          ) : null}
+
           <div className="field-grid">
             <label className="field-block">
               <span className="field-label">大学名</span>
@@ -740,7 +1075,7 @@ export function OpenCampusClient() {
 
           <div className="field-grid">
             <label className="field-block">
-              <span className="field-label">開催日</span>
+              <span className="field-label">{isDoneCreate ? "参加日" : "開催日"}</span>
               <input
                 className="text-input"
                 type="date"
@@ -749,6 +1084,7 @@ export function OpenCampusClient() {
               />
             </label>
 
+            {isCreate ? null : (
             <label className="field-block">
               <span className="field-label">状態</span>
               <select
@@ -761,10 +1097,16 @@ export function OpenCampusClient() {
                 <option value="検討中">検討中</option>
                 <option value="予約済み">予約済み</option>
                 <option value="参加済み">参加済み</option>
+                <option value="不参加">不参加</option>
               </select>
             </label>
+            )}
           </div>
 
+          {isDoneCreate ? (
+            <details className="oc-detail-fold">
+              <summary className="oc-detail-fold-summary">準備・当日の情報（任意）</summary>
+              <div className="form-stack top-gap">
           <div className="field-grid">
             <label className="field-block">
               <span className="field-label">開始時間</span>
@@ -785,6 +1127,36 @@ export function OpenCampusClient() {
                 onChange={(event) => updateEventForm("endTime", event.target.value)}
               />
             </label>
+          </div>
+
+          <div className="field-block">
+            <span className="field-label">今回、見ておきたいこと（任意）</span>
+            <div className="choice-chips oc-choice-chips">
+              {OC_LOOK_FOR_OPTIONS.map((option) => (
+                <button
+                  key={option.id}
+                  type="button"
+                  className={`choice-chip oc-choice-chip ${eventForm.lookFor.includes(option.id) ? "active" : ""}`}
+                  aria-pressed={eventForm.lookFor.includes(option.id)}
+                  onClick={() =>
+                    updateEventForm("lookFor", toggleIdList(eventForm.lookFor, option.id))
+                  }
+                >
+                  {option.label}
+                </button>
+              ))}
+            </div>
+            {eventForm.lookFor.includes("other") ? (
+              <label className="field-block top-gap">
+                <span className="field-label">その他</span>
+                <input
+                  className="text-input"
+                  type="text"
+                  value={eventForm.lookForOther}
+                  onChange={(event) => updateEventForm("lookForOther", event.target.value)}
+                />
+              </label>
+            ) : null}
           </div>
 
           <label className="field-block">
@@ -816,6 +1188,93 @@ export function OpenCampusClient() {
               onChange={(event) => updateEventForm("accessMemo", event.target.value)}
             />
           </label>
+              </div>
+            </details>
+          ) : (
+            <>
+          <div className="field-grid">
+            <label className="field-block">
+              <span className="field-label">開始時間</span>
+              <input
+                className="text-input"
+                type="time"
+                value={eventForm.startTime}
+                onChange={(event) => updateEventForm("startTime", event.target.value)}
+              />
+            </label>
+
+            <label className="field-block">
+              <span className="field-label">終了時間</span>
+              <input
+                className="text-input"
+                type="time"
+                value={eventForm.endTime}
+                onChange={(event) => updateEventForm("endTime", event.target.value)}
+              />
+            </label>
+          </div>
+
+          <div className="field-block">
+            <span className="field-label">今回、見ておきたいこと（任意）</span>
+            <div className="choice-chips oc-choice-chips">
+              {OC_LOOK_FOR_OPTIONS.map((option) => (
+                <button
+                  key={option.id}
+                  type="button"
+                  className={`choice-chip oc-choice-chip ${eventForm.lookFor.includes(option.id) ? "active" : ""}`}
+                  aria-pressed={eventForm.lookFor.includes(option.id)}
+                  onClick={() =>
+                    updateEventForm("lookFor", toggleIdList(eventForm.lookFor, option.id))
+                  }
+                >
+                  {option.label}
+                </button>
+              ))}
+            </div>
+            {eventForm.lookFor.includes("other") ? (
+              <label className="field-block top-gap">
+                <span className="field-label">その他</span>
+                <input
+                  className="text-input"
+                  type="text"
+                  value={eventForm.lookForOther}
+                  onChange={(event) => updateEventForm("lookForOther", event.target.value)}
+                />
+              </label>
+            ) : null}
+          </div>
+
+          <label className="field-block">
+            <span className="field-label">同伴者メモ（任意）</span>
+            <input
+              className="text-input"
+              type="text"
+              value={eventForm.companionMemo}
+              onChange={(event) => updateEventForm("companionMemo", event.target.value)}
+            />
+          </label>
+
+          <label className="field-block">
+            <span className="field-label">集合場所（任意）</span>
+            <input
+              className="text-input"
+              type="text"
+              value={eventForm.meetingPlace}
+              onChange={(event) => updateEventForm("meetingPlace", event.target.value)}
+            />
+          </label>
+
+          <label className="field-block">
+            <span className="field-label">アクセス・行き方メモ（任意）</span>
+            <textarea
+              className="text-area"
+              rows={3}
+              value={eventForm.accessMemo}
+              onChange={(event) => updateEventForm("accessMemo", event.target.value)}
+            />
+          </label>
+            </>
+          )}
 
           <label className="field-block">
             <span className="field-label">当日のメモ（任意）</span>
@@ -995,6 +1454,72 @@ export function OpenCampusClient() {
     const detailEvaluation = evaluations[event.id] ?? createEmptyEvaluation();
     const imageAttachments = event.attachments.filter((attachment) => getAttachmentKind(attachment) === "image");
     const documentAttachments = event.attachments.filter((attachment) => getAttachmentKind(attachment) !== "image");
+    const dateTimeLabel = formatEventDateTime(event);
+    const lookForChips = (event.lookFor ?? []).map((id) => {
+      const label = lookForLabel(id);
+      return id === "other" && event.lookForOther ? `${label}：${event.lookForOther}` : label;
+    });
+    const dayInfoItems = [
+      event.meetingPlace ? { label: "集合場所", value: event.meetingPlace } : null,
+      event.companionMemo ? { label: "同伴者", value: event.companionMemo } : null,
+      event.accessMemo ? { label: "アクセス", value: event.accessMemo } : null,
+    ].filter((item): item is { label: string; value: string } => item !== null);
+    const hasDayInfo = dayInfoItems.length > 0 || lookForChips.length > 0;
+    const isUpcoming = event.status === "検討中" || event.status === "予約済み";
+    const hasMaterials = event.links.length > 0 || event.attachments.length > 0 || Boolean(event.dayMemo);
+    const showMaterials = isUpcoming || hasMaterials;
+    const simpleMarks = [
+      detailEvaluation.simpleRatings?.campus
+        ? { label: "校舎・設備", value: OC_CAMPUS_MARK_LABELS[detailEvaluation.simpleRatings.campus] }
+        : null,
+      detailEvaluation.simpleRatings?.students
+        ? { label: "学生の雰囲気", value: OC_STUDENT_MARK_LABELS[detailEvaluation.simpleRatings.students] }
+        : null,
+      detailEvaluation.simpleRatings?.learning
+        ? { label: "授業・学び", value: OC_LEARNING_MARK_LABELS[detailEvaluation.simpleRatings.learning] }
+        : null,
+      detailEvaluation.simpleRatings?.access
+        ? { label: "通いやすさ", value: OC_ACCESS_MARK_LABELS[detailEvaluation.simpleRatings.access] }
+        : null,
+    ].filter((item): item is { label: string; value: string } => item !== null);
+    const goodTagChips = [
+      ...(detailEvaluation.goodTags ?? []).map((id) => pointTagLabel(id)),
+      detailEvaluation.goodTags?.includes("other") && detailEvaluation.goodOther
+        ? detailEvaluation.goodOther
+        : "",
+    ].filter(Boolean);
+    const concernTagChips = [
+      ...(detailEvaluation.concernTags ?? []).map((id) => pointTagLabel(id)),
+      detailEvaluation.concernTags?.includes("other") && detailEvaluation.concernOther
+        ? detailEvaluation.concernOther
+        : "",
+    ].filter(Boolean);
+    const trial = detailEvaluation.trialLesson;
+    const trialMatchLabel = trial?.match
+      ? OC_TRIAL_MATCH_OPTIONS.find((option) => option.id === trial.match)?.label
+      : "";
+    const hasEvaluation =
+      event.status === "参加済み" &&
+      Boolean(
+        detailEvaluation.overall ||
+          simpleMarks.length > 0 ||
+          detailEvaluation.aspiration ||
+          goodTagChips.length > 0 ||
+          concernTagChips.length > 0 ||
+          detailEvaluation.goodPoint ||
+          detailEvaluation.badPoint ||
+          detailEvaluation.wantToKnow ||
+          detailEvaluation.freeNote ||
+          detailEvaluation.studentComment ||
+          detailEvaluation.familyComment ||
+          hasCategoryScores(detailEvaluation) ||
+          trial?.courseName ||
+          trial?.instructor ||
+          trial?.date ||
+          trial?.expected ||
+          trial?.match ||
+          trial?.noticed,
+      );
 
     return (
       <section
@@ -1012,15 +1537,7 @@ export function OpenCampusClient() {
               {event.eventName}
             </p>
           </div>
-          <span
-            className={`status-pill ${
-              event.status === "参加済み"
-                ? "done"
-                : event.status === "予約済み"
-                  ? "reserved"
-                  : "considering"
-            }`}
-          >
+          <span className={`status-pill ${statusPillTone(event.status)}`}>
             {event.status}
           </span>
         </div>
@@ -1053,246 +1570,249 @@ export function OpenCampusClient() {
           ) : null}
         </div>
 
-        <div className="detail-section-list top-gap">
-          <section className="detail-section">
-            <p className="feedback-label">基本情報</p>
-            <div className="detail-entry top-gap">
-              <span className="detail-entry-label">大学</span>
-              <span className="detail-entry-value">{event.university}</span>
-            </div>
-            <div className="detail-entry">
-              <span className="detail-entry-label">学部・学科</span>
-              <span className="detail-entry-value">
-                {event.facultyDepartment || "未入力"}
-              </span>
-            </div>
-            <div className="detail-entry">
-              <span className="detail-entry-label">イベント名</span>
-              <span className="detail-entry-value">{event.eventName}</span>
-            </div>
-            <div className="detail-entry">
-              <span className="detail-entry-label">日時</span>
-              <span className="detail-entry-value">{formatEventDateTime(event)}</span>
-            </div>
-            <div className="detail-entry">
-              <span className="detail-entry-label">状態</span>
-              <span className="detail-entry-value">{event.status}</span>
-            </div>
-            <div className="detail-entry">
-              <span className="detail-entry-label">集合場所</span>
-              <span className="detail-entry-value">{event.meetingPlace || "未入力"}</span>
-            </div>
-            <div className="detail-entry">
-              <span className="detail-entry-label">同伴者</span>
-              <span className="detail-entry-value">{event.companionMemo || "未入力"}</span>
-            </div>
-            <div className="detail-entry">
-              <span className="detail-entry-label">アクセス</span>
-              <span className="detail-entry-value preserve-lines">
-                {event.accessMemo || "未入力"}
-              </span>
-            </div>
-          </section>
+        <div className="top-gap">
+          {dateTimeLabel ? (
+            <section className="detail-group">
+              <p className="detail-group-title">基本情報</p>
+              {renderNoteBlock("日時", dateTimeLabel)}
+            </section>
+          ) : null}
 
-          <section className="detail-section">
-            <p className="feedback-label">当日リンク</p>
-            <div className="oc-day-links">
-              {event.links.length === 0 ? (
-                <p className="muted-text">まだリンクはありません。</p>
-              ) : (
-                event.links.map((link) => (
-                  <a key={link.id} className="oc-day-link" href={link.url}>
-                    <span>{link.label || "リンクを開く"}</span>
-                    <span className="oc-day-link-arrow" aria-hidden="true">
-                      ↗
-                    </span>
-                  </a>
-                ))
-              )}
-            </div>
-          </section>
+          {hasDayInfo ? (
+            <section className="detail-group">
+              <p className="detail-group-title">当日の情報</p>
+              {dayInfoItems.map((item) => (
+                <div key={item.label}>{renderNoteBlock(item.label, item.value)}</div>
+              ))}
+              {lookForChips.length > 0 ? (
+                <div className={dayInfoItems.length > 0 ? "top-gap" : ""}>
+                  <span className="review-note-label">見ておきたいこと</span>
+                  <div className="top-gap">{renderChipRow(lookForChips)}</div>
+                </div>
+              ) : null}
+            </section>
+          ) : null}
 
-          <section className="detail-section">
-            <p className="feedback-label">資料・添付ファイル</p>
-            {!attachmentsAvailable ? (
-              <p className="muted-text top-gap">
-                このブラウザでは添付ファイル保存に対応していません。
-              </p>
-            ) : null}
-            <div className="list-stack top-gap">
-              {event.attachments.length === 0 ? (
-                <p className="muted-text">まだ添付ファイルはありません。</p>
-              ) : (
-                <>
-                  {imageAttachments.length > 0 ? (
-                    <div className="attachment-image-grid">
-                      {imageAttachments.map((attachment) => {
+          {showMaterials ? (
+            <section className="detail-group">
+              <p className="detail-group-title">メモ・資料</p>
+              {isUpcoming || event.links.length > 0 ? (
+                <div>
+                  <span className="review-note-label">当日リンク</span>
+                  {event.links.length > 0 ? (
+                    <div className="oc-day-links">
+                      {event.links.map((link) => (
+                        <a key={link.id} className="oc-day-link" href={link.url}>
+                          <span>{link.label || "当日ページを開く"}</span>
+                          <span className="oc-day-link-arrow" aria-hidden="true">
+                            ↗
+                          </span>
+                        </a>
+                      ))}
+                    </div>
+                  ) : (
+                    <p className="muted-text top-gap">まだリンクはありません。</p>
+                  )}
+                </div>
+              ) : null}
+              {isUpcoming || event.attachments.length > 0 ? (
+                <div className={isUpcoming || event.links.length > 0 ? "top-gap" : ""}>
+                  <span className="review-note-label">資料・添付ファイル</span>
+                  {event.attachments.length > 0 ? (
+                    <div className="list-stack top-gap">
+                      {!attachmentsAvailable ? (
+                        <p className="muted-text">
+                          このブラウザでは添付ファイル保存に対応していません。
+                        </p>
+                      ) : null}
+                      {imageAttachments.length > 0 ? (
+                        <div className="attachment-image-grid">
+                          {imageAttachments.map((attachment) => {
+                            const preview = attachmentPreviews[attachment.id];
+
+                            return (
+                              <article key={attachment.id} className="attachment-image-card">
+                                {preview?.available && preview.objectUrl ? (
+                                  <button
+                                    type="button"
+                                    className="attachment-image-button"
+                                    onClick={() => setExpandedImageId(attachment.id)}
+                                  >
+                                    <img
+                                      src={preview.objectUrl}
+                                      alt={attachment.name}
+                                      className="attachment-image-thumb"
+                                    />
+                                  </button>
+                                ) : (
+                                  <div className="attachment-missing-card">
+                                    <p className="item-title small">{attachment.name}</p>
+                                    <p className="muted-text">
+                                      この端末にはファイルがありません。添付ファイル本体はバックアップ対象外です。
+                                    </p>
+                                  </div>
+                                )}
+
+                                <div className="attachment-caption">
+                                  <p className="item-title small">{attachment.name}</p>
+                                  <p className="item-subtitle">
+                                    {(attachment.size / (1024 * 1024)).toFixed(1)}MB
+                                  </p>
+                                </div>
+
+                                <div className="list-actions">
+                                  <button
+                                    type="button"
+                                    className="card-action subtle"
+                                    onClick={() => setExpandedImageId(attachment.id)}
+                                    disabled={!preview?.available || !preview.objectUrl}
+                                  >
+                                    大きく表示
+                                  </button>
+                                  <button
+                                    type="button"
+                                    className="card-action danger"
+                                    onClick={() => void handleDeleteAttachment(attachment)}
+                                  >
+                                    削除
+                                  </button>
+                                </div>
+                              </article>
+                            );
+                          })}
+                        </div>
+                      ) : null}
+
+                      {documentAttachments.map((attachment) => {
                         const preview = attachmentPreviews[attachment.id];
+                        const isPdf = getAttachmentKind(attachment) === "pdf";
 
                         return (
-                          <article key={attachment.id} className="attachment-image-card">
-                            {preview?.available && preview.objectUrl ? (
-                              <button
-                                type="button"
-                                className="attachment-image-button"
-                                onClick={() => setExpandedImageId(attachment.id)}
-                              >
-                                <img
-                                  src={preview.objectUrl}
-                                  alt={attachment.name}
-                                  className="attachment-image-thumb"
-                                />
-                              </button>
-                            ) : (
-                              <div className="attachment-missing-card">
-                                <p className="item-title small">{attachment.name}</p>
-                                <p className="muted-text">
-                                  この端末にはファイルがありません。添付ファイル本体はバックアップ対象外です。
+                          <article key={attachment.id} className="list-card compact-card">
+                            <div className="row-between gap-sm align-start">
+                              <div>
+                                <p className="item-title small">
+                                  {isPdf ? "PDF" : "資料"} / {attachment.name}
+                                </p>
+                                <p className="item-subtitle">
+                                  {(attachment.size / (1024 * 1024)).toFixed(1)}MB
                                 </p>
                               </div>
-                            )}
-
-                            <div className="attachment-caption">
-                              <p className="item-title small">{attachment.name}</p>
-                              <p className="item-subtitle">
-                                {(attachment.size / (1024 * 1024)).toFixed(1)}MB
+                              <div className="list-actions">
+                                {preview?.available && preview.objectUrl ? (
+                                  <a
+                                    className="card-action subtle"
+                                    href={preview.objectUrl}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                  >
+                                    {isPdf ? "PDFを開く" : "開く"}
+                                  </a>
+                                ) : (
+                                  <button type="button" className="card-action subtle" disabled>
+                                    開けません
+                                  </button>
+                                )}
+                                <button
+                                  type="button"
+                                  className="card-action danger"
+                                  onClick={() => void handleDeleteAttachment(attachment)}
+                                >
+                                  削除
+                                </button>
+                              </div>
+                            </div>
+                            {!preview?.available ? (
+                              <p className="muted-text top-gap">
+                                この端末にはファイルがありません。添付ファイル本体はバックアップ対象外です。
                               </p>
-                            </div>
-
-                            <div className="list-actions">
-                              <button
-                                type="button"
-                                className="card-action subtle"
-                                onClick={() => setExpandedImageId(attachment.id)}
-                                disabled={!preview?.available || !preview.objectUrl}
-                              >
-                                大きく表示
-                              </button>
-                              <button
-                                type="button"
-                                className="card-action danger"
-                                onClick={() => void handleDeleteAttachment(attachment)}
-                              >
-                                削除
-                              </button>
-                            </div>
+                            ) : null}
                           </article>
                         );
                       })}
                     </div>
-                  ) : null}
+                  ) : (
+                    <p className="muted-text top-gap">まだ添付ファイルはありません。</p>
+                  )}
+                </div>
+              ) : null}
+              {event.dayMemo ? (
+                <div className={isUpcoming || event.links.length > 0 || event.attachments.length > 0 ? "top-gap" : ""}>
+                  {renderNoteBlock("当日のメモ", event.dayMemo)}
+                </div>
+              ) : null}
+            </section>
+          ) : null}
 
-                  {documentAttachments.map((attachment) => {
-                    const preview = attachmentPreviews[attachment.id];
-                    const isPdf = getAttachmentKind(attachment) === "pdf";
-
-                    return (
-                      <article key={attachment.id} className="list-card compact-card">
-                        <div className="row-between gap-sm align-start">
-                          <div>
-                            <p className="item-title small">
-                              {isPdf ? "PDF" : "資料"} / {attachment.name}
-                            </p>
-                            <p className="item-subtitle">
-                              {(attachment.size / (1024 * 1024)).toFixed(1)}MB
-                            </p>
-                          </div>
-                          <div className="list-actions">
-                            {preview?.available && preview.objectUrl ? (
-                              <a
-                                className="card-action subtle"
-                                href={preview.objectUrl}
-                                target="_blank"
-                                rel="noopener noreferrer"
-                              >
-                                {isPdf ? "PDFを開く" : "開く"}
-                              </a>
-                            ) : (
-                              <button type="button" className="card-action subtle" disabled>
-                                開けません
-                              </button>
-                            )}
-                            <button
-                              type="button"
-                              className="card-action danger"
-                              onClick={() => void handleDeleteAttachment(attachment)}
-                            >
-                              削除
-                            </button>
-                          </div>
-                        </div>
-                        {!preview?.available ? (
-                          <p className="muted-text top-gap">
-                            この端末にはファイルがありません。添付ファイル本体はバックアップ対象外です。
-                          </p>
-                        ) : null}
-                      </article>
-                    );
-                  })}
-                </>
-              )}
-            </div>
-          </section>
-
-          <section className="detail-section">
-            <p className="feedback-label">メモ</p>
-            <div className="detail-entry top-gap">
-              <span className="detail-entry-label">当日のメモ</span>
-              <span className="detail-entry-value preserve-lines">
-                {event.dayMemo || "未入力"}
-              </span>
-            </div>
-          </section>
-
-          {event.status === "参加済み" ? (
-            <section className="detail-section">
-              <p className="feedback-label">評価</p>
-              <div className="detail-entry top-gap">
-                <span className="detail-entry-label">総合評価</span>
-                <span className="detail-entry-value">
-                  {detailEvaluation.overall ? `${detailEvaluation.overall} / 5` : "未評価"}
-                </span>
-              </div>
-              {(Object.entries(categoryLabels) as [CampusEvaluationCategory, string][]).map(
-                ([key, label]) => (
-                  <div key={key} className="detail-entry">
-                    <span className="detail-entry-label">{label}</span>
-                    <span className="detail-entry-value">
-                      {detailEvaluation.categoryScores[key] ?? "-"}
-                    </span>
+          {hasEvaluation ? (
+            <section className="detail-group">
+              <p className="detail-group-title">評価</p>
+              {detailEvaluation.overall ? (
+                <div className="oc-eval-hero">
+                  {renderStars(detailEvaluation.overall)}
+                  <span className="oc-eval-hero-value">{detailEvaluation.overall} / 5</span>
+                </div>
+              ) : null}
+              {simpleMarks.length > 0 ? (
+                <div className="oc-eval-marks">
+                  {simpleMarks.map((item) => (
+                    <div key={item.label} className="oc-eval-mark">
+                      <span className="oc-eval-mark-label">{item.label}</span>
+                      <span className="oc-eval-mark-value">{item.value}</span>
+                    </div>
+                  ))}
+                </div>
+              ) : null}
+              {detailEvaluation.aspiration ? (
+                <div className={simpleMarks.length > 0 ? "top-gap" : ""}>
+                  <span className="review-note-label">今の志望度</span>
+                  <div className="top-gap">
+                    {renderChipRow([aspirationLabel(detailEvaluation.aspiration)])}
                   </div>
-                ),
-              )}
-              <div className="detail-entry">
-                <span className="detail-entry-label">良かったところ</span>
-                <span className="detail-entry-value preserve-lines">
-                  {detailEvaluation.goodPoint || "未入力"}
-                </span>
-              </div>
-              <div className="detail-entry">
-                <span className="detail-entry-label">微妙だったところ</span>
-                <span className="detail-entry-value preserve-lines">
-                  {detailEvaluation.badPoint || "未入力"}
-                </span>
-              </div>
-              <div className="detail-entry">
-                <span className="detail-entry-label">本人の感想</span>
-                <span className="detail-entry-value preserve-lines">
-                  {detailEvaluation.studentComment || "未入力"}
-                </span>
-              </div>
-              <div className="detail-entry">
-                <span className="detail-entry-label">家族の感想</span>
-                <span className="detail-entry-value preserve-lines">
-                  {detailEvaluation.familyComment || "未入力"}
-                </span>
-              </div>
-              <div className="detail-entry">
-                <span className="detail-entry-label">自由メモ</span>
-                <span className="detail-entry-value preserve-lines">
-                  {detailEvaluation.freeNote || "未入力"}
-                </span>
-              </div>
+                </div>
+              ) : null}
+              {hasCategoryScores(detailEvaluation) ? (
+                <div className="oc-eval-marks top-gap">
+                  {(Object.entries(categoryLabels) as [CampusEvaluationCategory, string][]).map(
+                    ([key, label]) =>
+                      detailEvaluation.categoryScores[key] != null ? (
+                        <div key={key} className="oc-eval-mark">
+                          <span className="oc-eval-mark-label">{label}</span>
+                          <span className="oc-eval-mark-value">{detailEvaluation.categoryScores[key]}</span>
+                        </div>
+                      ) : null,
+                  )}
+                </div>
+              ) : null}
+              {goodTagChips.length > 0 ? (
+                <div className="top-gap">
+                  <span className="review-note-label">良かったところ</span>
+                  <div className="top-gap">{renderChipRow(goodTagChips)}</div>
+                </div>
+              ) : null}
+              {concernTagChips.length > 0 ? (
+                <div className="top-gap">
+                  <span className="review-note-label">気になったところ</span>
+                  <div className="top-gap">{renderChipRow(concernTagChips)}</div>
+                </div>
+              ) : null}
+              {renderNoteBlock("良かったこと", detailEvaluation.goodPoint)}
+              {renderNoteBlock("いまいちだったこと", detailEvaluation.badPoint)}
+              {renderNoteBlock("もっと知りたいこと", detailEvaluation.wantToKnow)}
+              {renderNoteBlock("ひとことメモ", detailEvaluation.freeNote)}
+              {renderNoteBlock("本人の感想", detailEvaluation.studentComment)}
+              {renderNoteBlock("家族の感想", detailEvaluation.familyComment)}
+              {trial?.courseName || trial?.instructor || trial?.date || trial?.expected || trial?.match || trial?.noticed ? (
+                <div className="top-gap">
+                  <span className="review-note-label">模擬・体験授業</span>
+                  {renderNoteBlock("講座名", trial?.courseName)}
+                  {renderNoteBlock("講師名", trial?.instructor)}
+                  {renderNoteBlock("受講日", trial?.date)}
+                  {renderNoteBlock("受ける前に想像していたこと", trial?.expected)}
+                  {renderNoteBlock("実際に受けてどうだったか", trialMatchLabel)}
+                  {renderNoteBlock("授業を受けて気づいたこと", trial?.noticed)}
+                </div>
+              ) : null}
             </section>
           ) : null}
         </div>
@@ -1300,10 +1820,19 @@ export function OpenCampusClient() {
     );
   }
 
-  function renderEvaluationEditor(event: OpenCampusEvent) {
+  function renderEvaluationEditor() {
+    const goodTags = evaluationForm.goodTags ?? [];
+    const concernTags = evaluationForm.concernTags ?? [];
+    const trial = evaluationForm.trialLesson ?? {};
+
     return (
-      <section className="panel inline-detail-card inline-editor-card">
-        <SectionHeader title="参加後評価を編集" description="参加済みOCの評価を更新" />
+      <section
+        ref={(node) => {
+          evalEditorRef.current = node;
+        }}
+        className="panel inline-detail-card inline-editor-card oc-eval-editor"
+      >
+        <SectionHeader title="OCどうだった？" description="選ぶだけで残せます。全部空でも保存できます。" />
         <div className="form-stack">
           <ScoreSelector
             label="総合評価"
@@ -1311,66 +1840,228 @@ export function OpenCampusClient() {
             onChange={(value) => updateEvaluationField("overall", value)}
           />
 
-          {(Object.entries(categoryLabels) as [CampusEvaluationCategory, string][]).map(
-            ([key, label]) => (
-              <ScoreSelector
-                key={key}
-                label={label}
-                value={evaluationForm.categoryScores[key]}
-                onChange={(value) => updateEvaluationCategory(key, value)}
-              />
-            ),
-          )}
+          <div className="field-block">
+            <span className="field-label">校舎・設備</span>
+            {renderMarkButtons(OC_CAMPUS_MARK_LABELS, evaluationForm.simpleRatings?.campus, (mark) =>
+              updateSimpleRating("campus", mark),
+            )}
+          </div>
 
-          <label className="field-block">
+          <div className="field-block">
+            <span className="field-label">学生の雰囲気</span>
+            {renderMarkButtons(OC_STUDENT_MARK_LABELS, evaluationForm.simpleRatings?.students, (mark) =>
+              updateSimpleRating("students", mark),
+            )}
+          </div>
+
+          <div className="field-block">
+            <span className="field-label">授業・学び</span>
+            {renderMarkButtons(OC_LEARNING_MARK_LABELS, evaluationForm.simpleRatings?.learning, (mark) =>
+              updateSimpleRating("learning", mark),
+            )}
+          </div>
+
+          <div className="field-block">
+            <span className="field-label">通いやすさ</span>
+            {renderMarkButtons(OC_ACCESS_MARK_LABELS, evaluationForm.simpleRatings?.access, (mark) =>
+              updateSimpleRating("access", mark),
+            )}
+          </div>
+
+          <div className="field-block">
+            <span className="field-label">今の志望度</span>
+            <div className="choice-chips oc-choice-chips">
+              {OC_ASPIRATION_OPTIONS.map((option) => (
+                <button
+                  key={option.id}
+                  type="button"
+                  className={`choice-chip oc-choice-chip ${evaluationForm.aspiration === option.id ? "active" : ""}`}
+                  aria-pressed={evaluationForm.aspiration === option.id}
+                  onClick={() =>
+                    updateEvaluationField(
+                      "aspiration",
+                      evaluationForm.aspiration === option.id ? undefined : option.id,
+                    )
+                  }
+                >
+                  {option.label}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          <div className="field-block">
             <span className="field-label">良かったところ</span>
-            <textarea
-              className="text-area"
-              rows={3}
-              value={evaluationForm.goodPoint}
-              onChange={(event) => updateEvaluationField("goodPoint", event.target.value)}
-            />
-          </label>
+            {renderTagButtons(goodTags, (id) =>
+              updateEvaluationField("goodTags", toggleIdList(goodTags, id)),
+            )}
+            {goodTags.includes("other") ? (
+              <label className="field-block top-gap">
+                <span className="field-label">その他</span>
+                <input
+                  className="text-input"
+                  type="text"
+                  value={evaluationForm.goodOther ?? ""}
+                  onChange={(event) => updateEvaluationField("goodOther", event.target.value)}
+                />
+              </label>
+            ) : null}
+          </div>
 
-          <label className="field-block">
-            <span className="field-label">微妙だったところ</span>
-            <textarea
-              className="text-area"
-              rows={3}
-              value={evaluationForm.badPoint}
-              onChange={(event) => updateEvaluationField("badPoint", event.target.value)}
-            />
-          </label>
+          <div className="field-block">
+            <span className="field-label">気になったところ</span>
+            {renderTagButtons(concernTags, (id) =>
+              updateEvaluationField("concernTags", toggleIdList(concernTags, id)),
+            )}
+            {concernTags.includes("other") ? (
+              <label className="field-block top-gap">
+                <span className="field-label">その他</span>
+                <input
+                  className="text-input"
+                  type="text"
+                  value={evaluationForm.concernOther ?? ""}
+                  onChange={(event) => updateEvaluationField("concernOther", event.target.value)}
+                />
+              </label>
+            ) : null}
+          </div>
 
-          <label className="field-block">
-            <span className="field-label">本人の感想</span>
-            <textarea
-              className="text-area"
-              rows={4}
-              value={evaluationForm.studentComment}
-              onChange={(event) => updateEvaluationField("studentComment", event.target.value)}
-            />
-          </label>
+          <details className="oc-detail-fold">
+            <summary className="oc-detail-fold-summary">詳しく記録する</summary>
+            <div className="form-stack top-gap">
+              <label className="field-block">
+                <span className="field-label">良かったこと（任意）</span>
+                <textarea
+                  className="text-area"
+                  rows={3}
+                  value={evaluationForm.goodPoint}
+                  onChange={(event) => updateEvaluationField("goodPoint", event.target.value)}
+                />
+              </label>
 
-          <label className="field-block">
-            <span className="field-label">家族の感想</span>
-            <textarea
-              className="text-area"
-              rows={4}
-              value={evaluationForm.familyComment}
-              onChange={(event) => updateEvaluationField("familyComment", event.target.value)}
-            />
-          </label>
+              <label className="field-block">
+                <span className="field-label">いまいちだったこと（任意）</span>
+                <textarea
+                  className="text-area"
+                  rows={3}
+                  value={evaluationForm.badPoint}
+                  onChange={(event) => updateEvaluationField("badPoint", event.target.value)}
+                />
+              </label>
 
-          <label className="field-block">
-            <span className="field-label">自由メモ</span>
-            <textarea
-              className="text-area"
-              rows={3}
-              value={evaluationForm.freeNote}
-              onChange={(event) => updateEvaluationField("freeNote", event.target.value)}
-            />
-          </label>
+              <label className="field-block">
+                <span className="field-label">もっと知りたいこと / 確認できなかったこと（任意）</span>
+                <textarea
+                  className="text-area"
+                  rows={3}
+                  value={evaluationForm.wantToKnow ?? ""}
+                  onChange={(event) => updateEvaluationField("wantToKnow", event.target.value)}
+                />
+              </label>
+
+              <label className="field-block">
+                <span className="field-label">ひとことメモ（任意）</span>
+                <textarea
+                  className="text-area"
+                  rows={3}
+                  value={evaluationForm.freeNote}
+                  onChange={(event) => updateEvaluationField("freeNote", event.target.value)}
+                />
+              </label>
+
+              <p className="feedback-label">模擬・体験授業（任意）</p>
+
+              <div className="field-grid">
+                <label className="field-block">
+                  <span className="field-label">講座名</span>
+                  <input
+                    className="text-input"
+                    type="text"
+                    value={trial.courseName ?? ""}
+                    onChange={(event) => updateTrialLesson("courseName", event.target.value)}
+                  />
+                </label>
+                <label className="field-block">
+                  <span className="field-label">講師名</span>
+                  <input
+                    className="text-input"
+                    type="text"
+                    value={trial.instructor ?? ""}
+                    onChange={(event) => updateTrialLesson("instructor", event.target.value)}
+                  />
+                </label>
+              </div>
+
+              <label className="field-block">
+                <span className="field-label">受講日</span>
+                <input
+                  className="text-input"
+                  type="date"
+                  value={trial.date ?? ""}
+                  onChange={(event) => updateTrialLesson("date", event.target.value)}
+                />
+              </label>
+
+              <label className="field-block">
+                <span className="field-label">受ける前に想像していたこと</span>
+                <textarea
+                  className="text-area"
+                  rows={2}
+                  value={trial.expected ?? ""}
+                  onChange={(event) => updateTrialLesson("expected", event.target.value)}
+                />
+              </label>
+
+              <div className="field-block">
+                <span className="field-label">実際に受けてどうだったか</span>
+                <div className="choice-chips oc-choice-chips">
+                  {OC_TRIAL_MATCH_OPTIONS.map((option) => (
+                    <button
+                      key={option.id}
+                      type="button"
+                      className={`choice-chip oc-choice-chip ${trial.match === option.id ? "active" : ""}`}
+                      aria-pressed={trial.match === option.id}
+                      onClick={() =>
+                        updateTrialLesson("match", trial.match === option.id ? undefined : option.id)
+                      }
+                    >
+                      {option.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              <label className="field-block">
+                <span className="field-label">授業を受けて気づいたこと</span>
+                <textarea
+                  className="text-area"
+                  rows={3}
+                  value={trial.noticed ?? ""}
+                  onChange={(event) => updateTrialLesson("noticed", event.target.value)}
+                />
+              </label>
+
+              <label className="field-block">
+                <span className="field-label">本人の感想（任意）</span>
+                <textarea
+                  className="text-area"
+                  rows={3}
+                  value={evaluationForm.studentComment}
+                  onChange={(event) => updateEvaluationField("studentComment", event.target.value)}
+                />
+              </label>
+
+              <label className="field-block">
+                <span className="field-label">家族の感想（任意）</span>
+                <textarea
+                  className="text-area"
+                  rows={3}
+                  value={evaluationForm.familyComment}
+                  onChange={(event) => updateEvaluationField("familyComment", event.target.value)}
+                />
+              </label>
+            </div>
+          </details>
 
           <div className="action-row">
             <button type="button" className="action-button primary" onClick={handleSaveEvaluation}>
@@ -1470,15 +2161,7 @@ export function OpenCampusClient() {
       return;
     }
 
-    if (!eventForm.eventName.trim()) {
-      window.alert("イベント名を入力してください。");
-      return;
-    }
-
-    if (!eventForm.eventDate) {
-      window.alert("開催日を入力してください。");
-      return;
-    }
+    const eventName = eventForm.eventName.trim() || "オープンキャンパス";
 
     const invalidLink = eventForm.links.find((link) => {
       const hasLabel = link.label.trim().length > 0;
@@ -1505,12 +2188,12 @@ export function OpenCampusClient() {
         ? await persistPendingAttachments(eventForm.id)
         : [];
 
-      const nextEvent: OpenCampusEvent = {
+      const nextEvent = normalizeOpenCampusEvent({
         id: eventForm.id,
         university: eventForm.university.trim(),
         facultyDepartment: eventForm.facultyDepartment.trim(),
-        eventName: eventForm.eventName.trim(),
-        eventType: eventForm.eventType.trim() || eventForm.eventName.trim(),
+        eventName,
+        eventType: eventForm.eventType.trim() || eventName,
         eventDate: eventForm.eventDate,
         startTime: eventForm.startTime,
         endTime: eventForm.endTime,
@@ -1524,15 +2207,26 @@ export function OpenCampusClient() {
         createdAt:
           events.find((event) => event.id === eventForm.id)?.createdAt ?? todayString(),
         updatedAt: todayString(),
-      };
+        lookFor: eventForm.lookFor,
+        lookForOther: eventForm.lookForOther.trim(),
+      });
 
       const nextEvents = editingEventId
         ? events.map((event) => (event.id === editingEventId ? nextEvent : event))
         : [nextEvent, ...events];
 
       setEvents(nextEvents);
-      setSelectedId(nextEvent.id);
       saveOpenCampusEvents(nextEvents);
+
+      const createdAsDone = !editingEventId && nextEvent.status === "参加済み";
+
+      if (createdAsDone) {
+        setSelectedId(null);
+        setPendingEvalInviteId(nextEvent.id);
+      } else {
+        setSelectedId(nextEvent.id);
+        setPendingEvalInviteId(null);
+      }
 
       for (const attachmentId of removedAttachmentIds) {
         await deleteAttachmentBlob(attachmentId).catch(() => undefined);
@@ -1553,7 +2247,7 @@ export function OpenCampusClient() {
       return;
     }
 
-    const nextEvaluation: CampusEvaluation = {
+    const nextEvaluation = normalizeCampusEvaluation({
       overall: evaluationForm.overall,
       goodPoint: evaluationForm.goodPoint.trim(),
       badPoint: evaluationForm.badPoint.trim(),
@@ -1561,7 +2255,15 @@ export function OpenCampusClient() {
       familyComment: evaluationForm.familyComment.trim(),
       freeNote: evaluationForm.freeNote.trim(),
       categoryScores: evaluationForm.categoryScores,
-    };
+      simpleRatings: evaluationForm.simpleRatings,
+      aspiration: evaluationForm.aspiration,
+      goodTags: evaluationForm.goodTags,
+      goodOther: evaluationForm.goodOther?.trim(),
+      concernTags: evaluationForm.concernTags,
+      concernOther: evaluationForm.concernOther?.trim(),
+      wantToKnow: evaluationForm.wantToKnow?.trim(),
+      trialLesson: evaluationForm.trialLesson,
+    });
 
     const nextEvaluations = {
       ...evaluations,
@@ -1739,7 +2441,7 @@ export function OpenCampusClient() {
         </div>
 
         {isCreatingEvent
-          ? renderEventEditor("オープンキャンパスを追加", "日程、状態、当日リンク、資料をまとめて保存")
+          ? renderEventEditor("オープンキャンパスを追加", "これから参加するOCも、すでに参加したOCも記録できます")
           : null}
 
         <div className="oc-list">
@@ -1760,7 +2462,7 @@ export function OpenCampusClient() {
                       event.id,
                     )
                   : null}
-                {editingEvaluationId === event.id ? renderEvaluationEditor(event) : null}
+                {editingEvaluationId === event.id ? renderEvaluationEditor() : null}
               </div>
             ))
           )}
@@ -1795,12 +2497,39 @@ export function OpenCampusClient() {
                       event.id,
                     )
                   : null}
-                {editingEvaluationId === event.id ? renderEvaluationEditor(event) : null}
+                {editingEvaluationId === event.id ? renderEvaluationEditor() : null}
               </div>
             ))
           )}
         </div>
       </section>
+
+      {skippedEvents.length > 0 ? (
+        <section className="list-section">
+          <div className="list-section-head">
+            <div className="list-section-copy">
+              <h2 className="list-section-title">参加しなかったOC</h2>
+              <p className="list-section-note">{skippedEvents.length}件</p>
+            </div>
+          </div>
+
+          <div className="oc-list">
+            {skippedEvents.map((event) => (
+              <div key={event.id} className="detail-stack oc-stack">
+                {renderEventCard(event)}
+                {selectedId === event.id ? renderDetailBlock(event) : null}
+                {editingEventId === event.id
+                  ? renderEventEditor(
+                      `${event.university}を編集`,
+                      "日程、状態、当日リンク、資料をまとめて保存",
+                      event.id,
+                    )
+                  : null}
+              </div>
+            ))}
+          </div>
+        </section>
+      ) : null}
 
       {expandedImageAttachment && attachmentPreviews[expandedImageAttachment.id]?.objectUrl ? (
         <div

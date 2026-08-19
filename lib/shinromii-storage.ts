@@ -1,7 +1,15 @@
 import { aiNotes, campusDone, gradeRecords, openCampusEvents, qualifications, universities } from "@/data/mockData";
 import { normalizeEikenScores } from "@/lib/eiken";
 import { normalizeExamScores } from "@/lib/grading-rule";
+import { ensureAugust22OpenCampusPlans, migrateLegacyDummyOpenCampus } from "@/lib/oc-dummy-migration";
+import {
+  normalizeCampusEvaluation,
+  normalizeCampusEvaluations,
+  normalizeOpenCampusEvent,
+} from "@/lib/oc-record";
 import { migrateLegacyDummyQualifications } from "@/lib/qualification-dummy-migration";
+import { migrateLegacyDummyUniversities } from "@/lib/university-dummy-migration";
+import { attachUniversityMasterIds, normalizeUniversityCandidate } from "@/lib/university-candidate";
 import { recordAutosaveSnapshot } from "@/lib/shinromii-autosave";
 import type {
   AiNote,
@@ -100,13 +108,39 @@ export function buildDefaultStorage(): ShinromiiStorage {
     version: STORAGE_VERSION,
     aiNotes,
     campusEvaluations: buildDefaultEvaluations(),
-    universityCandidates: universities,
+    universityCandidates: attachUniversityMasterIds(universities).records.map((record) =>
+      normalizeUniversityCandidate(record),
+    ),
     gradeRecords,
     qualifications,
     openCampusEvents,
     profile: createEmptyProfile(),
     setupCompleted: false,
   };
+}
+
+/** 新規ユーザーの最初の保存用。配布シードは入れない。 */
+export function createBlankShinromiiStorage(): ShinromiiStorage {
+  return {
+    version: STORAGE_VERSION,
+    aiNotes: [],
+    campusEvaluations: {},
+    universityCandidates: [],
+    gradeRecords: [],
+    qualifications: [],
+    openCampusEvents: [],
+    profile: createEmptyProfile(),
+    setupCompleted: false,
+  };
+}
+
+/** キーが無い端末への書き込みは空のノートから始める。既存キーは従来どおり読む。 */
+function loadStorageForMutation(): ShinromiiStorage {
+  if (!canUseStorage() || window.localStorage.getItem(STORAGE_KEY) === null) {
+    return createBlankShinromiiStorage();
+  }
+
+  return loadShinromiiStorage();
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -189,10 +223,10 @@ function coerceStorageValues(
     aiNotes: Array.isArray(parsed.aiNotes) ? parsed.aiNotes : fallback.aiNotes,
     campusEvaluations:
       parsed.campusEvaluations && typeof parsed.campusEvaluations === "object"
-        ? parsed.campusEvaluations
+        ? normalizeCampusEvaluations(parsed.campusEvaluations as Record<string, CampusEvaluation>)
         : fallback.campusEvaluations,
     universityCandidates: Array.isArray(parsed.universityCandidates)
-      ? parsed.universityCandidates
+      ? parsed.universityCandidates.map((record) => normalizeUniversityCandidate(record))
       : fallback.universityCandidates,
     gradeRecords: Array.isArray(parsed.gradeRecords)
       ? normalizeGradeRecords(parsed.gradeRecords)
@@ -201,7 +235,7 @@ function coerceStorageValues(
       ? normalizeQualifications(parsed.qualifications)
       : fallback.qualifications,
     openCampusEvents: Array.isArray(parsed.openCampusEvents)
-      ? parsed.openCampusEvents
+      ? parsed.openCampusEvents.map((event) => normalizeOpenCampusEvent(event))
       : fallback.openCampusEvents,
     profile: normalizeUserProfile(parsed.profile, {
       defaultSchoolYear: existingInstallation && !hasStoredProfile && !fromBackup ? "high-1" : "",
@@ -251,15 +285,31 @@ function canUseStorage() {
 }
 
 function persistMigratedDummyQualifications(storage: ShinromiiStorage): ShinromiiStorage {
-  const migrated = migrateLegacyDummyQualifications(storage.qualifications);
+  const migratedQualifications = migrateLegacyDummyQualifications(storage.qualifications);
+  const migratedUniversities = migrateLegacyDummyUniversities(storage.universityCandidates);
+  const linkedUniversities = attachUniversityMasterIds(migratedUniversities.records);
+  const migratedOpenCampus = migrateLegacyDummyOpenCampus(
+    storage.openCampusEvents,
+    storage.campusEvaluations,
+  );
+  const plannedOpenCampus = ensureAugust22OpenCampusPlans(migratedOpenCampus.events);
 
-  if (!migrated.changed) {
+  if (
+    !migratedQualifications.changed &&
+    !migratedUniversities.changed &&
+    !linkedUniversities.changed &&
+    !migratedOpenCampus.changed &&
+    !plannedOpenCampus.changed
+  ) {
     return storage;
   }
 
   const next = {
     ...storage,
-    qualifications: migrated.records,
+    qualifications: migratedQualifications.records,
+    universityCandidates: linkedUniversities.records.map((record) => normalizeUniversityCandidate(record)),
+    openCampusEvents: plannedOpenCampus.events.map((event) => normalizeOpenCampusEvent(event)),
+    campusEvaluations: normalizeCampusEvaluations(migratedOpenCampus.evaluations),
   };
 
   saveShinromiiStorage(next);
@@ -383,8 +433,34 @@ export function shouldShowFirstSetup() {
   return canUseStorage() && window.localStorage.getItem(STORAGE_KEY) === null;
 }
 
+const RESUME_SETUP_KEY = "SHINROMII::resume-setup";
+
+export function markResumeSetup() {
+  if (typeof window === "undefined" || typeof window.sessionStorage === "undefined") {
+    return;
+  }
+
+  window.sessionStorage.setItem(RESUME_SETUP_KEY, "1");
+}
+
+export function clearResumeSetup() {
+  if (typeof window === "undefined" || typeof window.sessionStorage === "undefined") {
+    return;
+  }
+
+  window.sessionStorage.removeItem(RESUME_SETUP_KEY);
+}
+
+export function shouldResumeSetup() {
+  return (
+    typeof window !== "undefined" &&
+    typeof window.sessionStorage !== "undefined" &&
+    window.sessionStorage.getItem(RESUME_SETUP_KEY) === "1"
+  );
+}
+
 export function saveUserProfile(profile: UserProfile, setupCompleted = true) {
-  const current = loadShinromiiStorage();
+  const current = loadStorageForMutation();
   saveShinromiiStorage({
     ...current,
     profile: normalizeUserProfile(profile),
@@ -393,7 +469,7 @@ export function saveUserProfile(profile: UserProfile, setupCompleted = true) {
 }
 
 export function markSetupFinished(profile?: UserProfile) {
-  const current = loadShinromiiStorage();
+  const current = loadStorageForMutation();
   saveShinromiiStorage({
     ...current,
     profile: normalizeUserProfile(profile ?? current.profile),
@@ -401,8 +477,36 @@ export function markSetupFinished(profile?: UserProfile) {
   });
 }
 
-export function saveAiNotes(nextAiNotes: AiNote[]) {
+export function saveFirstSetupNotebook(storage: ShinromiiStorage) {
+  saveShinromiiStorage({
+    ...createBlankShinromiiStorage(),
+    ...storage,
+    version: STORAGE_VERSION,
+    profile: normalizeUserProfile(storage.profile),
+    setupCompleted: true,
+  });
+}
+
+/** 再セットアップ完了。既存の相談・添付などを残し、セットアップで触った項目だけ更新する。 */
+export function saveResumedSetupNotebook(storage: Pick<
+  ShinromiiStorage,
+  "profile" | "gradeRecords" | "qualifications" | "universityCandidates" | "openCampusEvents" | "campusEvaluations"
+>) {
   const current = loadShinromiiStorage();
+  saveShinromiiStorage({
+    ...current,
+    profile: normalizeUserProfile(storage.profile),
+    gradeRecords: storage.gradeRecords,
+    qualifications: storage.qualifications,
+    universityCandidates: storage.universityCandidates.map((record) => normalizeUniversityCandidate(record)),
+    openCampusEvents: storage.openCampusEvents.map((event) => normalizeOpenCampusEvent(event)),
+    campusEvaluations: normalizeCampusEvaluations(storage.campusEvaluations),
+    setupCompleted: true,
+  });
+}
+
+export function saveAiNotes(nextAiNotes: AiNote[]) {
+  const current = loadStorageForMutation();
   saveShinromiiStorage({
     ...current,
     aiNotes: nextAiNotes,
@@ -410,34 +514,34 @@ export function saveAiNotes(nextAiNotes: AiNote[]) {
 }
 
 export function saveCampusEvaluation(campusId: string, evaluation: CampusEvaluation) {
-  const current = loadShinromiiStorage();
+  const current = loadStorageForMutation();
   saveShinromiiStorage({
     ...current,
     campusEvaluations: {
       ...current.campusEvaluations,
-      [campusId]: evaluation,
+      [campusId]: normalizeCampusEvaluation(evaluation),
     },
   });
 }
 
 export function saveCampusEvaluations(nextEvaluations: Record<string, CampusEvaluation>) {
-  const current = loadShinromiiStorage();
+  const current = loadStorageForMutation();
   saveShinromiiStorage({
     ...current,
-    campusEvaluations: nextEvaluations,
+    campusEvaluations: normalizeCampusEvaluations(nextEvaluations),
   });
 }
 
 export function saveUniversityCandidates(nextCandidates: UniversityCandidate[]) {
-  const current = loadShinromiiStorage();
+  const current = loadStorageForMutation();
   saveShinromiiStorage({
     ...current,
-    universityCandidates: nextCandidates,
+    universityCandidates: nextCandidates.map((record) => normalizeUniversityCandidate(record)),
   });
 }
 
 export function saveGradeRecords(nextGradeRecords: GradeRecord[]) {
-  const current = loadShinromiiStorage();
+  const current = loadStorageForMutation();
   saveShinromiiStorage({
     ...current,
     gradeRecords: nextGradeRecords,
@@ -445,7 +549,7 @@ export function saveGradeRecords(nextGradeRecords: GradeRecord[]) {
 }
 
 export function saveQualifications(nextQualifications: QualificationRecord[]) {
-  const current = loadShinromiiStorage();
+  const current = loadStorageForMutation();
   saveShinromiiStorage({
     ...current,
     qualifications: nextQualifications,
@@ -453,10 +557,10 @@ export function saveQualifications(nextQualifications: QualificationRecord[]) {
 }
 
 export function saveOpenCampusEvents(nextOpenCampusEvents: OpenCampusEvent[]) {
-  const current = loadShinromiiStorage();
+  const current = loadStorageForMutation();
   saveShinromiiStorage({
     ...current,
-    openCampusEvents: nextOpenCampusEvents,
+    openCampusEvents: nextOpenCampusEvents.map((event) => normalizeOpenCampusEvent(event)),
   });
 }
 

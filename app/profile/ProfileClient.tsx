@@ -1,8 +1,9 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import { useRouter } from "next/navigation";
 import { ProfileFields } from "@/components/ProfileFields";
-import { loadShinromiiStorage, saveUserProfile } from "@/lib/shinromii-storage";
+import { loadShinromiiStorage, markResumeSetup, saveUserProfile } from "@/lib/shinromii-storage";
 import {
   createEmptyProfile,
   isProfileRegistered,
@@ -23,11 +24,13 @@ function listOrEmpty(values: string[]) {
 }
 
 export function ProfileClient() {
+  const router = useRouter();
   const [profile, setProfile] = useState<UserProfile>(createEmptyProfile);
   const [draft, setDraft] = useState<UserProfile>(createEmptyProfile);
   const [editing, setEditing] = useState(false);
   const [ready, setReady] = useState(false);
   const [extraSubjects, setExtraSubjects] = useState<string[]>([]);
+  const [confirmResume, setConfirmResume] = useState(false);
 
   useEffect(() => {
     const storage = loadShinromiiStorage();
@@ -57,6 +60,11 @@ export function ProfileClient() {
   function handleCancel() {
     setDraft(profile);
     setEditing(false);
+  }
+
+  function startResumeSetup() {
+    markResumeSetup();
+    router.push("/");
   }
 
   if (!ready) {
@@ -149,6 +157,36 @@ export function ProfileClient() {
           <p className="field-help">表示名は通常のホームには出ません。</p>
         </section>
       )}
+
+      <section className={`panel profile-resume-card ${confirmResume ? "is-confirming" : ""}`}>
+        {confirmResume ? (
+          <>
+            <p className="profile-resume-title">初期設定をやり直しますか？</p>
+            <p className="profile-resume-text">
+              登録済みの成績・資格・大学候補・OCなどは削除されません。
+              現在の情報を確認・追加しながら、初期設定をもう一度進められます。
+            </p>
+            <div className="action-row compact">
+              <button type="button" className="action-button primary" onClick={startResumeSetup}>
+                初期設定をやり直す
+              </button>
+              <button type="button" className="action-button" onClick={() => setConfirmResume(false)}>
+                キャンセル
+              </button>
+            </div>
+          </>
+        ) : (
+          <>
+            <p className="profile-resume-title">初期設定をやり直す</p>
+            <p className="profile-resume-text">
+              学年や成績・資格・大学・OCを、今の内容を見ながらもう一度確認できます。データは消えません。
+            </p>
+            <button type="button" className="action-button" onClick={() => setConfirmResume(true)}>
+              初期設定をやり直す
+            </button>
+          </>
+        )}
+      </section>
     </div>
   );
 }

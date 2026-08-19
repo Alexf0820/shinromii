@@ -5,8 +5,15 @@ import { CardActionBar } from "@/components/CardActionBar";
 import { SectionHeader } from "@/components/SectionHeader";
 import { ScoreSelector } from "@/components/ScoreSelector";
 import { UiIcon } from "@/components/UiIcon";
+import { UniversitySearchPanel } from "@/components/universities/UniversitySearchPanel";
 import { universities as initialCandidates } from "@/data/mockData";
 import type { UniversityCandidate } from "@/data/mockData";
+import { isSameUniversityFaculty, normalizeUniversityCandidate } from "@/lib/university-candidate";
+import {
+  findUniversityMasterById,
+  universityMaster,
+  type UniversityMaster,
+} from "@/lib/university-master";
 import {
   loadShinromiiStorage,
   loadUniversitySortOrder,
@@ -36,7 +43,13 @@ type CandidateFormState = {
   familyView: string;
   reason: string;
   futureNote: string;
+  universityMasterId?: string;
+  facultyMasterId?: string;
+  masterCheckedAt?: string;
+  masterAcademicYear?: string;
 };
+
+type CreateStep = "search" | "faculties" | "form";
 
 function createCandidateId() {
   if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") {
@@ -79,6 +92,10 @@ function formFromCandidate(candidate: UniversityCandidate): CandidateFormState {
     familyView: candidate.familyView,
     reason: candidate.reason,
     futureNote: candidate.futureNote,
+    universityMasterId: candidate.universityMasterId,
+    facultyMasterId: candidate.facultyMasterId,
+    masterCheckedAt: candidate.masterCheckedAt,
+    masterAcademicYear: candidate.masterAcademicYear,
   };
 }
 
@@ -110,6 +127,7 @@ export function UniversityCandidatesClient() {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [copyingId, setCopyingId] = useState<string | null>(null);
   const [isCreating, setIsCreating] = useState(false);
+  const [createStep, setCreateStep] = useState<CreateStep>("search");
   const [sortOrder, setSortOrder] = useState<UniversitySortOrder>("interest");
   const [form, setForm] = useState<CandidateFormState>(createEmptyForm());
   const [pendingEditScrollId, setPendingEditScrollId] = useState<string | null>(null);
@@ -154,14 +172,31 @@ export function UniversityCandidatesClient() {
 
   function openCreate() {
     setIsCreating(true);
+    setCreateStep("search");
     setEditingId(null);
     setCopyingId(null);
     setPendingEditScrollId(null);
     setForm(createEmptyForm());
   }
 
+  function openManualCreate(universityName = "", master?: UniversityMaster | null) {
+    setIsCreating(true);
+    setCreateStep("form");
+    setEditingId(null);
+    setCopyingId(null);
+    setPendingEditScrollId(null);
+    setForm({
+      ...createEmptyForm(),
+      university: universityName,
+      universityMasterId: master?.id,
+      masterCheckedAt: master ? universityMaster.checkedAt : undefined,
+      masterAcademicYear: master ? universityMaster.academicYear : undefined,
+    });
+  }
+
   function openEdit(candidate: UniversityCandidate) {
     setIsCreating(false);
+    setCreateStep("form");
     setEditingId(candidate.id);
     setCopyingId(null);
     setSelectedId(null);
@@ -171,35 +206,84 @@ export function UniversityCandidatesClient() {
 
   /** Prefills the add form from an existing candidate; nothing is saved yet. */
   function openCopy(candidate: UniversityCandidate) {
+    const copied = formFromCandidate(candidate);
     setIsCreating(false);
+    setCreateStep("form");
     setEditingId(null);
     setCopyingId(candidate.id);
     setSelectedId(null);
     setPendingEditScrollId(copyEditorKey(candidate.id));
-    setForm(formFromCandidate(candidate));
+    setForm({
+      ...copied,
+      universityMasterId: undefined,
+      facultyMasterId: undefined,
+      masterCheckedAt: undefined,
+      masterAcademicYear: undefined,
+    });
   }
 
   function closeEditor() {
     setIsCreating(false);
+    setCreateStep("search");
     setEditingId(null);
     setCopyingId(null);
     setPendingEditScrollId(null);
     setForm(createEmptyForm());
   }
 
+  function persistCandidate(nextCandidate: UniversityCandidate, replaceId?: string) {
+    const duplicate = candidates.some(
+      (item) => item.id !== replaceId && isSameUniversityFaculty(item, nextCandidate),
+    );
+
+    if (duplicate) {
+      window.alert("同じ大学・学部はすでに候補にあります。");
+      return false;
+    }
+
+    const nextCandidates = replaceId
+      ? candidates.map((item) => (item.id === replaceId ? nextCandidate : item))
+      : [nextCandidate, ...candidates];
+
+    setCandidates(nextCandidates);
+    setSelectedId(nextCandidate.id);
+    saveUniversityCandidates(nextCandidates);
+    return true;
+  }
+
   function handleSave() {
-    if (!form.university.trim() || !form.faculty.trim()) {
-      window.alert("大学名と学部名は入力してください。");
+    if (!form.university.trim()) {
+      window.alert("大学名を入力してください。");
       return;
     }
 
-    const nextCandidate: UniversityCandidate = {
+    const existing = editingId ? candidates.find((item) => item.id === editingId) : undefined;
+    const universityName = form.university.trim();
+    const facultyName = form.faculty.trim();
+    const namesUnchanged =
+      existing && existing.university === universityName && existing.faculty === facultyName;
+    const masterUniversity = form.universityMasterId
+      ? findUniversityMasterById(form.universityMasterId)
+      : null;
+    const universityMasterId = namesUnchanged
+      ? existing?.universityMasterId
+      : masterUniversity && masterUniversity.name === universityName
+        ? masterUniversity.id
+        : undefined;
+    const facultyMasterId = namesUnchanged
+      ? existing?.facultyMasterId
+      : universityMasterId &&
+          masterUniversity?.faculties.some(
+            (faculty) => faculty.id === form.facultyMasterId && faculty.name === facultyName,
+          )
+        ? form.facultyMasterId
+        : undefined;
+
+    const nextCandidate = normalizeUniversityCandidate({
       id: editingId ?? createCandidateId(),
-      createdAt: editingId
-        ? candidates.find((item) => item.id === editingId)?.createdAt ?? todayString()
-        : todayString(),
-      university: form.university.trim(),
-      faculty: form.faculty.trim(),
+      createdAt: existing?.createdAt ?? todayString(),
+      university: universityName,
+      faculty: facultyName,
       department: form.department.trim(),
       url: form.url.trim(),
       interest: form.interest ?? 3,
@@ -209,15 +293,24 @@ export function UniversityCandidatesClient() {
       familyView: form.familyView.trim(),
       reason: form.reason.trim(),
       futureNote: form.futureNote.trim(),
-    };
+      universityMasterId,
+      facultyMasterId,
+      masterCheckedAt: universityMasterId
+        ? namesUnchanged
+          ? existing?.masterCheckedAt
+          : universityMaster.checkedAt
+        : undefined,
+      masterAcademicYear: universityMasterId
+        ? namesUnchanged
+          ? existing?.masterAcademicYear
+          : universityMaster.academicYear
+        : undefined,
+    });
 
-    const nextCandidates = editingId
-      ? candidates.map((item) => (item.id === editingId ? nextCandidate : item))
-      : [nextCandidate, ...candidates];
+    if (!persistCandidate(nextCandidate, editingId ?? undefined)) {
+      return;
+    }
 
-    setCandidates(nextCandidates);
-    setSelectedId(nextCandidate.id);
-    saveUniversityCandidates(nextCandidates);
     closeEditor();
   }
 
@@ -279,7 +372,7 @@ export function UniversityCandidatesClient() {
             </label>
 
             <label className="field-block">
-              <span className="field-label">学部名</span>
+              <span className="field-label">学部名（任意）</span>
               <input
                 className="text-input"
                 type="text"
@@ -407,16 +500,21 @@ export function UniversityCandidatesClient() {
   }
 
   function renderCandidateDetail(candidate: UniversityCandidate) {
+    const facultyLabel = [candidate.faculty, candidate.department].filter(Boolean).join(" / ");
+    const notes = [
+      { label: "本人メモ", value: candidate.studentView.trim() },
+      { label: "家族メモ", value: candidate.familyView.trim() },
+      { label: "志望理由", value: candidate.reason.trim() },
+      { label: "将来メモ", value: candidate.futureNote.trim() },
+    ].filter((item) => item.value);
+
     return (
       <section className="uni-detail-card inline-detail-card">
         <div className="uni-detail-head">
           <div className="uni-detail-heading">
             <p className="uni-detail-eyebrow">候補詳細</p>
             <p className="uni-detail-name">{candidate.university}</p>
-            <p className="uni-detail-faculty">
-              {candidate.faculty}
-              {candidate.department ? ` / ${candidate.department}` : ""}
-            </p>
+            {facultyLabel ? <p className="uni-detail-faculty">{facultyLabel}</p> : null}
           </div>
           <div className="uni-detail-score">
             {renderStars(candidate.interest)}
@@ -425,76 +523,50 @@ export function UniversityCandidatesClient() {
         </div>
 
         <div className="uni-detail-sections">
-          <section className="uni-detail-section">
-            <p className="uni-detail-section-title">基本情報</p>
-            <div className="uni-detail-entry">
-              <span className="uni-detail-entry-label">大学名</span>
-              <span className="uni-detail-entry-value">{candidate.university}</span>
-            </div>
-            <div className="uni-detail-entry">
-              <span className="uni-detail-entry-label">学部・学科</span>
-              <span className="uni-detail-entry-value">
-                {candidate.faculty}
-                {candidate.department ? ` / ${candidate.department}` : ""}
-              </span>
-            </div>
-            <div className="uni-detail-entry">
-              <span className="uni-detail-entry-label">URL</span>
-              <span className="uni-detail-entry-value">
-                {candidate.url ? (
-                  <a className="uni-detail-link" href={candidate.url}>
-                    {candidate.url}
-                  </a>
-                ) : (
-                  "未入力"
-                )}
-              </span>
-            </div>
-          </section>
+          {candidate.url ? (
+            <section className="uni-detail-section">
+              <p className="uni-detail-section-title">基本情報</p>
+              <div className="review-note">
+                <span className="review-note-label">URL</span>
+                <a className="uni-detail-link" href={candidate.url}>
+                  {candidate.url}
+                </a>
+              </div>
+            </section>
+          ) : null}
 
           <section className="uni-detail-section">
             <p className="uni-detail-section-title">評価</p>
-            <div className="uni-detail-entry">
-              <span className="uni-detail-entry-label">気になる度</span>
-              <span className="uni-detail-entry-value">{renderStars(candidate.interest)}</span>
+            <div className="uni-interest-row">
+              <span className="uni-eval-card-label">気になる度</span>
+              <span className="uni-detail-score">
+                {renderStars(candidate.interest)}
+                <span className="uni-detail-score-value">{candidate.interest.toFixed(1)}</span>
+              </span>
             </div>
-            <div className="uni-detail-entry">
-              <span className="uni-detail-entry-label">本人評価</span>
-              <span className="uni-detail-entry-value">{candidate.studentScore}</span>
-            </div>
-            <div className="uni-detail-entry">
-              <span className="uni-detail-entry-label">家族評価</span>
-              <span className="uni-detail-entry-value">{candidate.familyScore}</span>
+            <div className="uni-eval-grid">
+              <div className="uni-eval-card">
+                <span className="uni-eval-card-label">本人</span>
+                <span className="uni-eval-card-value">{candidate.studentScore}</span>
+              </div>
+              <div className="uni-eval-card">
+                <span className="uni-eval-card-label">家族</span>
+                <span className="uni-eval-card-value">{candidate.familyScore}</span>
+              </div>
             </div>
           </section>
 
-          <section className="uni-detail-section">
-            <p className="uni-detail-section-title">メモ</p>
-            <div className="uni-detail-entry">
-              <span className="uni-detail-entry-label">本人メモ</span>
-              <span className="uni-detail-entry-value preserve-lines">
-                {candidate.studentView || "まだ入力されていません"}
-              </span>
-            </div>
-            <div className="uni-detail-entry">
-              <span className="uni-detail-entry-label">家族メモ</span>
-              <span className="uni-detail-entry-value preserve-lines">
-                {candidate.familyView || "まだ入力されていません"}
-              </span>
-            </div>
-            <div className="uni-detail-entry">
-              <span className="uni-detail-entry-label">志望理由</span>
-              <span className="uni-detail-entry-value preserve-lines">
-                {candidate.reason || "まだ入力されていません"}
-              </span>
-            </div>
-            <div className="uni-detail-entry">
-              <span className="uni-detail-entry-label">将来メモ</span>
-              <span className="uni-detail-entry-value preserve-lines">
-                {candidate.futureNote || "まだ入力されていません"}
-              </span>
-            </div>
-          </section>
+          {notes.length > 0 ? (
+            <section className="uni-detail-section">
+              <p className="uni-detail-section-title">考えていること</p>
+              {notes.map((item) => (
+                <div key={item.label} className="review-note">
+                  <span className="review-note-label">{item.label}</span>
+                  <p className="review-note-body preserve-lines">{item.value}</p>
+                </div>
+              ))}
+            </section>
+          ) : null}
         </div>
       </section>
     );
@@ -556,9 +628,23 @@ export function UniversityCandidatesClient() {
           </select>
         </label>
 
-        {isCreating
+        {isCreating && createStep === "form"
           ? renderCandidateEditor("候補を追加", "実際の進路検討で見返しやすい内容だけを入力")
           : null}
+        {isCreating && createStep !== "form" ? (
+          <UniversitySearchPanel
+            onRegister={(candidate) => {
+              if (!persistCandidate(candidate)) {
+                return false;
+              }
+
+              closeEditor();
+              return true;
+            }}
+            onCancel={closeEditor}
+            onManual={(universityName, master) => openManualCreate(universityName, master)}
+          />
+        ) : null}
 
         <div className="uni-list">
           {sortedCandidates.length === 0 ? (
@@ -588,7 +674,7 @@ export function UniversityCandidatesClient() {
                       <div className="uni-card-copy">
                         <p className="uni-card-name">{item.university}</p>
                         <p className="uni-card-faculty">
-                          {item.faculty}
+                          {item.faculty.trim() ? item.faculty : "まだ決めていない"}
                           {item.department ? ` / ${item.department}` : ""}
                         </p>
                       </div>

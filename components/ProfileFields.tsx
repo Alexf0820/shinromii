@@ -115,7 +115,7 @@ export function ProfileFields({ value, onChange, mode, extraSubjects = [] }: Pro
           type="text"
           value={value.displayName}
           onChange={(event) => update("displayName", event.target.value)}
-          placeholder="例：えまちん"
+          placeholder="例：みーちゃん"
           autoComplete="off"
         />
         <span className="field-help">

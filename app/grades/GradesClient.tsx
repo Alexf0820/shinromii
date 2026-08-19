@@ -2,11 +2,11 @@
 
 import { useEffect, useMemo, useRef, useState, type KeyboardEvent } from "react";
 import { CardActionBar } from "@/components/CardActionBar";
-import { SectionHeader } from "@/components/SectionHeader";
+import { GradeRecordForm } from "@/components/grades/GradeRecordForm";
+import { QualificationRecordForm } from "@/components/grades/QualificationRecordForm";
 import { UiIcon } from "@/components/UiIcon";
 import { gradeRecords as initialGradeRecords, qualifications as initialQualifications } from "@/data/mockData";
 import type {
-  EikenCefr,
   GradeRecord,
   GradeSchoolYear,
   GradeTerm,
@@ -14,23 +14,25 @@ import type {
   QualificationStatus,
 } from "@/data/mockData";
 import {
-  EIKEN_CEFR_LEVELS,
   eikenLevelRank,
-  eikenScoresFromInputs,
   formatEikenCseCardScore,
   isEikenQualification,
-  isEikenQualificationName,
   parseEikenExamNote,
   qualificationEikenScores,
 } from "@/lib/eiken";
+import { examCount, examTotal, gradeFromExamScores, normalizeExamScores } from "@/lib/grading-rule";
 import {
-  examCount,
-  examTotal,
-  gradeFromExamScores,
-  hasAnyExamScore,
-  normalizeExamScores,
-} from "@/lib/grading-rule";
-import type { ExamScores } from "@/lib/grading-rule";
+  buildGradeRecord,
+  createEmptyGradeForm,
+  formFromGradeRecord,
+  type GradeFormState,
+} from "@/lib/grade-form";
+import {
+  buildQualificationRecord,
+  createEmptyQualificationForm,
+  formFromQualification,
+  type QualificationFormState,
+} from "@/lib/qualification-form";
 import {
   loadShinromiiStorage,
   saveGradeRecords,
@@ -45,8 +47,6 @@ function handleCardKeyActivate(event: KeyboardEvent, action: () => void) {
 }
 
 const schoolYearOptions: GradeSchoolYear[] = ["高1", "高2", "高3"];
-const termOptions: GradeTerm[] = ["1学期", "2学期", "3学期", "学年末"];
-const qualificationStatusOptions: QualificationStatus[] = ["取得済み", "受験予定", "結果待ち"];
 
 const schoolYearRank: Record<GradeSchoolYear, number> = {
   高1: 1,
@@ -61,131 +61,12 @@ const termRank: Record<GradeTerm, number> = {
   学年末: 4,
 };
 
-type GradeFormState = {
-  schoolYear: GradeSchoolYear;
-  term: GradeTerm;
-  subject: string;
-  grade: number;
-  memo: string;
-  midtermScore: string;
-  finalScore: string;
-};
-
-type QualificationFormState = {
-  name: string;
-  scoreOrLevel: string;
-  examDate: string;
-  status: QualificationStatus;
-  memo: string;
-  cseScore: string;
-  readingScore: string;
-  listeningScore: string;
-  writingScore: string;
-  speakingScore: string;
-  cefr: "" | EikenCefr;
-};
-
-function createId(prefix: string) {
-  if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") {
-    return crypto.randomUUID();
-  }
-
-  return `${prefix}-${Date.now()}`;
-}
-
-function todayString() {
-  return new Date().toISOString().slice(0, 10);
-}
-
-function createEmptyGradeForm(): GradeFormState {
-  return {
-    schoolYear: "高1",
-    term: "1学期",
-    subject: "",
-    grade: 3,
-    memo: "",
-    midtermScore: "",
-    finalScore: "",
-  };
-}
-
-function parseScoreInput(value: string): number | null {
-  const trimmed = value.trim();
-
-  if (!trimmed) {
-    return null;
-  }
-
-  const parsed = Number(trimmed);
-
-  return Number.isFinite(parsed) ? parsed : null;
-}
-
-function formScores(form: GradeFormState): ExamScores {
-  return {
-    midterm: parseScoreInput(form.midtermScore),
-    final: parseScoreInput(form.finalScore),
-  };
-}
-
 function recordScores(record: GradeRecord) {
   return normalizeExamScores(record.scores);
 }
 
 function formatScore(score: number | null) {
   return score === null ? "未実施" : `${score}点`;
-}
-
-function createEmptyQualificationForm(): QualificationFormState {
-  return {
-    name: "",
-    scoreOrLevel: "",
-    examDate: "",
-    status: "取得済み",
-    memo: "",
-    cseScore: "",
-    readingScore: "",
-    listeningScore: "",
-    writingScore: "",
-    speakingScore: "",
-    cefr: "",
-  };
-}
-
-function formFromGradeRecord(record: GradeRecord): GradeFormState {
-  const scores = recordScores(record);
-
-  return {
-    schoolYear: record.schoolYear,
-    term: record.term,
-    subject: record.subject,
-    grade: record.grade,
-    memo: record.memo,
-    midtermScore: scores?.midterm === null || scores?.midterm === undefined ? "" : String(scores.midterm),
-    finalScore: scores?.final === null || scores?.final === undefined ? "" : String(scores.final),
-  };
-}
-
-function scoreToInput(value: number | undefined) {
-  return value === undefined ? "" : String(value);
-}
-
-function formFromQualification(record: QualificationRecord): QualificationFormState {
-  const eikenScores = qualificationEikenScores(record);
-
-  return {
-    name: record.name,
-    scoreOrLevel: record.scoreOrLevel,
-    examDate: record.examDate,
-    status: record.status,
-    memo: record.memo,
-    cseScore: scoreToInput(eikenScores?.cse),
-    readingScore: scoreToInput(eikenScores?.reading),
-    listeningScore: scoreToInput(eikenScores?.listening),
-    writingScore: scoreToInput(eikenScores?.writing),
-    speakingScore: scoreToInput(eikenScores?.speaking),
-    cefr: eikenScores?.cefr ?? "",
-  };
 }
 
 function average(values: number[]) {
@@ -383,51 +264,6 @@ export function GradesClient() {
     return stats;
   }, [gradeRecords]);
 
-  const gradeFormScoreNote = useMemo(() => {
-    const scores = formScores(gradeForm);
-    const autoGrade = gradeFromExamScores(scores);
-
-    if (autoGrade === null) {
-      return "得点を入力すると評定を自動計算します。中間が実施されていない科目は空欄のままにしてください。";
-    }
-
-    const total = examTotal(scores);
-
-    if (examCount(scores) >= 2) {
-      return `中間 ${scores.midterm} ＋ 期末 ${scores.final} = 合計 ${total}点 → 評定 ${autoGrade}`;
-    }
-
-    const label = scores.midterm === null ? "期末のみ" : "中間のみ";
-
-    return `${label} ${total}点 → 評定 ${autoGrade}`;
-  }, [gradeForm]);
-
-  function updateGradeForm<K extends keyof GradeFormState>(key: K, value: GradeFormState[K]) {
-    setGradeForm((current) => ({
-      ...current,
-      [key]: value,
-    }));
-  }
-
-  function updateGradeScore(key: "midtermScore" | "finalScore", value: string) {
-    setGradeForm((current) => {
-      const next = { ...current, [key]: value };
-      const autoGrade = gradeFromExamScores(formScores(next));
-
-      return autoGrade === null ? next : { ...next, grade: autoGrade };
-    });
-  }
-
-  function updateQualificationForm<K extends keyof QualificationFormState>(
-    key: K,
-    value: QualificationFormState[K],
-  ) {
-    setQualificationForm((current) => ({
-      ...current,
-      [key]: value,
-    }));
-  }
-
   function openCreateGrade() {
     setIsCreatingGrade(true);
     setGradeEditingId(null);
@@ -452,30 +288,19 @@ export function GradesClient() {
   }
 
   function handleSaveGrade() {
-    if (!gradeForm.subject.trim()) {
-      window.alert("科目名を入力してください。");
-      return;
-    }
-
-    const now = todayString();
     const currentRecord = gradeEditingId
       ? gradeRecords.find((item) => item.id === gradeEditingId) ?? null
       : null;
+    const nextRecord = buildGradeRecord({
+      form: gradeForm,
+      existing: currentRecord,
+      gradingMethod: "school-rule-a",
+    });
 
-    const scores = formScores(gradeForm);
-    const autoGrade = gradeFromExamScores(scores);
-
-    const nextRecord: GradeRecord = {
-      id: gradeEditingId ?? createId("grade"),
-      schoolYear: gradeForm.schoolYear,
-      term: gradeForm.term,
-      subject: gradeForm.subject.trim(),
-      grade: autoGrade ?? gradeForm.grade,
-      memo: gradeForm.memo.trim(),
-      createdAt: currentRecord?.createdAt ?? now,
-      updatedAt: now,
-      ...(hasAnyExamScore(scores) ? { scores } : {}),
-    };
+    if (!nextRecord) {
+      window.alert("科目名を入力してください。");
+      return;
+    }
 
     const nextRecords = gradeEditingId
       ? gradeRecords.map((item) => (item.id === gradeEditingId ? nextRecord : item))
@@ -535,45 +360,17 @@ export function GradesClient() {
   }
 
   function handleSaveQualification() {
-    if (!qualificationForm.name.trim() || !qualificationForm.scoreOrLevel.trim()) {
-      window.alert("資格名と級・スコアを入力してください。");
-      return;
-    }
-
-    const now = todayString();
     const currentRecord = qualificationEditingId
       ? qualifications.find((item) => item.id === qualificationEditingId) ?? null
       : null;
+    const nextRecord = buildQualificationRecord({
+      form: qualificationForm,
+      existing: currentRecord,
+    });
 
-    const name = qualificationForm.name.trim();
-    const eikenScores = isEikenQualificationName(name)
-      ? eikenScoresFromInputs({
-          cse: qualificationForm.cseScore,
-          reading: qualificationForm.readingScore,
-          listening: qualificationForm.listeningScore,
-          writing: qualificationForm.writingScore,
-          speaking: qualificationForm.speakingScore,
-          cefr: qualificationForm.cefr,
-        })
-      : undefined;
-
-    const nextRecord: QualificationRecord = {
-      id: qualificationEditingId ?? createId("qualification"),
-      name,
-      scoreOrLevel: qualificationForm.scoreOrLevel.trim(),
-      examDate: qualificationForm.examDate,
-      status: qualificationForm.status,
-      memo: qualificationForm.memo.trim(),
-      createdAt: currentRecord?.createdAt ?? now,
-      updatedAt: now,
-    };
-
-    if (isEikenQualificationName(name)) {
-      nextRecord.kind = "eiken";
-    }
-
-    if (eikenScores) {
-      nextRecord.eikenScores = eikenScores;
+    if (!nextRecord) {
+      window.alert("資格名と級・スコアを入力してください。");
+      return;
     }
 
     const nextQualifications = qualificationEditingId
@@ -651,36 +448,32 @@ export function GradesClient() {
     }
 
     const total = examTotal(scores);
-    const autoGrade = gradeFromExamScores(scores);
 
     return (
-      <section className="detail-section">
-        <p className="feedback-label">テストの得点</p>
-        <div className="detail-entry top-gap">
-          <span className="detail-entry-label">中間</span>
-          <span className="detail-entry-value">{formatScore(scores.midterm)}</span>
-        </div>
-        <div className="detail-entry">
-          <span className="detail-entry-label">期末</span>
-          <span className="detail-entry-value">{formatScore(scores.final)}</span>
-        </div>
-        <div className="detail-entry">
-          <span className="detail-entry-label">合計</span>
-          <span className="detail-entry-value">
-            {total}点（{examCount(scores)}回受験）
-          </span>
-        </div>
-        {autoGrade === null ? null : (
-          <div className="detail-entry">
-            <span className="detail-entry-label">自動評定</span>
-            <span className="detail-entry-value">{autoGrade}</span>
+      <section className="detail-group">
+        <p className="detail-group-title">テスト結果</p>
+        <div className="grade-score-cards">
+          <div className="grade-score-card">
+            <span className="grade-score-card-label">中間</span>
+            <span className="grade-score-card-value">{formatScore(scores.midterm)}</span>
           </div>
-        )}
+          <div className="grade-score-card">
+            <span className="grade-score-card-label">期末</span>
+            <span className="grade-score-card-value">{formatScore(scores.final)}</span>
+          </div>
+          <div className="grade-score-card">
+            <span className="grade-score-card-label">合計</span>
+            <span className="grade-score-card-value">{total === null ? "-" : `${total}点`}</span>
+            <span className="grade-score-card-note">{examCount(scores)}回受験</span>
+          </div>
+        </div>
       </section>
     );
   }
 
   function renderGradeDetail(record: GradeRecord) {
+    const autoGrade = gradeFromExamScores(recordScores(record));
+
     return (
       <section
         ref={(node) => {
@@ -696,49 +489,35 @@ export function GradesClient() {
               {record.schoolYear} / {record.term}
             </p>
           </div>
-          <span className="record-grade-badge">{record.grade}</span>
+          <div className="grade-detail-aside">
+            <span className="record-grade-badge">
+              <span className="record-grade-badge-label">評定</span>
+              <span className="record-grade-badge-value">{record.grade}</span>
+            </span>
+            {autoGrade === null ? null : (
+              <span className="grade-auto-label">自動評定 {autoGrade}</span>
+            )}
+          </div>
         </div>
 
-        <div className="detail-section-list top-gap">
-          <section className="detail-section">
-            <p className="feedback-label">基本情報</p>
-            <div className="detail-entry top-gap">
-              <span className="detail-entry-label">学年</span>
-              <span className="detail-entry-value">{record.schoolYear}</span>
-            </div>
-            <div className="detail-entry">
-              <span className="detail-entry-label">学期</span>
-              <span className="detail-entry-value">{record.term}</span>
-            </div>
-            <div className="detail-entry">
-              <span className="detail-entry-label">科目名</span>
-              <span className="detail-entry-value">{record.subject}</span>
-            </div>
-            <div className="detail-entry">
-              <span className="detail-entry-label">評定</span>
-              <span className="detail-entry-value">{record.grade}</span>
-            </div>
-          </section>
-
+        <div className="top-gap">
           {renderGradeScoreSection(record)}
 
-          <section className="detail-section">
-            <p className="feedback-label">メモ</p>
-            <div className="detail-entry top-gap">
-              <span className="detail-entry-label">登録メモ</span>
-              <span className="detail-entry-value preserve-lines">
-                {record.memo || "まだ入力されていません"}
-              </span>
-            </div>
-            <div className="detail-entry">
-              <span className="detail-entry-label">作成日</span>
-              <span className="detail-entry-value">{formatDate(record.createdAt)}</span>
-            </div>
-            <div className="detail-entry">
-              <span className="detail-entry-label">更新日</span>
-              <span className="detail-entry-value">{formatDate(record.updatedAt)}</span>
-            </div>
-          </section>
+          {record.memo || record.createdAt || record.updatedAt ? (
+            <section className="detail-group">
+              <p className="detail-group-title">補足</p>
+              {record.memo ? (
+                <div className="review-note">
+                  <span className="review-note-label">メモ</span>
+                  <p className="review-note-body preserve-lines">{record.memo}</p>
+                </div>
+              ) : null}
+              <div className={`review-meta${record.memo ? " top-gap" : ""}`}>
+                {record.createdAt ? <span>作成 {formatDate(record.createdAt)}</span> : null}
+                {record.updatedAt ? <span>更新 {formatDate(record.updatedAt)}</span> : null}
+              </div>
+            </section>
+          ) : null}
         </div>
       </section>
     );
@@ -746,137 +525,39 @@ export function GradesClient() {
 
   function renderGradeEditor(title: string, description: string, editorId?: string) {
     return (
-      <section
+      <div
         ref={(node) => {
           if (editorId) {
             gradeEditRefs.current[editorId] = node;
           }
         }}
-        className="panel inline-detail-card inline-editor-card"
       >
-        <SectionHeader title={title} description={description} />
-        <div className="form-stack">
-          <div className="field-grid">
-            <label className="field-block">
-              <span className="field-label">学年</span>
-              <select
-                className="text-input"
-                value={gradeForm.schoolYear}
-                onChange={(event) =>
-                  updateGradeForm("schoolYear", event.target.value as GradeSchoolYear)
-                }
-              >
-                {schoolYearOptions.map((option) => (
-                  <option key={option} value={option}>
-                    {option}
-                  </option>
-                ))}
-              </select>
-            </label>
-
-            <label className="field-block">
-              <span className="field-label">学期</span>
-              <select
-                className="text-input"
-                value={gradeForm.term}
-                onChange={(event) => updateGradeForm("term", event.target.value as GradeTerm)}
-              >
-                {termOptions.map((option) => (
-                  <option key={option} value={option}>
-                    {option}
-                  </option>
-                ))}
-              </select>
-            </label>
-          </div>
-
-          <div className="field-grid">
-            <label className="field-block">
-              <span className="field-label">科目名</span>
-              <input
-                className="text-input"
-                type="text"
-                value={gradeForm.subject}
-                onChange={(event) => updateGradeForm("subject", event.target.value)}
-              />
-            </label>
-
-            <label className="field-block">
-              <span className="field-label">評定</span>
-              <select
-                className="text-input"
-                value={gradeForm.grade}
-                onChange={(event) => updateGradeForm("grade", Number(event.target.value))}
-              >
-                {[1, 2, 3, 4, 5].map((score) => (
-                  <option key={score} value={score}>
-                    {score}
-                  </option>
-                ))}
-              </select>
-            </label>
-          </div>
-
-          <div className="field-grid">
-            <label className="field-block">
-              <span className="field-label">中間（未実施なら空欄）</span>
-              <input
-                className="text-input"
-                type="number"
-                inputMode="numeric"
-                value={gradeForm.midtermScore}
-                onChange={(event) => updateGradeScore("midtermScore", event.target.value)}
-              />
-            </label>
-
-            <label className="field-block">
-              <span className="field-label">期末</span>
-              <input
-                className="text-input"
-                type="number"
-                inputMode="numeric"
-                value={gradeForm.finalScore}
-                onChange={(event) => updateGradeScore("finalScore", event.target.value)}
-              />
-            </label>
-          </div>
-
-          <p className="field-help">{gradeFormScoreNote}</p>
-
-          <label className="field-block">
-            <span className="field-label">メモ（任意）</span>
-            <textarea
-              className="text-area"
-              rows={3}
-              value={gradeForm.memo}
-              onChange={(event) => updateGradeForm("memo", event.target.value)}
-            />
-          </label>
-
-          <div className="action-row">
-            <button type="button" className="action-button primary" onClick={handleSaveGrade}>
-              保存する
-            </button>
-            <button type="button" className="action-button" onClick={closeGradeEditor}>
-              キャンセル
-            </button>
-          </div>
-        </div>
-      </section>
+        <GradeRecordForm
+          title={title}
+          description={description}
+          form={gradeForm}
+          onChange={setGradeForm}
+          onSave={handleSaveGrade}
+          onCancel={closeGradeEditor}
+          gradingMethod="school-rule-a"
+        />
+      </div>
     );
   }
 
   function renderQualificationDetail(record: QualificationRecord) {
-    const eikenScores = isEikenQualification(record) ? qualificationEikenScores(record) : undefined;
-    const examNote = isEikenQualification(record) ? parseEikenExamNote(record.memo) : null;
-    const eikenEntries = [
-      { label: "CSEスコア", value: eikenScores?.cse },
-      { label: "CEFR", value: eikenScores?.cefr },
+    const isEiken = isEikenQualification(record);
+    const eikenScores = isEiken ? qualificationEikenScores(record) : undefined;
+    const examNote = isEiken ? parseEikenExamNote(record.memo) : null;
+    const cseCardScore = formatEikenCseCardScore(record);
+    const skillEntries = [
       { label: "Reading", value: eikenScores?.reading },
       { label: "Listening", value: eikenScores?.listening },
       { label: "Writing", value: eikenScores?.writing },
       { label: "Speaking", value: eikenScores?.speaking },
     ].filter((entry) => entry.value !== undefined);
+    const title = [record.name, record.scoreOrLevel].filter(Boolean).join(" ");
+    const extraMemo = examNote ? "" : record.memo.trim();
 
     return (
       <section
@@ -888,61 +569,71 @@ export function GradesClient() {
         <div className="detail-section-header">
           <div>
             <p className="eyebrow">資格詳細</p>
-            <p className="item-title">{record.name}</p>
-            <p className="item-subtitle">{record.scoreOrLevel}</p>
+            <p className="item-title">{title}</p>
+            {examNote?.examName ? <p className="item-subtitle">{examNote.examName}</p> : null}
+            {examNote?.examSession ? <p className="item-subtitle">{examNote.examSession}</p> : null}
           </div>
-          <span className={`status-pill ${qualificationStatusClass(record.status)}`}>{record.status}</span>
+          <div className="eiken-cse-aside">
+            <span className={`status-pill ${qualificationStatusClass(record.status)}`}>{record.status}</span>
+            {cseCardScore ? (
+              <span className="eiken-cse-badge">
+                <span className="eiken-cse-badge-label">CSE</span>
+                <span className="eiken-cse-badge-value">{cseCardScore}</span>
+              </span>
+            ) : null}
+          </div>
         </div>
 
-        <div className="detail-section-list top-gap">
-          <section className="detail-section">
-            <p className="feedback-label">基本情報</p>
-            <div className="detail-entry top-gap">
-              <span className="detail-entry-label">資格名</span>
-              <span className="detail-entry-value">{record.name}</span>
-            </div>
-            <div className="detail-entry">
-              <span className="detail-entry-label">級 / スコア</span>
-              <span className="detail-entry-value">{record.scoreOrLevel}</span>
-            </div>
-            {record.examDate ? (
-              <div className="detail-entry">
-                <span className="detail-entry-label">取得日</span>
-                <span className="detail-entry-value">{formatDate(record.examDate)}</span>
+        <div className="top-gap">
+          {cseCardScore || eikenScores?.cefr ? (
+            <section className="detail-group">
+              <p className="detail-group-title">英検スコア</p>
+              <div className="eiken-summary-cards">
+                {cseCardScore ? (
+                  <div className="grade-score-card eiken-cse-card">
+                    <span className="grade-score-card-label">CSE</span>
+                    <span className="grade-score-card-value">{cseCardScore}</span>
+                  </div>
+                ) : null}
+                {eikenScores?.cefr ? (
+                  <div className="grade-score-card">
+                    <span className="grade-score-card-label">CEFR</span>
+                    <span className="grade-score-card-value">{eikenScores.cefr}</span>
+                  </div>
+                ) : null}
               </div>
-            ) : null}
-            <div className="detail-entry">
-              <span className="detail-entry-label">状態</span>
-              <span className="detail-entry-value">{record.status}</span>
-            </div>
-            {examNote ? (
-              <>
-                <div className="detail-entry">
-                  <span className="detail-entry-label">試験</span>
-                  <span className="detail-entry-value">{examNote.examName}</span>
-                </div>
-                <div className="detail-entry">
-                  <span className="detail-entry-label">年度・回</span>
-                  <span className="detail-entry-value">{examNote.examSession}</span>
-                </div>
-              </>
-            ) : record.memo ? (
-              <div className="detail-entry">
-                <span className="detail-entry-label">メモ</span>
-                <span className="detail-entry-value preserve-lines">{record.memo}</span>
-              </div>
-            ) : null}
-          </section>
+            </section>
+          ) : null}
 
-          {eikenEntries.length > 0 ? (
-            <section className="detail-section">
-              <p className="feedback-label">英検スコア</p>
-              {eikenEntries.map((entry, index) => (
-                <div key={entry.label} className={`detail-entry${index === 0 ? " top-gap" : ""}`}>
-                  <span className="detail-entry-label">{entry.label}</span>
-                  <span className="detail-entry-value">{entry.value}</span>
+          {skillEntries.length > 0 ? (
+            <section className="detail-group">
+              <p className="detail-group-title">4技能</p>
+              <div className="eiken-skill-cards">
+                {skillEntries.map((entry) => (
+                  <div key={entry.label} className="grade-score-card">
+                    <span className="grade-score-card-label">{entry.label}</span>
+                    <span className="grade-score-card-value">{entry.value}</span>
+                  </div>
+                ))}
+              </div>
+            </section>
+          ) : null}
+
+          {record.examDate || extraMemo ? (
+            <section className="detail-group">
+              <p className="detail-group-title">補足</p>
+              {record.examDate ? (
+                <div className="review-note">
+                  <span className="review-note-label">取得日</span>
+                  <p className="review-note-body">{formatDate(record.examDate)}</p>
                 </div>
-              ))}
+              ) : null}
+              {extraMemo ? (
+                <div className="review-note">
+                  <span className="review-note-label">メモ</span>
+                  <p className="review-note-body preserve-lines">{extraMemo}</p>
+                </div>
+              ) : null}
             </section>
           ) : null}
         </div>
@@ -952,171 +643,22 @@ export function GradesClient() {
 
   function renderQualificationEditor(title: string, description: string, editorId?: string) {
     return (
-      <section
+      <div
         ref={(node) => {
           if (editorId) {
             qualificationEditRefs.current[editorId] = node;
           }
         }}
-        className="panel inline-detail-card inline-editor-card"
       >
-        <SectionHeader title={title} description={description} />
-        <div className="form-stack">
-          <div className="field-grid">
-            <label className="field-block">
-              <span className="field-label">資格名</span>
-              <input
-                className="text-input"
-                type="text"
-                value={qualificationForm.name}
-                onChange={(event) => updateQualificationForm("name", event.target.value)}
-              />
-            </label>
-
-            <label className="field-block">
-              <span className="field-label">級・スコア</span>
-              <input
-                className="text-input"
-                type="text"
-                value={qualificationForm.scoreOrLevel}
-                onChange={(event) => updateQualificationForm("scoreOrLevel", event.target.value)}
-              />
-            </label>
-          </div>
-
-          <div className="field-grid">
-            <label className="field-block">
-              <span className="field-label">取得日または受験日（任意）</span>
-              <input
-                className="text-input"
-                type="date"
-                value={qualificationForm.examDate}
-                onChange={(event) => updateQualificationForm("examDate", event.target.value)}
-              />
-            </label>
-
-            <label className="field-block">
-              <span className="field-label">状態</span>
-              <select
-                className="text-input"
-                value={qualificationForm.status}
-                onChange={(event) =>
-                  updateQualificationForm("status", event.target.value as QualificationStatus)
-                }
-              >
-                {qualificationStatusOptions.map((option) => (
-                  <option key={option} value={option}>
-                    {option}
-                  </option>
-                ))}
-              </select>
-            </label>
-          </div>
-
-          <label className="field-block">
-            <span className="field-label">メモ（任意）</span>
-            <textarea
-              className="text-area"
-              rows={3}
-              value={qualificationForm.memo}
-              onChange={(event) => updateQualificationForm("memo", event.target.value)}
-            />
-          </label>
-
-          {isEikenQualificationName(qualificationForm.name) ? (
-            <div className="eiken-score-fold">
-              <p className="eiken-score-summary">英検スコア（任意）</p>
-              <div className="eiken-score-grid">
-                <label className="field-block eiken-score-cse">
-                  <span className="field-label">CSEスコア</span>
-                  <input
-                    className="text-input"
-                    type="number"
-                    inputMode="numeric"
-                    min={0}
-                    value={qualificationForm.cseScore}
-                    onChange={(event) => updateQualificationForm("cseScore", event.target.value)}
-                  />
-                </label>
-                <label className="field-block eiken-score-cse">
-                  <span className="field-label">CEFR（任意）</span>
-                  <select
-                    className="text-input"
-                    value={qualificationForm.cefr}
-                    onChange={(event) =>
-                      updateQualificationForm("cefr", event.target.value as "" | EikenCefr)
-                    }
-                  >
-                    <option value="">選択しない</option>
-                    {EIKEN_CEFR_LEVELS.map((level) => (
-                      <option key={level} value={level}>
-                        {level}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-                <label className="field-block">
-                  <span className="field-label">Reading</span>
-                  <input
-                    className="text-input"
-                    type="number"
-                    inputMode="numeric"
-                    min={0}
-                    value={qualificationForm.readingScore}
-                    onChange={(event) => updateQualificationForm("readingScore", event.target.value)}
-                  />
-                </label>
-                <label className="field-block">
-                  <span className="field-label">Listening</span>
-                  <input
-                    className="text-input"
-                    type="number"
-                    inputMode="numeric"
-                    min={0}
-                    value={qualificationForm.listeningScore}
-                    onChange={(event) => updateQualificationForm("listeningScore", event.target.value)}
-                  />
-                </label>
-                <label className="field-block">
-                  <span className="field-label">Writing</span>
-                  <input
-                    className="text-input"
-                    type="number"
-                    inputMode="numeric"
-                    min={0}
-                    value={qualificationForm.writingScore}
-                    onChange={(event) => updateQualificationForm("writingScore", event.target.value)}
-                  />
-                </label>
-                <label className="field-block">
-                  <span className="field-label">Speaking</span>
-                  <input
-                    className="text-input"
-                    type="number"
-                    inputMode="numeric"
-                    min={0}
-                    value={qualificationForm.speakingScore}
-                    onChange={(event) => updateQualificationForm("speakingScore", event.target.value)}
-                  />
-                </label>
-              </div>
-            </div>
-          ) : null}
-
-          <div className="action-row">
-            <button
-              type="button"
-              className="action-button primary"
-              onClick={handleSaveQualification}
-            >
-              保存する
-            </button>
-            <button type="button" className="action-button" onClick={closeQualificationEditor}>
-              キャンセル
-            </button>
-          </div>
-        </div>
-      </section>
+        <QualificationRecordForm
+          title={title}
+          description={description}
+          form={qualificationForm}
+          onChange={setQualificationForm}
+          onSave={handleSaveQualification}
+          onCancel={closeQualificationEditor}
+        />
+      </div>
     );
   }
 

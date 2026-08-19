@@ -171,7 +171,7 @@ export function WelcomeStart({ onStartFresh, onRestored, preview = false }: Welc
           <div>
             <p className="welcome-privacy-title">あとからいつでも変更できます</p>
             <p className="welcome-privacy-text">
-              学年や興味のある分野など、いつでも編集できます。空のままではじめても大丈夫です。
+              学年や気になる大学など、いつでも編集できます。空のままではじめても大丈夫です。
             </p>
           </div>
         </div>
