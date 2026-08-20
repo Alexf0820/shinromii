@@ -590,10 +590,10 @@ const localPocRepository = {
         );
 
         if (
-          existing &&
-          (existing.profileId !== meta.profileId ||
-            existing.claimFence > meta.claimFence ||
-            (existing.claimFence === meta.claimFence && existing.migrationId !== meta.migrationId))
+          !existing ||
+          existing.profileId !== meta.profileId ||
+          existing.claimFence !== meta.claimFence ||
+          existing.migrationId !== meta.migrationId
         ) {
           throw new Error("現在のclaimと一致しない移行処理はメタ情報を書き換えできません。");
         }
@@ -860,9 +860,12 @@ async function reconcileLocalStateIfStale(state: LocalRepositoryState) {
   const reconciledMeta = createStaleFailedMeta(meta);
 
   try {
-    await localPocRepository.saveMeta(reconciledMeta);
+    await localPocRepository.saveMetaIfCurrentClaim(reconciledMeta);
   } catch (error) {
     reportMigrationPersistenceFailure("Failed to persist stale migration recovery state.", error);
+
+    const currentState = await localPocRepository.loadState();
+    return { state: currentState, staleRecovered: false };
   }
 
   return {
