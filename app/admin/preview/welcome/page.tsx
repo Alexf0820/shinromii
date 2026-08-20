@@ -6,7 +6,7 @@ type AdminWelcomePreviewPageProps = {
 };
 
 export default async function AdminWelcomePreviewPage({ searchParams }: AdminWelcomePreviewPageProps) {
-  const { adminKey } = await requireAdminPreviewAccess(searchParams);
+  await requireAdminPreviewAccess("/admin/preview/welcome", searchParams);
 
-  return <AdminWelcomePreview adminKey={adminKey} />;
+  return <AdminWelcomePreview />;
 }

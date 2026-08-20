@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
+import { APP_VERSION_LABEL } from "@/lib/app-version";
 import {
   clearFamilyKeySharingPocData,
   decryptStoredFamilyKeySharingPoc,
@@ -222,10 +223,7 @@ export function AdminFamilyKeySharingPocPanel() {
 
     try {
       const result = await decryptStoredFamilyKeySharingPoc(role);
-      setSteps((current) => ({
-        ...mergeRoleSteps(current, role, result.completedSteps, null, result.matches),
-        reloaded: result.snapshot.hasParentKeyPair && result.snapshot.hasChildKeyPair && result.snapshot.hasFamilyRecord ? "success" : current.reloaded,
-      }));
+      setSteps((current) => mergeRoleSteps(current, role, result.completedSteps, null, result.matches));
       setStoredAt(result.snapshot.storedCreatedAt);
       setPayloadPreview(formatPayload(result.payload));
       setMessage(
@@ -299,7 +297,7 @@ export function AdminFamilyKeySharingPocPanel() {
 
   return (
     <div className="admin-choice">
-      <strong>Ver.0.87 家族共有暗号化PoC</strong>
+      <strong>{APP_VERSION_LABEL} 家族共有暗号化PoC</strong>
       <span>
         1つのStudent Profile DEKで架空の進路JSONを暗号化し、そのDEKを親公開鍵と子公開鍵の両方でラップします。
         <br />

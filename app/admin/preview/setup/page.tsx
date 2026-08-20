@@ -6,7 +6,7 @@ type AdminSetupPreviewPageProps = {
 };
 
 export default async function AdminSetupPreviewPage({ searchParams }: AdminSetupPreviewPageProps) {
-  const { adminKey } = await requireAdminPreviewAccess(searchParams);
+  await requireAdminPreviewAccess("/admin/preview/setup", searchParams);
 
-  return <AdminSetupPreview adminKey={adminKey} />;
+  return <AdminSetupPreview />;
 }

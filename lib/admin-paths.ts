@@ -1,8 +1,15 @@
-const ADMIN_PREVIEW_QUERY_PARAM = "adminKey";
+export const ADMIN_PREVIEW_QUERY_PARAM = "adminKey";
+export const ADMIN_PREVIEW_ACCESS_COOKIE = "shinromii_admin_preview";
 
-export function buildAdminPath(pathname: string, adminKey?: string | null) {
-  if (!adminKey) return pathname;
+export function buildAdminAuthorizationPath(pathname: string, adminKey: string) {
+  const params = new URLSearchParams({
+    [ADMIN_PREVIEW_QUERY_PARAM]: adminKey,
+    redirectTo: pathname,
+  });
 
-  const params = new URLSearchParams({ [ADMIN_PREVIEW_QUERY_PARAM]: adminKey });
-  return `${pathname}?${params.toString()}`;
+  return `/admin/access?${params.toString()}`;
+}
+
+export function buildAdminPath(pathname: string) {
+  return pathname;
 }

@@ -585,7 +585,17 @@ export async function decryptStoredFamilyKeySharingPoc(role: FamilyKeySharingPoc
     }
 
     const message = error instanceof Error ? error.message : "家族共有暗号化PoCの復号に失敗しました。";
-    throw new FamilyKeySharingPocFlowError(message, completedSteps, completedSteps.at(-1) ?? keyLoadedStep);
+    const nextStep =
+      completedSteps.length === 0
+        ? keyLoadedStep
+        : completedSteps.includes(keyLoadedStep)
+          ? completedSteps.includes(unwrappedStep)
+            ? completedSteps.includes(decryptedStep)
+              ? matchedStep
+              : decryptedStep
+            : unwrappedStep
+          : keyLoadedStep;
+    throw new FamilyKeySharingPocFlowError(message, completedSteps, nextStep);
   }
 }
 

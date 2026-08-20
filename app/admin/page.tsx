@@ -6,7 +6,7 @@ type AdminPageProps = {
 };
 
 export default async function AdminPage({ searchParams }: AdminPageProps) {
-  const { adminKey } = await requireAdminPreviewAccess(searchParams);
+  await requireAdminPreviewAccess("/admin", searchParams);
 
-  return <AdminClient adminKey={adminKey} />;
+  return <AdminClient />;
 }

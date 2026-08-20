@@ -1,7 +1,7 @@
-import { headers } from "next/headers";
+import { createHmac, timingSafeEqual } from "node:crypto";
+import { cookies, headers } from "next/headers";
 import { redirect } from "next/navigation";
-
-const ADMIN_PREVIEW_QUERY_PARAM = "adminKey";
+import { ADMIN_PREVIEW_ACCESS_COOKIE, ADMIN_PREVIEW_QUERY_PARAM, buildAdminAuthorizationPath } from "@/lib/admin-paths";
 
 type SearchParamValue = string | string[] | undefined;
 type SearchParamsInput =
@@ -9,8 +9,21 @@ type SearchParamsInput =
   | Record<string, SearchParamValue>
   | undefined;
 
+const ACCESS_TTL_MS = 1000 * 60 * 30;
+
 function firstValue(value: SearchParamValue) {
   return Array.isArray(value) ? value[0] : value;
+}
+
+function safeEqual(left: string, right: string) {
+  const leftBuffer = Buffer.from(left);
+  const rightBuffer = Buffer.from(right);
+
+  if (leftBuffer.length !== rightBuffer.length) {
+    return false;
+  }
+
+  return timingSafeEqual(leftBuffer, rightBuffer);
 }
 
 function isPrivateIpv4Host(hostname: string) {
@@ -42,25 +55,67 @@ async function resolveSearchParams(searchParams: SearchParamsInput) {
   return (await searchParams) ?? {};
 }
 
-export async function requireAdminPreviewAccess(searchParams?: SearchParamsInput) {
-  const headerStore = await headers();
-  const forwardedHost = headerStore.get("x-forwarded-host");
-  const host = forwardedHost ?? headerStore.get("host");
+function getPreviewSecret() {
+  return process.env.SHINROMII_ADMIN_PREVIEW_KEY?.trim() ?? "";
+}
 
-  if (isLocalAdminHost(host)) {
-    return { adminKey: null };
+function signAccessToken(expiresAt: number, previewSecret: string) {
+  return createHmac("sha256", previewSecret).update(String(expiresAt)).digest("hex");
+}
+
+export function createAdminPreviewAccessCookieValue(previewSecret: string, now = Date.now()) {
+  const expiresAt = now + ACCESS_TTL_MS;
+  const signature = signAccessToken(expiresAt, previewSecret);
+  return `${expiresAt}.${signature}`;
+}
+
+function verifyAdminPreviewAccessCookieValue(cookieValue: string | undefined, previewSecret: string, now = Date.now()) {
+  if (!cookieValue || !previewSecret) return false;
+
+  const [expiresAtText, signature] = cookieValue.split(".");
+  const expiresAt = Number(expiresAtText);
+
+  if (!Number.isFinite(expiresAt) || !signature || expiresAt <= now) {
+    return false;
   }
 
-  const previewSecret = process.env.SHINROMII_ADMIN_PREVIEW_KEY?.trim();
+  return safeEqual(signature, signAccessToken(expiresAt, previewSecret));
+}
+
+export function isValidAdminPreviewKey(providedKey: string | null | undefined, previewSecret = getPreviewSecret()) {
+  if (!providedKey || !previewSecret) {
+    return false;
+  }
+
+  return safeEqual(providedKey, previewSecret);
+}
+
+function isDevelopmentLocalBypassAllowed(host: string | null) {
+  return process.env.NODE_ENV !== "production" && isLocalAdminHost(host);
+}
+
+export async function requireAdminPreviewAccess(pathname: string, searchParams?: SearchParamsInput) {
+  const host = (await headers()).get("host");
+
+  if (isDevelopmentLocalBypassAllowed(host)) {
+    return;
+  }
+
+  const previewSecret = getPreviewSecret();
   if (!previewSecret) {
     redirect("/");
   }
 
+  const cookieStore = await cookies();
+  const accessCookie = cookieStore.get(ADMIN_PREVIEW_ACCESS_COOKIE)?.value;
+  if (verifyAdminPreviewAccessCookieValue(accessCookie, previewSecret)) {
+    return;
+  }
+
   const resolvedSearchParams = await resolveSearchParams(searchParams);
   const providedKey = firstValue(resolvedSearchParams[ADMIN_PREVIEW_QUERY_PARAM]);
-
-  if (providedKey === previewSecret) {
-    return { adminKey: previewSecret };
+  if (providedKey && isValidAdminPreviewKey(providedKey, previewSecret)) {
+    redirect(buildAdminAuthorizationPath(pathname, providedKey));
   }
 
   redirect("/");
