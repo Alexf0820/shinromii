@@ -170,6 +170,12 @@ type LocalRepositoryState = {
   actorKeyPair: StoredActorKeyPair | null;
 };
 
+type ClaimedMigrationStart = {
+  fixture: LocalCloudMigrationPocFixture;
+  meta: StoredMigrationMeta;
+  staleRecovered: boolean;
+};
+
 type CloudRecordInput = Omit<StoredCloudRecord, "createdAt" | "updatedAt">;
 
 export class LocalCloudMigrationPocFlowError extends Error {
@@ -181,6 +187,16 @@ export class LocalCloudMigrationPocFlowError extends Error {
     this.name = "LocalCloudMigrationPocFlowError";
     this.completedSteps = completedSteps;
     this.failedStep = failedStep;
+  }
+}
+
+class LocalCloudMigrationPocClaimError extends Error {
+  code: "missing-fixture" | "active-migration";
+
+  constructor(code: "missing-fixture" | "active-migration", message: string) {
+    super(message);
+    this.name = "LocalCloudMigrationPocClaimError";
+    this.code = code;
   }
 }
 
@@ -529,6 +545,62 @@ const localPocRepository = {
     );
   },
 
+  async claimMigrationStart() {
+    return withDatabase(
+      SHINROMII_LOCAL_MIGRATION_POC_LOCAL_DB,
+      [LOCAL_PROFILE_STORE, LOCAL_META_STORE],
+      "readwrite",
+      upgradeLocalDatabase,
+      async (transaction) => {
+        const profileStore = transaction.objectStore(LOCAL_PROFILE_STORE);
+        const metaStore = transaction.objectStore(LOCAL_META_STORE);
+        const [fixtures, storedMeta] = await Promise.all([
+          requestToPromise(profileStore.getAll() as IDBRequest<LocalCloudMigrationPocFixture[]>, "Migration PoC用Localデータの読み取りに失敗しました。"),
+          requestToPromise(metaStore.get(META_ID) as IDBRequest<StoredMigrationMeta | undefined>, "Migration PoC用メタ情報の読み取りに失敗しました。"),
+        ]);
+
+        const fixture = fixtures[0] ?? null;
+        if (!fixture) {
+          throw new LocalCloudMigrationPocClaimError("missing-fixture", "先にPoC用のLocalデータを準備してください。");
+        }
+
+        const currentMeta = storedMeta ?? createInitialMeta(fixture.profile.id);
+        const activeMeta = isStaleInProgressMeta(currentMeta) ? createStaleFailedMeta(currentMeta) : currentMeta;
+        const staleRecovered = activeMeta !== currentMeta;
+
+        if (staleRecovered) {
+          metaStore.put(activeMeta);
+        }
+
+        if (IN_PROGRESS_MIGRATION_STATUSES.includes(activeMeta.migrationStatus)) {
+          throw new LocalCloudMigrationPocClaimError(
+            "active-migration",
+            "別の移行処理がすでに進行中です。しばらくしてからもう一度お試しください。",
+          );
+        }
+
+        const migrationId = createShinromiiId("migration");
+        const claimedMeta: StoredMigrationMeta = {
+          id: META_ID,
+          profileId: fixture.profile.id,
+          migrationId,
+          migrationStatus: "preparing",
+          completedSteps: ["localPrepared", "migrationIdGenerated"],
+          failedStep: null,
+          updatedAt: new Date().toISOString(),
+        };
+
+        metaStore.put(claimedMeta);
+
+        return {
+          fixture,
+          meta: claimedMeta,
+          staleRecovered,
+        } satisfies ClaimedMigrationStart;
+      },
+    );
+  },
+
   async ensureActorKeyPair() {
     const state = await this.loadState();
 
@@ -785,29 +857,32 @@ export async function runLocalCloudMigrationPoc(
   options: { simulateFailure?: LocalCloudMigrationPocFailureMode } = {},
 ): Promise<LocalCloudMigrationPocResult> {
   const { simulateFailure } = options;
-  const { state } = await reconcileLocalStateIfStale(await localPocRepository.loadState());
-  const fixture = state.fixture;
+  let claim: ClaimedMigrationStart;
+  try {
+    claim = await localPocRepository.claimMigrationStart();
+  } catch (error) {
+    if (error instanceof LocalCloudMigrationPocClaimError) {
+      if (error.code === "missing-fixture") {
+        throw createFlowError(error.message, [], "localPrepared");
+      }
 
-  if (!fixture) {
-    throw createFlowError("先にPoC用のLocalデータを準備してください。", [], "localPrepared");
+      throw createFlowError(error.message, ["localPrepared"], "migrationIdGenerated");
+    }
+
+    throw createFlowError("移行開始の準備に失敗しました。", [], "migrationIdGenerated");
   }
+
+  const fixture = claim.fixture;
 
   ensureKnownSchemaVersion(fixture.schemaVersion);
 
-  if (
-    state.meta?.migrationStatus === "preparing" ||
-    state.meta?.migrationStatus === "encrypted" ||
-    state.meta?.migrationStatus === "uploaded" ||
-    state.meta?.migrationStatus === "verifying"
-  ) {
-    throw new Error("Migration処理中です。完了を待ってから再実行してください。");
-  }
-
   const completedSteps: LocalCloudMigrationPocStep[] = ["localPrepared"];
-  const migrationId = createShinromiiId("migration");
+  const migrationId = claim.meta.migrationId;
+  if (!migrationId) {
+    throw createFlowError("移行開始情報の初期化に失敗しました。", completedSteps, "migrationIdGenerated");
+  }
   let currentStep: LocalCloudMigrationPocStep = "migrationIdGenerated";
   completedSteps.push("migrationIdGenerated");
-  await persistMetaProgress(fixture, migrationId, "preparing", completedSteps);
 
   try {
     currentStep = "dekGenerated";
