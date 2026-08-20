@@ -3,9 +3,11 @@
 import { useEffect, useMemo, useState } from "react";
 import {
   clearDekWrapPocData,
+  DekWrapPocFlowError,
   decryptStoredDekWrapPoc,
   loadDekWrapPocSnapshot,
   runDekWrapPocEncryption,
+  type DekWrapPocStep,
   type DekWrapPocSample,
 } from "@/lib/shinromii-dek-wrap-poc";
 
@@ -45,6 +47,20 @@ function statusLabel(status: StepStatus) {
 
 function formatPayload(payload: DekWrapPocSample | null) {
   return payload ? JSON.stringify(payload, null, 2) : "";
+}
+
+function buildStepState(completedSteps: DekWrapPocStep[] = [], failedStep: DekWrapPocStep | null = null): StepState {
+  const nextState = createStepState();
+
+  completedSteps.forEach((step) => {
+    nextState[step] = "success";
+  });
+
+  if (failedStep) {
+    nextState[failedStep] = "error";
+  }
+
+  return nextState;
 }
 
 export function AdminDekWrapPocPanel() {
@@ -107,11 +123,7 @@ export function AdminDekWrapPocPanel() {
     try {
       const result = await runDekWrapPocEncryption();
       setSteps({
-        dekGenerated: "success",
-        encrypted: "success",
-        keyPairGenerated: "success",
-        wrapped: "success",
-        saved: "success",
+        ...buildStepState(result.completedSteps),
         reloaded: result.snapshot.hasKeyPair && result.snapshot.hasWrappedRecord ? "success" : "idle",
         unwrapped: "idle",
         decrypted: "idle",
@@ -121,17 +133,9 @@ export function AdminDekWrapPocPanel() {
       setPayloadPreview(formatPayload(result.payload));
       setMessage("PoC用JSONをAES-GCMで暗号化し、RSA-OAEPでラップしたDEKと一緒にIndexedDBへ保存しました。");
     } catch (error) {
-      setSteps({
-        dekGenerated: "error",
-        encrypted: "error",
-        keyPairGenerated: "error",
-        wrapped: "error",
-        saved: "error",
-        reloaded: "idle",
-        unwrapped: "idle",
-        decrypted: "idle",
-        matched: "idle",
-      });
+      const nextSteps =
+        error instanceof DekWrapPocFlowError ? buildStepState(error.completedSteps, error.failedStep) : createStepState();
+      setSteps(nextSteps);
       setMessage(error instanceof Error ? error.message : "DEKラップPoCの保存に失敗しました。");
     } finally {
       setLoading(false);

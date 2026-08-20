@@ -6,9 +6,16 @@ const RECORD_STORE = "records";
 const KEYPAIR_ID = "rsa-oaep-keypair";
 const RECORD_ID = "wrapped-sample";
 
+export type DekWrapPocStep =
+  | "dekGenerated"
+  | "encrypted"
+  | "keyPairGenerated"
+  | "wrapped"
+  | "saved";
+
 export type DekWrapPocSample = {
   scope: "dek-wrap-poc";
-  version: "0.832";
+  version: "0.832.1";
   studentAlias: string;
   note: string;
   targetSchools: Array<{
@@ -41,6 +48,18 @@ type DekWrapPocSnapshot = {
   storedCreatedAt: string | null;
 };
 
+export class DekWrapPocFlowError extends Error {
+  completedSteps: DekWrapPocStep[];
+  failedStep: DekWrapPocStep | null;
+
+  constructor(message: string, completedSteps: DekWrapPocStep[], failedStep: DekWrapPocStep | null) {
+    super(message);
+    this.name = "DekWrapPocFlowError";
+    this.completedSteps = completedSteps;
+    this.failedStep = failedStep;
+  }
+}
+
 function canUseDekWrapPoc() {
   return (
     typeof window !== "undefined" &&
@@ -57,10 +76,24 @@ function openDatabase(): Promise<IDBDatabase> {
       return;
     }
 
+    let settled = false;
     const request = window.indexedDB.open(SHINROMII_DEK_WRAP_POC_DB, DB_VERSION);
+    const settle = (callback: () => void) => {
+      if (settled) return;
+      settled = true;
+      callback();
+    };
 
     request.onerror = () => {
-      reject(new Error("DEKラップPoC用のIndexedDBを開けませんでした。"));
+      settle(() => {
+        reject(new Error("DEKラップPoC用のIndexedDBを開けませんでした。"));
+      });
+    };
+
+    request.onblocked = () => {
+      settle(() => {
+        reject(new Error("他のタブがDEKラップPoC用のIndexedDBを使用中です。他のタブを閉じてから再実行してください。"));
+      });
     };
 
     request.onupgradeneeded = () => {
@@ -76,7 +109,9 @@ function openDatabase(): Promise<IDBDatabase> {
     };
 
     request.onsuccess = () => {
-      resolve(request.result);
+      settle(() => {
+        resolve(request.result);
+      });
     };
   });
 }
@@ -89,24 +124,44 @@ function runStoreRequest<T>(
   return openDatabase().then(
     (database) =>
       new Promise<T>((resolve, reject) => {
+        let settled = false;
+        let requestResult: T;
         const transaction = database.transaction(storeName, mode);
         const store = transaction.objectStore(storeName);
         const request = execute(store);
+        const finish = (callback: () => void) => {
+          if (settled) return;
+          settled = true;
+          database.close();
+          callback();
+        };
 
         request.onsuccess = () => {
-          resolve(request.result);
+          requestResult = request.result;
         };
 
         request.onerror = () => {
-          reject(new Error("DEKラップPoCのIndexedDB処理に失敗しました。"));
+          finish(() => {
+            reject(new Error("DEKラップPoCのIndexedDB処理に失敗しました。"));
+          });
         };
 
         transaction.oncomplete = () => {
-          database.close();
+          finish(() => {
+            resolve(requestResult);
+          });
         };
 
         transaction.onerror = () => {
-          reject(new Error("DEKラップPoCのIndexedDBトランザクションに失敗しました。"));
+          finish(() => {
+            reject(new Error("DEKラップPoCのIndexedDBトランザクションに失敗しました。"));
+          });
+        };
+
+        transaction.onabort = () => {
+          finish(() => {
+            reject(new Error("DEKラップPoCのIndexedDBトランザクションが中断されました。"));
+          });
         };
       }),
   );
@@ -115,7 +170,7 @@ function runStoreRequest<T>(
 function createSamplePayload(): DekWrapPocSample {
   return {
     scope: "dek-wrap-poc",
-    version: "0.832",
+    version: "0.832.1",
     studentAlias: "体験用サンプル",
     note: "実ユーザーデータではない、DEKラップPoC用のJSONです。",
     targetSchools: [
@@ -159,25 +214,60 @@ async function generateWrapKeyPair() {
   return pair as CryptoKeyPair;
 }
 
-async function saveKeyPair(keyPair: CryptoKeyPair) {
-  await runStoreRequest("readwrite", KEY_STORE, (store) =>
-    store.put({
-      id: KEYPAIR_ID,
-      algorithm: "RSA-OAEP",
-      publicKey: keyPair.publicKey,
-      privateKey: keyPair.privateKey,
-      createdAt: new Date().toISOString(),
-    } satisfies StoredKeyPairRecord),
-  );
-}
-
 async function loadStoredKeyPair() {
   const result = await runStoreRequest("readonly", KEY_STORE, (store) => store.get(KEYPAIR_ID));
   return (result as StoredKeyPairRecord | undefined) ?? null;
 }
 
-async function saveWrappedRecord(record: StoredWrappedRecord) {
-  await runStoreRequest("readwrite", RECORD_STORE, (store) => store.put(record));
+async function saveKeyPairAndWrappedRecord(keyPair: CryptoKeyPair, record: StoredWrappedRecord) {
+  const createdAt = new Date().toISOString();
+
+  await openDatabase().then(
+    (database) =>
+      new Promise<void>((resolve, reject) => {
+        let settled = false;
+        const transaction = database.transaction([KEY_STORE, RECORD_STORE], "readwrite");
+        const keyStore = transaction.objectStore(KEY_STORE);
+        const recordStore = transaction.objectStore(RECORD_STORE);
+        const finish = (callback: () => void) => {
+          if (settled) return;
+          settled = true;
+          database.close();
+          callback();
+        };
+
+        keyStore.put({
+          id: KEYPAIR_ID,
+          algorithm: "RSA-OAEP",
+          publicKey: keyPair.publicKey,
+          privateKey: keyPair.privateKey,
+          createdAt,
+        } satisfies StoredKeyPairRecord);
+
+        recordStore.put({
+          ...record,
+          createdAt,
+        });
+
+        transaction.oncomplete = () => {
+          finish(() => {
+            resolve();
+          });
+        };
+
+        transaction.onerror = () => {
+          finish(() => {
+            reject(new Error("DEKラップPoCの保存トランザクションに失敗しました。"));
+          });
+        };
+
+        transaction.onabort = () => {
+          finish(() => {
+            reject(new Error("DEKラップPoCの保存トランザクションが中断されました。"));
+          });
+        };
+      }),
+  );
 }
 
 export async function loadDekWrapPocSnapshot(): Promise<DekWrapPocSnapshot> {
@@ -209,44 +299,69 @@ export async function runDekWrapPocEncryption() {
     throw new Error("このブラウザではDEKラップPoCを実行できません。");
   }
 
-  const dek = await generateDek();
-  const keyPair = await generateWrapKeyPair();
-  const payload = createSamplePayload();
-  const iv = getRandomIv();
-  const encoded = new TextEncoder().encode(JSON.stringify(payload));
-  const cipherText = await window.crypto.subtle.encrypt(
-    {
-      name: "AES-GCM",
-      iv: toCryptoIv(iv),
-    },
-    dek,
-    encoded,
-  );
+  const completedSteps: DekWrapPocStep[] = [];
+  let currentStep: DekWrapPocStep | null = null;
 
-  const wrappedDek = await window.crypto.subtle.wrapKey(
-    "raw",
-    dek,
-    keyPair.publicKey,
-    {
-      name: "RSA-OAEP",
-    },
-  );
+  try {
+    currentStep = "dekGenerated";
+    const dek = await generateDek();
+    completedSteps.push(currentStep);
 
-  await saveKeyPair(keyPair);
-  await saveWrappedRecord({
-    id: RECORD_ID,
-    wrapAlgorithm: "RSA-OAEP",
-    cipherAlgorithm: "AES-GCM",
-    iv,
-    cipherText,
-    wrappedDek,
-    createdAt: new Date().toISOString(),
-  });
+    const payload = createSamplePayload();
+    const iv = getRandomIv();
+    const encoded = new TextEncoder().encode(JSON.stringify(payload));
 
-  return {
-    payload,
-    snapshot: await loadDekWrapPocSnapshot(),
-  };
+    currentStep = "encrypted";
+    const cipherText = await window.crypto.subtle.encrypt(
+      {
+        name: "AES-GCM",
+        iv: toCryptoIv(iv),
+      },
+      dek,
+      encoded,
+    );
+    completedSteps.push(currentStep);
+
+    currentStep = "keyPairGenerated";
+    const keyPair = await generateWrapKeyPair();
+    completedSteps.push(currentStep);
+
+    currentStep = "wrapped";
+    const wrappedDek = await window.crypto.subtle.wrapKey(
+      "raw",
+      dek,
+      keyPair.publicKey,
+      {
+        name: "RSA-OAEP",
+      },
+    );
+    completedSteps.push(currentStep);
+
+    currentStep = "saved";
+    await saveKeyPairAndWrappedRecord(keyPair, {
+      id: RECORD_ID,
+      wrapAlgorithm: "RSA-OAEP",
+      cipherAlgorithm: "AES-GCM",
+      iv,
+      cipherText,
+      wrappedDek,
+      createdAt: new Date().toISOString(),
+    });
+    completedSteps.push(currentStep);
+
+    return {
+      payload,
+      completedSteps,
+      snapshot: await loadDekWrapPocSnapshot(),
+    };
+  } catch (error) {
+    if (error instanceof DekWrapPocFlowError) {
+      throw error;
+    }
+
+    const message = error instanceof Error ? error.message : "DEKラップPoCの保存に失敗しました。";
+    throw new DekWrapPocFlowError(message, completedSteps, currentStep && !completedSteps.includes(currentStep) ? currentStep : null);
+  }
 }
 
 export async function decryptStoredDekWrapPoc() {
