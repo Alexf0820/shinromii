@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   clearDekWrapPocData,
   DekWrapPocFlowError,
@@ -69,14 +69,16 @@ export function AdminDekWrapPocPanel() {
   const [message, setMessage] = useState<string | null>(null);
   const [storedAt, setStoredAt] = useState<string | null>(null);
   const [payloadPreview, setPayloadPreview] = useState<string>("");
+  const inspectionRevision = useRef(0);
 
   useEffect(() => {
     let cancelled = false;
+    const revision = inspectionRevision.current;
 
     const inspect = async () => {
       try {
         const snapshot = await loadDekWrapPocSnapshot();
-        if (cancelled) return;
+        if (cancelled || revision !== inspectionRevision.current) return;
 
         setStoredAt(snapshot.storedCreatedAt);
         setSteps((current) => ({
@@ -84,7 +86,7 @@ export function AdminDekWrapPocPanel() {
           reloaded: snapshot.hasKeyPair && snapshot.hasWrappedRecord ? "success" : current.reloaded,
         }));
       } catch {
-        if (cancelled) return;
+        if (cancelled || revision !== inspectionRevision.current) return;
         setSteps((current) => ({
           ...current,
           reloaded: "error",
@@ -115,6 +117,7 @@ export function AdminDekWrapPocPanel() {
   );
 
   async function handleEncryptAndSave() {
+    inspectionRevision.current += 1;
     setLoading(true);
     setMessage(null);
     setPayloadPreview("");
@@ -143,6 +146,7 @@ export function AdminDekWrapPocPanel() {
   }
 
   async function handleDecrypt() {
+    inspectionRevision.current += 1;
     setLoading(true);
     setMessage(null);
 
@@ -172,6 +176,7 @@ export function AdminDekWrapPocPanel() {
   }
 
   async function handleClear() {
+    inspectionRevision.current += 1;
     setLoading(true);
     setMessage(null);
 

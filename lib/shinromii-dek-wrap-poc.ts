@@ -15,7 +15,7 @@ export type DekWrapPocStep =
 
 export type DekWrapPocSample = {
   scope: "dek-wrap-poc";
-  version: "0.832.1";
+  version: "0.84";
   studentAlias: string;
   note: string;
   targetSchools: Array<{
@@ -109,6 +109,11 @@ function openDatabase(): Promise<IDBDatabase> {
     };
 
     request.onsuccess = () => {
+      if (settled) {
+        request.result.close();
+        return;
+      }
+
       settle(() => {
         resolve(request.result);
       });
@@ -170,7 +175,7 @@ function runStoreRequest<T>(
 function createSamplePayload(): DekWrapPocSample {
   return {
     scope: "dek-wrap-poc",
-    version: "0.832.1",
+    version: "0.84",
     studentAlias: "体験用サンプル",
     note: "実ユーザーデータではない、DEKラップPoC用のJSONです。",
     targetSchools: [
