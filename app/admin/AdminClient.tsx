@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useEffect, useState } from "react";
 import { APP_VERSION_LABEL } from "@/lib/app-version";
+import { AdminCryptoPocPanel } from "@/components/admin/AdminCryptoPocPanel";
 import {
   loadShinromiiStorage,
   signInForLocalPreview,
@@ -90,6 +91,11 @@ export function AdminClient() {
             </button>
           </div>
         </div>
+      </section>
+
+      <section className="admin-section">
+        <h2 className="admin-section-title">暗号化PoC</h2>
+        <AdminCryptoPocPanel />
       </section>
     </div>
   );
