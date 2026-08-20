@@ -228,7 +228,11 @@ export function AdminDekWrapPocPanel() {
         <p>暗号方式: AES-256-GCM / RSA-OAEP(SHA-256) / ランダムIV</p>
         <p>保存済み日時: {storedAt ?? "未保存"}</p>
       </div>
-      {message ? <p className="admin-crypto-message">{message}</p> : null}
+      {message ? (
+        <p className="admin-crypto-message" role="status" aria-live="polite" aria-atomic="true">
+          {message}
+        </p>
+      ) : null}
       {payloadPreview ? (
         <pre className="admin-crypto-preview" aria-label="DEK wrap PoC payload preview">
           {payloadPreview}

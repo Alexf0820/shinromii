@@ -2,6 +2,8 @@ export const SHINROMII_DEK_WRAP_POC_DB = "SHINROMII_DEK_WRAP_POC";
 const DB_VERSION = 1;
 const KEY_STORE = "keys";
 const RECORD_STORE = "records";
+const POC_SAMPLE_VERSION = "poc-v1";
+const LEGACY_POC_SAMPLE_VERSIONS = new Set(["0.832", "0.832.1", "0.84"]);
 
 const KEYPAIR_ID = "rsa-oaep-keypair";
 const RECORD_ID = "wrapped-sample";
@@ -15,7 +17,7 @@ export type DekWrapPocStep =
 
 export type DekWrapPocSample = {
   scope: "dek-wrap-poc";
-  version: "0.84";
+  version: string;
   studentAlias: string;
   note: string;
   targetSchools: Array<{
@@ -46,6 +48,11 @@ type DekWrapPocSnapshot = {
   hasKeyPair: boolean;
   hasWrappedRecord: boolean;
   storedCreatedAt: string | null;
+};
+
+type StoredDekWrapPocPair = {
+  keyPairRecord: StoredKeyPairRecord | null;
+  wrappedRecord: StoredWrappedRecord | null;
 };
 
 export class DekWrapPocFlowError extends Error {
@@ -175,7 +182,7 @@ function runStoreRequest<T>(
 function createSamplePayload(): DekWrapPocSample {
   return {
     scope: "dek-wrap-poc",
-    version: "0.84",
+    version: POC_SAMPLE_VERSION,
     studentAlias: "体験用サンプル",
     note: "実ユーザーデータではない、DEKラップPoC用のJSONです。",
     targetSchools: [
@@ -219,9 +226,56 @@ async function generateWrapKeyPair() {
   return pair as CryptoKeyPair;
 }
 
-async function loadStoredKeyPair() {
-  const result = await runStoreRequest("readonly", KEY_STORE, (store) => store.get(KEYPAIR_ID));
-  return (result as StoredKeyPairRecord | undefined) ?? null;
+async function loadStoredKeyPairAndWrappedRecord(): Promise<StoredDekWrapPocPair> {
+  return openDatabase().then(
+    (database) =>
+      new Promise<StoredDekWrapPocPair>((resolve, reject) => {
+        let settled = false;
+        let keyPairRecord: StoredKeyPairRecord | null = null;
+        let wrappedRecord: StoredWrappedRecord | null = null;
+        const transaction = database.transaction([KEY_STORE, RECORD_STORE], "readonly");
+        const keyRequest = transaction.objectStore(KEY_STORE).get(KEYPAIR_ID);
+        const recordRequest = transaction.objectStore(RECORD_STORE).get(RECORD_ID);
+        const finish = (callback: () => void) => {
+          if (settled) return;
+          settled = true;
+          database.close();
+          callback();
+        };
+
+        keyRequest.onsuccess = () => {
+          keyPairRecord = (keyRequest.result as StoredKeyPairRecord | undefined) ?? null;
+        };
+
+        recordRequest.onsuccess = () => {
+          wrappedRecord = (recordRequest.result as StoredWrappedRecord | undefined) ?? null;
+        };
+
+        keyRequest.onerror = recordRequest.onerror = () => {
+          finish(() => {
+            reject(new Error("DEKラップPoCのIndexedDB読み取りに失敗しました。"));
+          });
+        };
+
+        transaction.oncomplete = () => {
+          finish(() => {
+            resolve({ keyPairRecord, wrappedRecord });
+          });
+        };
+
+        transaction.onerror = () => {
+          finish(() => {
+            reject(new Error("DEKラップPoCのIndexedDB読み取りトランザクションに失敗しました。"));
+          });
+        };
+
+        transaction.onabort = () => {
+          finish(() => {
+            reject(new Error("DEKラップPoCのIndexedDB読み取りトランザクションが中断されました。"));
+          });
+        };
+      }),
+  );
 }
 
 async function saveKeyPairAndWrappedRecord(keyPair: CryptoKeyPair, record: StoredWrappedRecord) {
@@ -275,6 +329,60 @@ async function saveKeyPairAndWrappedRecord(keyPair: CryptoKeyPair, record: Store
   );
 }
 
+async function clearStoredKeyPairAndWrappedRecord() {
+  await openDatabase().then(
+    (database) =>
+      new Promise<void>((resolve, reject) => {
+        let settled = false;
+        const transaction = database.transaction([KEY_STORE, RECORD_STORE], "readwrite");
+        const keyRequest = transaction.objectStore(KEY_STORE).delete(KEYPAIR_ID);
+        const recordRequest = transaction.objectStore(RECORD_STORE).delete(RECORD_ID);
+        const finish = (callback: () => void) => {
+          if (settled) return;
+          settled = true;
+          database.close();
+          callback();
+        };
+
+        keyRequest.onerror = recordRequest.onerror = () => {
+          finish(() => {
+            reject(new Error("DEKラップPoCデータの削除に失敗しました。"));
+          });
+        };
+
+        transaction.oncomplete = () => {
+          finish(() => {
+            resolve();
+          });
+        };
+
+        transaction.onerror = () => {
+          finish(() => {
+            reject(new Error("DEKラップPoCの削除トランザクションに失敗しました。"));
+          });
+        };
+
+        transaction.onabort = () => {
+          finish(() => {
+            reject(new Error("DEKラップPoCの削除トランザクションが中断されました。"));
+          });
+        };
+      }),
+  );
+}
+
+function matchesSamplePayload(payload: DekWrapPocSample) {
+  const expected = createSamplePayload();
+
+  return (
+    payload.scope === expected.scope &&
+    (payload.version === POC_SAMPLE_VERSION || LEGACY_POC_SAMPLE_VERSIONS.has(payload.version)) &&
+    payload.studentAlias === expected.studentAlias &&
+    payload.note === expected.note &&
+    JSON.stringify(payload.targetSchools) === JSON.stringify(expected.targetSchools)
+  );
+}
+
 export async function loadDekWrapPocSnapshot(): Promise<DekWrapPocSnapshot> {
   if (!canUseDekWrapPoc()) {
     return {
@@ -284,16 +392,10 @@ export async function loadDekWrapPocSnapshot(): Promise<DekWrapPocSnapshot> {
     };
   }
 
-  const [keyResult, recordResult] = await Promise.all([
-    runStoreRequest("readonly", KEY_STORE, (store) => store.get(KEYPAIR_ID)),
-    runStoreRequest("readonly", RECORD_STORE, (store) => store.get(RECORD_ID)),
-  ]);
-
-  const keyPair = keyResult as StoredKeyPairRecord | undefined;
-  const wrappedRecord = recordResult as StoredWrappedRecord | undefined;
+  const { keyPairRecord, wrappedRecord } = await loadStoredKeyPairAndWrappedRecord();
 
   return {
-    hasKeyPair: Boolean(keyPair?.publicKey && keyPair.privateKey),
+    hasKeyPair: Boolean(keyPairRecord?.publicKey && keyPairRecord.privateKey),
     hasWrappedRecord: Boolean(wrappedRecord),
     storedCreatedAt: wrappedRecord?.createdAt ?? null,
   };
@@ -374,16 +476,11 @@ export async function decryptStoredDekWrapPoc() {
     throw new Error("このブラウザではDEKラップPoCを実行できません。");
   }
 
-  const [keyPairRecord, recordResult] = await Promise.all([
-    loadStoredKeyPair(),
-    runStoreRequest("readonly", RECORD_STORE, (store) => store.get(RECORD_ID)),
-  ]);
+  const { keyPairRecord, wrappedRecord: record } = await loadStoredKeyPairAndWrappedRecord();
 
   if (!keyPairRecord?.privateKey) {
     throw new Error("保存済み秘密鍵が見つかりませんでした。");
   }
-
-  const record = recordResult as StoredWrappedRecord | undefined;
 
   if (!record) {
     throw new Error("保存済みラップ済みDEKが見つかりませんでした。");
@@ -414,12 +511,10 @@ export async function decryptStoredDekWrapPoc() {
   );
 
   const json = JSON.parse(new TextDecoder().decode(decrypted)) as DekWrapPocSample;
-  const expected = JSON.stringify(createSamplePayload());
-  const actual = JSON.stringify(json);
 
   return {
     payload: json,
-    matches: actual === expected,
+    matches: matchesSamplePayload(json),
     snapshot: await loadDekWrapPocSnapshot(),
   };
 }
@@ -429,8 +524,5 @@ export async function clearDekWrapPocData() {
     return;
   }
 
-  await Promise.all([
-    runStoreRequest("readwrite", KEY_STORE, (store) => store.delete(KEYPAIR_ID)),
-    runStoreRequest("readwrite", RECORD_STORE, (store) => store.delete(RECORD_ID)),
-  ]);
+  await clearStoredKeyPairAndWrappedRecord();
 }
