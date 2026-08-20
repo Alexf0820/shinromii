@@ -918,7 +918,9 @@ export async function runLocalCloudMigrationPoc(
             currentStep,
           );
 
-    await persistMetaProgress(fixture, migrationId, "failed", flowError.completedSteps, flowError.failedStep);
+    try {
+      await persistMetaProgress(fixture, migrationId, "failed", flowError.completedSteps, flowError.failedStep);
+    } catch {}
     throw flowError;
   }
 }
@@ -1039,7 +1041,9 @@ export async function verifyStoredLocalCloudMigrationPoc(): Promise<LocalCloudMi
             completedSteps,
             currentStep,
           );
-    await persistMetaProgress(fixture, meta.migrationId, "failed", flowError.completedSteps, flowError.failedStep);
+    try {
+      await persistMetaProgress(fixture, meta.migrationId, "failed", flowError.completedSteps, flowError.failedStep);
+    } catch {}
     throw flowError;
   }
 }
