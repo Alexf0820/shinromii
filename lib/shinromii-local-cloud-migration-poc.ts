@@ -574,6 +574,35 @@ const localPocRepository = {
     );
   },
 
+  async saveMetaIfCurrentClaim(meta: StoredMigrationMeta) {
+    await withDatabase(
+      SHINROMII_LOCAL_MIGRATION_POC_LOCAL_DB,
+      [LOCAL_META_STORE],
+      "readwrite",
+      upgradeLocalDatabase,
+      async (transaction) => {
+        const store = transaction.objectStore(LOCAL_META_STORE);
+        const existing = normalizeStoredMeta(
+          (await requestToPromise(
+            store.get(META_ID) as IDBRequest<StoredMigrationMeta | undefined>,
+            "Migration PoC用メタ情報の読み取りに失敗しました。",
+          )) ?? null,
+        );
+
+        if (
+          existing &&
+          (existing.profileId !== meta.profileId ||
+            existing.claimFence > meta.claimFence ||
+            (existing.claimFence === meta.claimFence && existing.migrationId !== meta.migrationId))
+        ) {
+          throw new Error("現在のclaimと一致しない移行処理はメタ情報を書き換えできません。");
+        }
+
+        store.put(meta);
+      },
+    );
+  },
+
   async claimMigrationStart() {
     return withDatabase(
       SHINROMII_LOCAL_MIGRATION_POC_LOCAL_DB,
@@ -799,11 +828,22 @@ function reportMigrationPersistenceFailure(context: string, error: unknown) {
   console.error(`[LocalCloudMigrationPoC] ${context}`, error);
 }
 
-async function assertActiveClaim(profileId: string, migrationId: string, claimFence: number) {
+async function assertActiveClaim(
+  profileId: string,
+  migrationId: string,
+  claimFence: number,
+  expectedStatuses: LocalCloudMigrationPocStatus[],
+) {
   const { state } = await reconcileLocalStateIfStale(await localPocRepository.loadState());
   const meta = state.meta;
 
-  if (!meta || meta.profileId !== profileId || meta.migrationId !== migrationId || meta.claimFence !== claimFence) {
+  if (
+    !meta ||
+    meta.profileId !== profileId ||
+    meta.migrationId !== migrationId ||
+    meta.claimFence !== claimFence ||
+    !expectedStatuses.includes(meta.migrationStatus)
+  ) {
     throw new Error("現在のclaimと一致しないため、移行処理を継続できません。");
   }
 
@@ -842,7 +882,7 @@ async function persistMetaProgress(
   completedSteps: LocalCloudMigrationPocStep[],
   failedStep: LocalCloudMigrationPocStep | null = null,
 ) {
-  await localPocRepository.saveMeta({
+  await localPocRepository.saveMetaIfCurrentClaim({
     id: META_ID,
     profileId: fixture.profile.id,
     migrationId,
@@ -933,7 +973,7 @@ export async function runLocalCloudMigrationPoc(
   const completedSteps: LocalCloudMigrationPocStep[] = ["localPrepared"];
   const migrationId = claim.meta.migrationId;
   const claimFence = claim.meta.claimFence;
-  let currentStep: LocalCloudMigrationPocStep = "migrationIdGenerated";
+  let currentStep: LocalCloudMigrationPocStep = "dekGenerated";
   completedSteps.push("migrationIdGenerated");
 
   try {
@@ -941,11 +981,10 @@ export async function runLocalCloudMigrationPoc(
       throw createFlowError("移行開始情報の初期化に失敗しました。", completedSteps, "migrationIdGenerated");
     }
 
-    currentStep = "localPrepared";
     try {
       ensureKnownSchemaVersion(fixture.schemaVersion);
     } catch (error) {
-      rethrowAsFlowError(error, "LocalデータのschemaVersionを検証できませんでした。", completedSteps, "localPrepared");
+      rethrowAsFlowError(error, "LocalデータのschemaVersionを検証できませんでした。", completedSteps, currentStep);
     }
 
     currentStep = "dekGenerated";
@@ -1000,7 +1039,7 @@ export async function runLocalCloudMigrationPoc(
       rethrowAsFlowError(error, "Cloud Mockへの保存に失敗しました。", completedSteps, currentStep);
     }
     try {
-      await assertActiveClaim(fixture.profile.id, migrationId, claimFence);
+      await assertActiveClaim(fixture.profile.id, migrationId, claimFence, ["encrypted"]);
       await cloudMockRepository.saveRecord({
         profileId: fixture.profile.id,
         migrationId,
@@ -1105,7 +1144,7 @@ export async function runLocalCloudMigrationPoc(
 
     currentStep = "verified";
     try {
-      await assertActiveClaim(fixture.profile.id, migrationId, claimFence);
+      await assertActiveClaim(fixture.profile.id, migrationId, claimFence, ["verifying"]);
       await cloudMockRepository.saveRecord({
         ...cloudRecord,
         claimFence,
@@ -1163,7 +1202,7 @@ export async function verifyStoredLocalCloudMigrationPoc(): Promise<LocalCloudMi
     try {
       ensureKnownSchemaVersion(fixture.schemaVersion);
     } catch (error) {
-      rethrowAsFlowError(error, "LocalデータのschemaVersionを検証できませんでした。", completedSteps, "localPrepared");
+      rethrowAsFlowError(error, "LocalデータのschemaVersionを検証できませんでした。", completedSteps, currentStep);
     }
 
     if (!migrationId) {
@@ -1240,7 +1279,7 @@ export async function verifyStoredLocalCloudMigrationPoc(): Promise<LocalCloudMi
 
     currentStep = "verified";
     try {
-      await assertActiveClaim(fixture.profile.id, migrationId, claimFence);
+      await assertActiveClaim(fixture.profile.id, migrationId, claimFence, ["uploaded", "verifying", "verified"]);
       await cloudMockRepository.saveRecord({
         ...cloudRecord,
         claimFence,
