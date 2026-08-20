@@ -260,6 +260,16 @@ export const dashboardStats: DashboardStat[] = [
 
 export const recentItems: RecentItem[] = [
   {
+    date: "2026.08.20",
+    title: "データ保存の仕組みを改善",
+    description: "今後のクラウド保存・家族共有に向けて、データ保存の基盤を改善",
+  },
+  {
+    date: "2026.08.20",
+    title: "バックアップ機能を整理",
+    description: "自動復旧用バックアップを最新1世代に整理し、手動バックアップはこれまで通り利用可能",
+  },
+  {
     date: "2026.08.14",
     title: "成績・評定の登録に対応",
     description: "学年・学期ごとの評定保存、編集、削除と平均表示が使えるように更新",

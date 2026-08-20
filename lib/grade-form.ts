@@ -1,4 +1,5 @@
 import type { GradeRecord, GradeSchoolYear, GradeTerm } from "@/data/mockData";
+import { createShinromiiId } from "@/lib/shinromii-id";
 import {
   examCount,
   examTotal,
@@ -108,11 +109,7 @@ export function applyGradeScoreInput(
 }
 
 function createGradeId() {
-  if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") {
-    return crypto.randomUUID();
-  }
-
-  return `grade-${Date.now()}`;
+  return createShinromiiId("grade");
 }
 
 function todayString() {

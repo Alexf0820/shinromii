@@ -1,4 +1,5 @@
 import type { UniversityCandidate } from "@/data/mockData";
+import { createShinromiiId } from "@/lib/shinromii-id";
 import { normalizeUniversityCandidate } from "@/lib/university-candidate";
 import {
   universityMaster,
@@ -6,11 +7,7 @@ import {
 } from "@/lib/university-master";
 
 function createCandidateId() {
-  if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") {
-    return crypto.randomUUID();
-  }
-
-  return `candidate-${Date.now()}`;
+  return createShinromiiId("candidate");
 }
 
 function todayString() {

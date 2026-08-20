@@ -17,6 +17,7 @@ import type {
   OpenCampusLink,
   OpenCampusStatus,
 } from "@/data/mockData";
+import { createShinromiiId } from "@/lib/shinromii-id";
 import {
   deleteAttachmentBlob,
   deleteAttachmentBlobsByOcId,
@@ -118,11 +119,7 @@ function handleCardKeyActivate(event: KeyboardEvent, action: () => void) {
 }
 
 function createId(prefix: string) {
-  if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") {
-    return crypto.randomUUID();
-  }
-
-  return `${prefix}-${Date.now()}-${Math.floor(Math.random() * 10000)}`;
+  return createShinromiiId(prefix);
 }
 
 function todayString() {
