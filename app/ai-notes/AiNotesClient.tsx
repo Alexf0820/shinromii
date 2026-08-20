@@ -7,6 +7,7 @@ import { ScoreSelector } from "@/components/ScoreSelector";
 import { UiIcon } from "@/components/UiIcon";
 import { aiNotes as initialAiNotes } from "@/data/mockData";
 import type { AiNote, AiProvider } from "@/data/mockData";
+import { createShinromiiId } from "@/lib/shinromii-id";
 import {
   loadAiNotesSortOrder,
   loadShinromiiStorage,
@@ -36,11 +37,7 @@ type FormState = {
 };
 
 function createId() {
-  if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") {
-    return crypto.randomUUID();
-  }
-
-  return `ai-note-${Date.now()}`;
+  return createShinromiiId("ai-note");
 }
 
 function todayString() {

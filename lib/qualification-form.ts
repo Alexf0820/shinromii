@@ -4,6 +4,7 @@ import {
   isEikenQualificationName,
   qualificationEikenScores,
 } from "@/lib/eiken";
+import { createShinromiiId } from "@/lib/shinromii-id";
 
 export type QualificationFormState = {
   name: string;
@@ -60,11 +61,7 @@ export function formFromQualification(record: QualificationRecord): Qualificatio
 }
 
 function createQualificationId() {
-  if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") {
-    return crypto.randomUUID();
-  }
-
-  return `qualification-${Date.now()}`;
+  return createShinromiiId("qualification");
 }
 
 function todayString() {

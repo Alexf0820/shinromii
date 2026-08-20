@@ -354,7 +354,10 @@ function canUseStorage() {
   return typeof window !== "undefined" && typeof window.localStorage !== "undefined";
 }
 
-function persistMigratedDummyQualifications(storage: ShinromiiStorage): ShinromiiStorage {
+function applyStorageMaintenanceMigrations(storage: ShinromiiStorage): {
+  storage: ShinromiiStorage;
+  changed: boolean;
+} {
   const migratedQualifications = migrateLegacyDummyQualifications(storage.qualifications);
   const migratedUniversities = migrateLegacyDummyUniversities(storage.universityCandidates);
   const linkedUniversities = attachUniversityMasterIds(migratedUniversities.records);
@@ -371,22 +374,33 @@ function persistMigratedDummyQualifications(storage: ShinromiiStorage): Shinromi
     !migratedOpenCampus.changed &&
     !plannedOpenCampus.changed
   ) {
+    return { storage, changed: false };
+  }
+
+  return {
+    changed: true,
+    storage: {
+      ...storage,
+      qualifications: migratedQualifications.records,
+      universityCandidates: linkedUniversities.records.map((record) => normalizeUniversityCandidate(record)),
+      openCampusEvents: plannedOpenCampus.events.map((event) => normalizeOpenCampusEvent(event)),
+      campusEvaluations: normalizeCampusEvaluations(migratedOpenCampus.evaluations),
+    },
+  };
+}
+
+function persistStorageMaintenanceMigrations(storage: ShinromiiStorage): ShinromiiStorage {
+  const result = applyStorageMaintenanceMigrations(storage);
+
+  if (!result.changed) {
     return storage;
   }
 
-  const next = {
-    ...storage,
-    qualifications: migratedQualifications.records,
-    universityCandidates: linkedUniversities.records.map((record) => normalizeUniversityCandidate(record)),
-    openCampusEvents: plannedOpenCampus.events.map((event) => normalizeOpenCampusEvent(event)),
-    campusEvaluations: normalizeCampusEvaluations(migratedOpenCampus.evaluations),
-  };
-
-  saveShinromiiStorage(next);
-  return next;
+  saveShinromiiStorage(result.storage);
+  return result.storage;
 }
 
-export function loadShinromiiStorage(): ShinromiiStorage {
+function readShinromiiStorageInternal(options: { persistMaintenanceMigrations: boolean }): ShinromiiStorage {
   const fallback = buildDefaultStorage();
 
   if (!canUseStorage()) {
@@ -411,69 +425,80 @@ export function loadShinromiiStorage(): ShinromiiStorage {
     >;
 
     if (parsed.version === 1) {
-      return persistMigratedDummyQualifications(
-        coerceStorageValues(parsed as Partial<ShinromiiStorageV1>, fallback, {
-          existingInstallation: true,
-        }),
-      );
+      const next = coerceStorageValues(parsed as Partial<ShinromiiStorageV1>, fallback, {
+        existingInstallation: true,
+      });
+
+      return options.persistMaintenanceMigrations ? persistStorageMaintenanceMigrations(next) : next;
     }
 
     if (parsed.version === 2) {
-      return persistMigratedDummyQualifications(
-        coerceStorageValues(parsed as Partial<ShinromiiStorageV2>, fallback, {
-          existingInstallation: true,
-        }),
-      );
+      const next = coerceStorageValues(parsed as Partial<ShinromiiStorageV2>, fallback, {
+        existingInstallation: true,
+      });
+
+      return options.persistMaintenanceMigrations ? persistStorageMaintenanceMigrations(next) : next;
     }
 
     if (parsed.version === 3) {
-      return persistMigratedDummyQualifications(
-        replaceLegacyDummyGrades(
-          coerceStorageValues(parsed as Partial<ShinromiiStorageV3>, fallback, {
-            existingInstallation: true,
-          }),
-          fallback,
-        ),
+      const next = replaceLegacyDummyGrades(
+        coerceStorageValues(parsed as Partial<ShinromiiStorageV3>, fallback, {
+          existingInstallation: true,
+        }),
+        fallback,
       );
+
+      return options.persistMaintenanceMigrations ? persistStorageMaintenanceMigrations(next) : next;
     }
 
     if (parsed.version === 4) {
-      return persistMigratedDummyQualifications(
-        replaceLegacyDummyGrades(
-          coerceStorageValues(parsed as Partial<ShinromiiStorageV4>, fallback, {
-            existingInstallation: true,
-          }),
-          fallback,
-        ),
+      const next = replaceLegacyDummyGrades(
+        coerceStorageValues(parsed as Partial<ShinromiiStorageV4>, fallback, {
+          existingInstallation: true,
+        }),
+        fallback,
       );
+
+      return options.persistMaintenanceMigrations ? persistStorageMaintenanceMigrations(next) : next;
     }
 
     if (parsed.version === 5) {
-      return persistMigratedDummyQualifications(
-        coerceStorageValues(parsed as Partial<ShinromiiStorageV5>, fallback, {
-          existingInstallation: true,
-        }),
-      );
+      const next = coerceStorageValues(parsed as Partial<ShinromiiStorageV5>, fallback, {
+        existingInstallation: true,
+      });
+
+      return options.persistMaintenanceMigrations ? persistStorageMaintenanceMigrations(next) : next;
     }
 
     if (parsed.version === 6) {
-      return persistMigratedDummyQualifications(
-        coerceStorageValues(parsed as Partial<ShinromiiStorageV6>, fallback, {
-          existingInstallation: true,
-        }),
-      );
+      const next = coerceStorageValues(parsed as Partial<ShinromiiStorageV6>, fallback, {
+        existingInstallation: true,
+      });
+
+      return options.persistMaintenanceMigrations ? persistStorageMaintenanceMigrations(next) : next;
     }
 
     if (parsed.version !== STORAGE_VERSION) {
       return fallback;
     }
 
-    return persistMigratedDummyQualifications(
-      coerceStorageValues(parsed as Partial<ShinromiiStorage>, fallback),
-    );
+    const next = coerceStorageValues(parsed as Partial<ShinromiiStorage>, fallback);
+    return options.persistMaintenanceMigrations ? persistStorageMaintenanceMigrations(next) : next;
   } catch {
     return fallback;
   }
+}
+
+export function readShinromiiStorageSnapshot(): ShinromiiStorage {
+  return readShinromiiStorageInternal({
+    persistMaintenanceMigrations: false,
+  });
+}
+
+export function loadShinromiiStorage(): ShinromiiStorage {
+  return readShinromiiStorageInternal({
+    persistMaintenanceMigrations: true,
+  });
 }
 
 export function saveShinromiiStorage(next: ShinromiiStorage) {

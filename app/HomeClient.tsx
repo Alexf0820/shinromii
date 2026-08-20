@@ -15,11 +15,11 @@ import {
 } from "@/lib/shinromii-backup";
 import {
   formatAutosaveDateTime,
-  loadAutosaveHistory,
   type AutosaveHistoryEntry,
 } from "@/lib/shinromii-autosave";
+import { getLocalShinromiiStorageRepository } from "@/lib/shinromii-storage-local-repository";
 import type { ShinromiiStorage } from "@/lib/shinromii-storage";
-import { loadShinromiiStorage, parseBackupStorageData, saveShinromiiStorage } from "@/lib/shinromii-storage";
+import { parseBackupStorageData } from "@/lib/shinromii-storage";
 
 const HERO_IMAGE = "/images/shinromii-home-hero.png";
 const HERO_IMAGE_WIDTH = 1024;
@@ -100,6 +100,8 @@ const featureItems = [
   },
 ];
 
+const storageRepository = getLocalShinromiiStorageRepository();
+
 export function HomeClient() {
   const [storage, setStorage] = useState<ShinromiiStorage | null>(createFallbackSummary());
   const [todayLabel, setTodayLabel] = useState<string | null>(null);
@@ -108,9 +110,28 @@ export function HomeClient() {
   const restoreInputRef = useRef<HTMLInputElement | null>(null);
 
   useEffect(() => {
-    setStorage(loadShinromiiStorage());
-    setAutosaveHistory(loadAutosaveHistory());
-    setTodayLabel(formatTodayLabel(new Date()));
+    let cancelled = false;
+
+    const loadSummary = async () => {
+      const [stored, history] = await Promise.all([
+        storageRepository.loadStorage(),
+        storageRepository.loadAutosaveHistory(),
+      ]);
+
+      if (cancelled) {
+        return;
+      }
+
+      setStorage(stored);
+      setAutosaveHistory(history);
+      setTodayLabel(formatTodayLabel(new Date()));
+    };
+
+    void loadSummary();
+
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   const latestGrade = useMemo(() => {
@@ -201,8 +222,10 @@ export function HomeClient() {
     },
   ];
 
-  function handleBackupExport() {
-    const current = loadShinromiiStorage();
+  async function handleBackupExport() {
+    const current = await storageRepository.loadStorage({
+      mode: "readonly",
+    });
     const backupJson = stringifyShinromiiBackup(current);
     const blob = new Blob([backupJson], { type: "application/json" });
     const objectUrl = URL.createObjectURL(blob);
@@ -221,11 +244,11 @@ export function HomeClient() {
     setDataManagementMessage("バックアップを保存しました。");
   }
 
-  function refreshAutosaveHistory() {
-    setAutosaveHistory(loadAutosaveHistory());
+  async function refreshAutosaveHistory() {
+    setAutosaveHistory(await storageRepository.loadAutosaveHistory());
   }
 
-  function handleAutosaveRestore(entry: AutosaveHistoryEntry) {
+  async function handleAutosaveRestore(entry: AutosaveHistoryEntry) {
     const label = formatAutosaveDateTime(entry.savedAt);
     const confirmed = window.confirm(
       `${label} の状態に戻しますか？\n現在のデータは置き換わります。`,
@@ -245,9 +268,9 @@ export function HomeClient() {
       return;
     }
 
-    saveShinromiiStorage(restored);
+    await storageRepository.saveStorage(restored);
     setStorage(restored);
-    setAutosaveHistory(loadAutosaveHistory());
+    setAutosaveHistory(await storageRepository.loadAutosaveHistory());
     setDataManagementMessage("自動保存の履歴から復元しました。");
   }
 
@@ -277,9 +300,9 @@ export function HomeClient() {
         return;
       }
 
-      saveShinromiiStorage(parsed.storage);
+      await storageRepository.saveStorage(parsed.storage);
       setStorage(parsed.storage);
-      setAutosaveHistory(loadAutosaveHistory());
+      setAutosaveHistory(await storageRepository.loadAutosaveHistory());
       setDataManagementMessage("バックアップから復元し、保存データを置き換えました。");
       window.alert("バックアップから復元しました。");
     } catch {
@@ -434,7 +457,7 @@ export function HomeClient() {
           <div className="home-fold-body">
             <p className="item-title small">自動保存の履歴</p>
             <p className="home-fold-text">
-              最近の状態を、この端末に3件まで自動で保存しています。
+              最近の状態を、この端末に1件だけ自動で保存しています。
             </p>
             <p className="home-fold-text">
               誤って消したときや、少し前の内容に戻したいときに、この端末の中だけで使えます。

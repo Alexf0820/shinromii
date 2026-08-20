@@ -7,6 +7,7 @@ import type {
   QualificationRecord,
   UniversityCandidate,
 } from "@/data/mockData";
+import { createShinromiiId } from "@/lib/shinromii-id";
 import type { UserProfile } from "@/lib/user-profile";
 
 export type AccountPlan = "free" | "plus" | "family";
@@ -43,7 +44,13 @@ export type ShinromiiStudentProfile = {
 
 export type ShinromiiEntitlement = {
   id: string;
+  subjectType: "user" | "family" | "student_profile";
+  subjectId: string;
   key: string;
+  source: "billing" | "trial" | "grant" | "promo";
+  status: "active" | "scheduled" | "expired" | "revoked";
+  startsAt: string;
+  expiresAt: string | null;
   createdAt: string;
 };
 
@@ -78,11 +85,7 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 }
 
 function createId(prefix: string) {
-  if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") {
-    return crypto.randomUUID();
-  }
-
-  return `${prefix}-${Date.now()}-${Math.floor(Math.random() * 10000)}`;
+  return createShinromiiId(prefix);
 }
 
 function isSourceType(value: unknown): value is DataSourceType {
@@ -217,15 +220,43 @@ export function normalizeIdentity(candidate: unknown, profile?: UserProfile): Sh
         .filter((student) => student.id && student.familyId)
     : [];
 
-  const entitlements = Array.isArray(candidate.entitlements)
+  const entitlements: ShinromiiEntitlement[] = Array.isArray(candidate.entitlements)
     ? candidate.entitlements
         .filter(isRecord)
-        .map((entitlement) => ({
+        .map((entitlement): ShinromiiEntitlement => ({
           id: pickString(entitlement.id),
+          subjectType:
+            entitlement.subjectType === "family" ||
+            entitlement.subjectType === "student_profile" ||
+            entitlement.subjectType === "user"
+              ? entitlement.subjectType
+              : "user",
+          subjectId: pickString(entitlement.subjectId),
           key: pickString(entitlement.key),
+          source:
+            entitlement.source === "billing" ||
+            entitlement.source === "trial" ||
+            entitlement.source === "grant" ||
+            entitlement.source === "promo"
+              ? entitlement.source
+              : "grant",
+          status:
+            entitlement.status === "scheduled" ||
+            entitlement.status === "expired" ||
+            entitlement.status === "revoked" ||
+            entitlement.status === "active"
+              ? entitlement.status
+              : "active",
+          startsAt: pickString(entitlement.startsAt),
+          expiresAt: pickNullableString(entitlement.expiresAt),
           createdAt: pickString(entitlement.createdAt, fallback.studentProfiles[0].createdAt),
         }))
-        .filter((entitlement) => entitlement.id && entitlement.key)
+        .map((entitlement): ShinromiiEntitlement => ({
+          ...entitlement,
+          subjectId: entitlement.subjectId || fallback.users[0].id,
+          startsAt: entitlement.startsAt || entitlement.createdAt,
+        }))
+        .filter((entitlement) => entitlement.id && entitlement.key && entitlement.subjectId)
     : [];
 
   const safeUsers = users.length > 0 ? users : fallback.users;

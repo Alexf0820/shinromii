@@ -8,6 +8,7 @@ import { UiIcon } from "@/components/UiIcon";
 import { UniversitySearchPanel } from "@/components/universities/UniversitySearchPanel";
 import { universities as initialCandidates } from "@/data/mockData";
 import type { UniversityCandidate } from "@/data/mockData";
+import { createShinromiiId } from "@/lib/shinromii-id";
 import { isSameUniversityFaculty, normalizeUniversityCandidate } from "@/lib/university-candidate";
 import {
   findUniversityMasterById,
@@ -52,11 +53,7 @@ type CandidateFormState = {
 type CreateStep = "search" | "faculties" | "form";
 
 function createCandidateId() {
-  if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") {
-    return crypto.randomUUID();
-  }
-
-  return `candidate-${Date.now()}`;
+  return createShinromiiId("candidate");
 }
 
 function todayString() {

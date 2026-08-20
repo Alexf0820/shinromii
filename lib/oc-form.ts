@@ -5,6 +5,7 @@ import type {
   OpenCampusStatus,
   OcLookForId,
 } from "@/data/mockData";
+import { createShinromiiId } from "@/lib/shinromii-id";
 import { normalizeOpenCampusEvent } from "@/lib/oc-record";
 
 export type OpenCampusCreateIntent = "upcoming" | "done";
@@ -30,11 +31,7 @@ export type EventFormState = {
 };
 
 export function createOcId(prefix: string) {
-  if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") {
-    return crypto.randomUUID();
-  }
-
-  return `${prefix}-${Date.now()}-${Math.floor(Math.random() * 10000)}`;
+  return createShinromiiId(prefix);
 }
 
 export function todayString() {

@@ -1,5 +1,7 @@
+import { createShinromiiId } from "@/lib/shinromii-id";
+
 export const AUTOSAVE_HISTORY_KEY = "SHINROMII::autosave-history::v1";
-export const AUTOSAVE_HISTORY_LIMIT = 3;
+export const AUTOSAVE_HISTORY_LIMIT = 1;
 
 export type AutosaveHistoryEntry = {
   id: string;
@@ -29,11 +31,7 @@ function snapshotSignature(value: unknown) {
 }
 
 function createAutosaveId() {
-  if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") {
-    return crypto.randomUUID();
-  }
-
-  return `autosave-${Date.now()}`;
+  return createShinromiiId("autosave");
 }
 
 export function formatAutosaveDateTime(iso: string) {
@@ -84,7 +82,7 @@ export function parseAutosaveHistory(value: unknown): AutosaveHistoryEntry[] {
   return entries;
 }
 
-/** 新しい履歴を先頭へ入れ、同じ内容の重複を除いて3件に保つ。 */
+/** 新しい履歴を先頭へ入れ、同じ内容の重複を除いて復旧用1件に保つ。 */
 export function pushAutosaveEntry(
   entries: AutosaveHistoryEntry[],
   next: AutosaveHistoryEntry,
