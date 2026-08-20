@@ -4575,6 +4575,13 @@ a {
   line-height: 1.5;
 }
 
+.admin-auth-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 8px;
+}
+
 .admin-preview-bar {
   display: flex;
   align-items: center;

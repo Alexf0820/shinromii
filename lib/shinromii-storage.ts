@@ -10,6 +10,21 @@ import {
 import { migrateLegacyDummyQualifications } from "@/lib/qualification-dummy-migration";
 import { migrateLegacyDummyUniversities } from "@/lib/university-dummy-migration";
 import { attachUniversityMasterIds, normalizeUniversityCandidate } from "@/lib/university-candidate";
+import {
+  createDefaultIdentity,
+  normalizeAiNoteMeta,
+  normalizeCampusEvaluationMeta,
+  normalizeGradeRecordMeta,
+  normalizeIdentity,
+  normalizeOpenCampusEventMeta,
+  normalizeQualificationMeta,
+  normalizeUniversityCandidateMeta,
+  signInIdentity,
+  signOutIdentity,
+  syncStudentProfileDisplayName,
+  type AuthMethod,
+  type ShinromiiIdentity,
+} from "@/lib/shinromii-identity";
 import { recordAutosaveSnapshot } from "@/lib/shinromii-autosave";
 import type {
   AiNote,
@@ -22,7 +37,7 @@ import type {
 import { createEmptyProfile, normalizeUserProfile, type UserProfile } from "@/lib/user-profile";
 
 export const STORAGE_KEY = "SHINROMII::storage::v1";
-export const STORAGE_VERSION = 6;
+export const STORAGE_VERSION = 7;
 const AI_NOTES_SORT_KEY = "SHINROMII::ai-notes-sort::v1";
 const UNIVERSITY_SORT_KEY = "SHINROMII::university-sort::v1";
 
@@ -36,6 +51,7 @@ export type ShinromiiStorage = {
   openCampusEvents: OpenCampusEvent[];
   profile: UserProfile;
   setupCompleted: boolean;
+  identity: ShinromiiIdentity;
 };
 
 type ShinromiiStorageV1 = {
@@ -66,6 +82,10 @@ type ShinromiiStorageV4 = Omit<ShinromiiStorage, "version" | "profile" | "setupC
 
 type ShinromiiStorageV5 = Omit<ShinromiiStorage, "version" | "profile" | "setupCompleted"> & {
   version: 5;
+};
+
+type ShinromiiStorageV6 = Omit<ShinromiiStorage, "version" | "identity"> & {
+  version: 6;
 };
 
 /** v4までサンプルとして配布していた評定。実データへ置き換えるための目印。 */
@@ -104,23 +124,38 @@ function buildDefaultEvaluations() {
 }
 
 export function buildDefaultStorage(): ShinromiiStorage {
+  const profile = createEmptyProfile();
+  const identity = createDefaultIdentity(profile);
+  const currentStudentProfileId = identity.session.currentStudentProfileId;
+
   return {
     version: STORAGE_VERSION,
-    aiNotes,
-    campusEvaluations: buildDefaultEvaluations(),
-    universityCandidates: attachUniversityMasterIds(universities).records.map((record) =>
-      normalizeUniversityCandidate(record),
+    aiNotes: aiNotes.map((note) => normalizeAiNoteMeta(note, currentStudentProfileId)),
+    campusEvaluations: Object.fromEntries(
+      Object.entries(buildDefaultEvaluations()).map(([key, value]) => [
+        key,
+        normalizeCampusEvaluationMeta(value, currentStudentProfileId),
+      ]),
     ),
-    gradeRecords,
-    qualifications,
-    openCampusEvents,
-    profile: createEmptyProfile(),
+    universityCandidates: attachUniversityMasterIds(universities).records.map((record) =>
+      normalizeUniversityCandidateMeta(normalizeUniversityCandidate(record), currentStudentProfileId),
+    ),
+    gradeRecords: gradeRecords.map((record) => normalizeGradeRecordMeta(record, currentStudentProfileId)),
+    qualifications: qualifications.map((record) => normalizeQualificationMeta(record, currentStudentProfileId)),
+    openCampusEvents: openCampusEvents.map((event) =>
+      normalizeOpenCampusEventMeta(normalizeOpenCampusEvent(event), currentStudentProfileId),
+    ),
+    profile,
+    identity,
     setupCompleted: false,
   };
 }
 
 /** 新規ユーザーの最初の保存用。配布シードは入れない。 */
 export function createBlankShinromiiStorage(): ShinromiiStorage {
+  const profile = createEmptyProfile();
+  const identity = createDefaultIdentity(profile);
+
   return {
     version: STORAGE_VERSION,
     aiNotes: [],
@@ -129,7 +164,8 @@ export function createBlankShinromiiStorage(): ShinromiiStorage {
     gradeRecords: [],
     qualifications: [],
     openCampusEvents: [],
-    profile: createEmptyProfile(),
+    profile,
+    identity,
     setupCompleted: false,
   };
 }
@@ -188,6 +224,22 @@ function normalizeQualifications(records: QualificationRecord[]): QualificationR
   });
 }
 
+function normalizeAiNotes(records: AiNote[]): AiNote[] {
+  return records.map((record) => ({ ...record }));
+}
+
+function normalizeCampusEvaluationsForStudent(
+  evaluations: Record<string, CampusEvaluation>,
+  studentProfileId: string,
+): Record<string, CampusEvaluation> {
+  return Object.fromEntries(
+    Object.entries(normalizeCampusEvaluations(evaluations)).map(([key, value]) => [
+      key,
+      normalizeCampusEvaluationMeta(value, studentProfileId),
+    ]),
+  );
+}
+
 function storageSnapshotPayload(storage: ShinromiiStorage) {
   return {
     version: STORAGE_VERSION,
@@ -199,6 +251,7 @@ function storageSnapshotPayload(storage: ShinromiiStorage) {
     openCampusEvents: storage.openCampusEvents,
     profile: storage.profile,
     setupCompleted: storage.setupCompleted,
+    identity: storage.identity,
   };
 }
 
@@ -217,30 +270,47 @@ function coerceStorageValues(
   const existingInstallation = options.existingInstallation === true;
   const fromBackup = options.fromBackup === true;
   const hasStoredProfile = "profile" in parsed && parsed.profile != null;
+  const profile = normalizeUserProfile(parsed.profile, {
+    defaultSchoolYear: existingInstallation && !hasStoredProfile && !fromBackup ? "high-1" : "",
+  });
+  const identity = normalizeIdentity(parsed.identity, profile);
+  const currentStudentProfileId = identity.session.currentStudentProfileId;
 
   return {
     version: STORAGE_VERSION,
-    aiNotes: Array.isArray(parsed.aiNotes) ? parsed.aiNotes : fallback.aiNotes,
+    aiNotes: Array.isArray(parsed.aiNotes)
+      ? normalizeAiNotes(parsed.aiNotes).map((record) => normalizeAiNoteMeta(record, currentStudentProfileId))
+      : fallback.aiNotes,
     campusEvaluations:
       parsed.campusEvaluations && typeof parsed.campusEvaluations === "object"
-        ? normalizeCampusEvaluations(parsed.campusEvaluations as Record<string, CampusEvaluation>)
+        ? normalizeCampusEvaluationsForStudent(
+            parsed.campusEvaluations as Record<string, CampusEvaluation>,
+            currentStudentProfileId,
+          )
         : fallback.campusEvaluations,
     universityCandidates: Array.isArray(parsed.universityCandidates)
-      ? parsed.universityCandidates.map((record) => normalizeUniversityCandidate(record))
+      ? parsed.universityCandidates.map((record) =>
+          normalizeUniversityCandidateMeta(normalizeUniversityCandidate(record), currentStudentProfileId),
+        )
       : fallback.universityCandidates,
     gradeRecords: Array.isArray(parsed.gradeRecords)
-      ? normalizeGradeRecords(parsed.gradeRecords)
+      ? normalizeGradeRecords(parsed.gradeRecords).map((record) =>
+          normalizeGradeRecordMeta(record, currentStudentProfileId),
+        )
       : fallback.gradeRecords,
     qualifications: Array.isArray(parsed.qualifications)
-      ? normalizeQualifications(parsed.qualifications)
+      ? normalizeQualifications(parsed.qualifications).map((record) =>
+          normalizeQualificationMeta(record, currentStudentProfileId),
+        )
       : fallback.qualifications,
     openCampusEvents: Array.isArray(parsed.openCampusEvents)
-      ? parsed.openCampusEvents.map((event) => normalizeOpenCampusEvent(event))
+      ? parsed.openCampusEvents.map((event) =>
+          normalizeOpenCampusEventMeta(normalizeOpenCampusEvent(event), currentStudentProfileId),
+        )
       : fallback.openCampusEvents,
-    profile: normalizeUserProfile(parsed.profile, {
-      defaultSchoolYear: existingInstallation && !hasStoredProfile && !fromBackup ? "high-1" : "",
-    }),
+    profile,
     setupCompleted: fromBackup || existingInstallation || parsed.setupCompleted === true,
+    identity,
   };
 }
 
@@ -337,6 +407,7 @@ export function loadShinromiiStorage(): ShinromiiStorage {
       | ShinromiiStorageV3
       | ShinromiiStorageV4
       | ShinromiiStorageV5
+      | ShinromiiStorageV6
     >;
 
     if (parsed.version === 1) {
@@ -380,6 +451,14 @@ export function loadShinromiiStorage(): ShinromiiStorage {
     if (parsed.version === 5) {
       return persistMigratedDummyQualifications(
         coerceStorageValues(parsed as Partial<ShinromiiStorageV5>, fallback, {
+          existingInstallation: true,
+        }),
+      );
+    }
+
+    if (parsed.version === 6) {
+      return persistMigratedDummyQualifications(
+        coerceStorageValues(parsed as Partial<ShinromiiStorageV6>, fallback, {
           existingInstallation: true,
         }),
       );
@@ -464,6 +543,7 @@ export function saveUserProfile(profile: UserProfile, setupCompleted = true) {
   saveShinromiiStorage({
     ...current,
     profile: normalizeUserProfile(profile),
+    identity: syncStudentProfileDisplayName(current.identity, normalizeUserProfile(profile)),
     setupCompleted,
   });
 }
@@ -473,6 +553,10 @@ export function markSetupFinished(profile?: UserProfile) {
   saveShinromiiStorage({
     ...current,
     profile: normalizeUserProfile(profile ?? current.profile),
+    identity: syncStudentProfileDisplayName(
+      current.identity,
+      normalizeUserProfile(profile ?? current.profile),
+    ),
     setupCompleted: true,
   });
 }
@@ -483,6 +567,7 @@ export function saveFirstSetupNotebook(storage: ShinromiiStorage) {
     ...storage,
     version: STORAGE_VERSION,
     profile: normalizeUserProfile(storage.profile),
+    identity: normalizeIdentity(storage.identity, normalizeUserProfile(storage.profile)),
     setupCompleted: true,
   });
 }
@@ -500,7 +585,11 @@ export function saveResumedSetupNotebook(storage: Pick<
     qualifications: storage.qualifications,
     universityCandidates: storage.universityCandidates.map((record) => normalizeUniversityCandidate(record)),
     openCampusEvents: storage.openCampusEvents.map((event) => normalizeOpenCampusEvent(event)),
-    campusEvaluations: normalizeCampusEvaluations(storage.campusEvaluations),
+    campusEvaluations: normalizeCampusEvaluationsForStudent(
+      storage.campusEvaluations,
+      current.identity.session.currentStudentProfileId,
+    ),
+    identity: syncStudentProfileDisplayName(current.identity, normalizeUserProfile(storage.profile)),
     setupCompleted: true,
   });
 }
@@ -509,7 +598,9 @@ export function saveAiNotes(nextAiNotes: AiNote[]) {
   const current = loadStorageForMutation();
   saveShinromiiStorage({
     ...current,
-    aiNotes: nextAiNotes,
+    aiNotes: nextAiNotes.map((record) =>
+      normalizeAiNoteMeta(record, current.identity.session.currentStudentProfileId),
+    ),
   });
 }
 
@@ -519,7 +610,10 @@ export function saveCampusEvaluation(campusId: string, evaluation: CampusEvaluat
     ...current,
     campusEvaluations: {
       ...current.campusEvaluations,
-      [campusId]: normalizeCampusEvaluation(evaluation),
+      [campusId]: normalizeCampusEvaluationMeta(
+        normalizeCampusEvaluation(evaluation),
+        current.identity.session.currentStudentProfileId,
+      ),
     },
   });
 }
@@ -528,7 +622,10 @@ export function saveCampusEvaluations(nextEvaluations: Record<string, CampusEval
   const current = loadStorageForMutation();
   saveShinromiiStorage({
     ...current,
-    campusEvaluations: normalizeCampusEvaluations(nextEvaluations),
+    campusEvaluations: normalizeCampusEvaluationsForStudent(
+      nextEvaluations,
+      current.identity.session.currentStudentProfileId,
+    ),
   });
 }
 
@@ -536,7 +633,12 @@ export function saveUniversityCandidates(nextCandidates: UniversityCandidate[]) 
   const current = loadStorageForMutation();
   saveShinromiiStorage({
     ...current,
-    universityCandidates: nextCandidates.map((record) => normalizeUniversityCandidate(record)),
+    universityCandidates: nextCandidates.map((record) =>
+      normalizeUniversityCandidateMeta(
+        normalizeUniversityCandidate(record),
+        current.identity.session.currentStudentProfileId,
+      ),
+    ),
   });
 }
 
@@ -544,7 +646,9 @@ export function saveGradeRecords(nextGradeRecords: GradeRecord[]) {
   const current = loadStorageForMutation();
   saveShinromiiStorage({
     ...current,
-    gradeRecords: nextGradeRecords,
+    gradeRecords: nextGradeRecords.map((record) =>
+      normalizeGradeRecordMeta(record, current.identity.session.currentStudentProfileId),
+    ),
   });
 }
 
@@ -552,7 +656,9 @@ export function saveQualifications(nextQualifications: QualificationRecord[]) {
   const current = loadStorageForMutation();
   saveShinromiiStorage({
     ...current,
-    qualifications: nextQualifications,
+    qualifications: nextQualifications.map((record) =>
+      normalizeQualificationMeta(record, current.identity.session.currentStudentProfileId),
+    ),
   });
 }
 
@@ -560,7 +666,28 @@ export function saveOpenCampusEvents(nextOpenCampusEvents: OpenCampusEvent[]) {
   const current = loadStorageForMutation();
   saveShinromiiStorage({
     ...current,
-    openCampusEvents: nextOpenCampusEvents.map((event) => normalizeOpenCampusEvent(event)),
+    openCampusEvents: nextOpenCampusEvents.map((event) =>
+      normalizeOpenCampusEventMeta(
+        normalizeOpenCampusEvent(event),
+        current.identity.session.currentStudentProfileId,
+      ),
+    ),
+  });
+}
+
+export function signInForLocalPreview(method: AuthMethod) {
+  const current = loadStorageForMutation();
+  saveShinromiiStorage({
+    ...current,
+    identity: signInIdentity(current.identity, { method }),
+  });
+}
+
+export function signOutForLocalPreview() {
+  const current = loadStorageForMutation();
+  saveShinromiiStorage({
+    ...current,
+    identity: signOutIdentity(current.identity),
   });
 }
 

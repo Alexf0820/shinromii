@@ -61,6 +61,7 @@ export function buildShinromiiBackup(
       openCampusEvents: storage.openCampusEvents,
       profile: storage.profile,
       setupCompleted: storage.setupCompleted,
+      identity: storage.identity,
     },
   };
 }

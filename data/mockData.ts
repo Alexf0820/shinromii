@@ -42,6 +42,18 @@ export type OpenCampusAttachmentMeta = {
   createdAt: string;
 };
 
+export type DataSourceType = "manual" | "image" | "import" | "ai";
+
+export type ImportStatus = "draft" | "pending_confirmation" | "confirmed" | "rejected";
+
+export type DataRecordMeta = {
+  studentProfileId?: string;
+  sourceType?: DataSourceType;
+  importStatus?: ImportStatus;
+  confidence?: number;
+  confirmedByUser?: boolean;
+};
+
 export type GradeSchoolYear = "高1" | "高2" | "高3";
 
 export type GradeTerm = "1学期" | "2学期" | "3学期" | "学年末";
@@ -57,7 +69,7 @@ export type GradeRecord = {
   updatedAt: string;
   /** 中間・期末の素点。中間が未実施の科目は midterm が null になる。 */
   scores?: ExamScores;
-};
+} & DataRecordMeta;
 
 export type QualificationStatus = "取得済み" | "受験予定" | "結果待ち";
 
@@ -84,7 +96,7 @@ export type QualificationRecord = {
   /** 将来の資格タイプ用。未設定でも英検名から判定する。 */
   kind?: "eiken";
   eikenScores?: EikenScores;
-};
+} & DataRecordMeta;
 
 export type UniversityCandidate = {
   id: string;
@@ -106,7 +118,7 @@ export type UniversityCandidate = {
   facultyMasterId?: string;
   masterCheckedAt?: string;
   masterAcademicYear?: string;
-};
+} & DataRecordMeta;
 
 export type LegacyUniversityCandidate = {
   url: string;
@@ -134,7 +146,7 @@ export type AiNote = {
   relatedSchool: string;
   helpful: number;
   freeNote: string;
-};
+} & DataRecordMeta;
 
 export type CampusEvaluationCategory =
   | "atmosphere"
@@ -207,7 +219,7 @@ export type CampusEvaluation = {
   concernOther?: string;
   wantToKnow?: string;
   trialLesson?: OcTrialLesson;
-};
+} & DataRecordMeta;
 
 export type CampusVisit = {
   id: string;
@@ -237,7 +249,7 @@ export type OpenCampusEvent = {
   updatedAt: string;
   lookFor?: OcLookForId[];
   lookForOther?: string;
-};
+} & DataRecordMeta;
 
 export const dashboardStats: DashboardStat[] = [
   { label: "現在の評定平均", value: "4.1", note: "高校2年 1学期時点", tone: "sky" },
