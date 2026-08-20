@@ -5,6 +5,7 @@ import { useEffect, useState } from "react";
 import { APP_VERSION_LABEL } from "@/lib/app-version";
 import { AdminCryptoPocPanel } from "@/components/admin/AdminCryptoPocPanel";
 import { AdminDekWrapPocPanel } from "@/components/admin/AdminDekWrapPocPanel";
+import { AdminFamilyKeySharingPocPanel } from "@/components/admin/AdminFamilyKeySharingPocPanel";
 import {
   loadShinromiiStorage,
   signInForLocalPreview,
@@ -99,6 +100,7 @@ export function AdminClient() {
         <div className="admin-poc-stack">
           <AdminCryptoPocPanel />
           <AdminDekWrapPocPanel />
+          <AdminFamilyKeySharingPocPanel />
         </div>
       </section>
     </div>
