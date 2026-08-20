@@ -116,6 +116,21 @@ function pickConfidence(value: unknown) {
   return typeof value === "number" && Number.isFinite(value) ? value : undefined;
 }
 
+function pickEntitlementSubjectId(
+  subjectType: ShinromiiEntitlement["subjectType"],
+  identity: Pick<ShinromiiIdentity, "users" | "families" | "studentProfiles">,
+) {
+  if (subjectType === "family") {
+    return identity.families[0]?.id ?? "";
+  }
+
+  if (subjectType === "student_profile") {
+    return identity.studentProfiles[0]?.id ?? "";
+  }
+
+  return identity.users[0]?.id ?? "";
+}
+
 export function createDefaultIdentity(profile?: UserProfile, createdAt = new Date().toISOString()): ShinromiiIdentity {
   const userId = createId("user");
   const familyId = createId("family");
@@ -220,6 +235,16 @@ export function normalizeIdentity(candidate: unknown, profile?: UserProfile): Sh
         .filter((student) => student.id && student.familyId)
     : [];
 
+  const safeUsers = users.length > 0 ? users : fallback.users;
+  const safeFamilies = families.length > 0 ? families : fallback.families;
+  const safeStudentProfiles = studentProfiles.length > 0 ? studentProfiles : fallback.studentProfiles;
+  const safeFamilyMembers =
+    familyMembers.length > 0 &&
+    familyMembers.some((member) => safeUsers.some((user) => user.id === member.userId)) &&
+    familyMembers.some((member) => safeFamilies.some((family) => family.id === member.familyId))
+      ? familyMembers
+      : fallback.familyMembers;
+
   const entitlements: ShinromiiEntitlement[] = Array.isArray(candidate.entitlements)
     ? candidate.entitlements
         .filter(isRecord)
@@ -253,21 +278,17 @@ export function normalizeIdentity(candidate: unknown, profile?: UserProfile): Sh
         }))
         .map((entitlement): ShinromiiEntitlement => ({
           ...entitlement,
-          subjectId: entitlement.subjectId || fallback.users[0].id,
+          subjectId:
+            entitlement.subjectId ||
+            pickEntitlementSubjectId(entitlement.subjectType, {
+              users: safeUsers,
+              families: safeFamilies,
+              studentProfiles: safeStudentProfiles,
+            }),
           startsAt: entitlement.startsAt || entitlement.createdAt,
         }))
         .filter((entitlement) => entitlement.id && entitlement.key && entitlement.subjectId)
     : [];
-
-  const safeUsers = users.length > 0 ? users : fallback.users;
-  const safeFamilies = families.length > 0 ? families : fallback.families;
-  const safeStudentProfiles = studentProfiles.length > 0 ? studentProfiles : fallback.studentProfiles;
-  const safeFamilyMembers =
-    familyMembers.length > 0 &&
-    familyMembers.some((member) => safeUsers.some((user) => user.id === member.userId)) &&
-    familyMembers.some((member) => safeFamilies.some((family) => family.id === member.familyId))
-      ? familyMembers
-      : fallback.familyMembers;
 
   const sessionRaw = isRecord(candidate.session) ? candidate.session : {};
   const currentUserId = safeUsers.some((user) => user.id === sessionRaw.currentUserId)

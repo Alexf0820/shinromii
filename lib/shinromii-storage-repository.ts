@@ -8,7 +8,7 @@ export type ShinromiiStorageLoadMode = "readonly" | "compatible";
  * `readonly` reads must not rely on migrations that write as a side effect.
  */
 export interface ShinromiiStorageRepository {
-  kind: "local";
+  kind: "local" | "cloud";
   loadStorage(options?: { mode?: ShinromiiStorageLoadMode }): Promise<ShinromiiStorage>;
   saveStorage(next: ShinromiiStorage): Promise<void>;
   hasExistingInstallation(): Promise<boolean>;

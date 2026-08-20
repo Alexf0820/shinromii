@@ -389,10 +389,13 @@ function applyStorageMaintenanceMigrations(storage: ShinromiiStorage): {
   };
 }
 
-function persistStorageMaintenanceMigrations(storage: ShinromiiStorage): ShinromiiStorage {
+function persistStorageMaintenanceMigrations(
+  storage: ShinromiiStorage,
+  changedBeforeMaintenance = false,
+): ShinromiiStorage {
   const result = applyStorageMaintenanceMigrations(storage);
 
-  if (!result.changed) {
+  if (!result.changed && !changedBeforeMaintenance) {
     return storage;
   }
 
@@ -425,57 +428,71 @@ function readShinromiiStorageInternal(options: { persistMaintenanceMigrations: b
     >;
 
     if (parsed.version === 1) {
+      const changedBeforeMaintenance = true;
       const next = coerceStorageValues(parsed as Partial<ShinromiiStorageV1>, fallback, {
         existingInstallation: true,
       });
 
-      return options.persistMaintenanceMigrations ? persistStorageMaintenanceMigrations(next) : next;
+      return options.persistMaintenanceMigrations
+        ? persistStorageMaintenanceMigrations(next, changedBeforeMaintenance)
+        : next;
     }
 
     if (parsed.version === 2) {
+      const changedBeforeMaintenance = true;
       const next = coerceStorageValues(parsed as Partial<ShinromiiStorageV2>, fallback, {
         existingInstallation: true,
       });
 
-      return options.persistMaintenanceMigrations ? persistStorageMaintenanceMigrations(next) : next;
+      return options.persistMaintenanceMigrations
+        ? persistStorageMaintenanceMigrations(next, changedBeforeMaintenance)
+        : next;
     }
 
     if (parsed.version === 3) {
-      const next = replaceLegacyDummyGrades(
-        coerceStorageValues(parsed as Partial<ShinromiiStorageV3>, fallback, {
-          existingInstallation: true,
-        }),
-        fallback,
-      );
+      const coerced = coerceStorageValues(parsed as Partial<ShinromiiStorageV3>, fallback, {
+        existingInstallation: true,
+      });
+      const next = replaceLegacyDummyGrades(coerced, fallback);
+      const changedBeforeMaintenance = true;
 
-      return options.persistMaintenanceMigrations ? persistStorageMaintenanceMigrations(next) : next;
+      return options.persistMaintenanceMigrations
+        ? persistStorageMaintenanceMigrations(next, changedBeforeMaintenance)
+        : next;
     }
 
     if (parsed.version === 4) {
-      const next = replaceLegacyDummyGrades(
-        coerceStorageValues(parsed as Partial<ShinromiiStorageV4>, fallback, {
-          existingInstallation: true,
-        }),
-        fallback,
-      );
+      const coerced = coerceStorageValues(parsed as Partial<ShinromiiStorageV4>, fallback, {
+        existingInstallation: true,
+      });
+      const next = replaceLegacyDummyGrades(coerced, fallback);
+      const changedBeforeMaintenance = true;
 
-      return options.persistMaintenanceMigrations ? persistStorageMaintenanceMigrations(next) : next;
+      return options.persistMaintenanceMigrations
+        ? persistStorageMaintenanceMigrations(next, changedBeforeMaintenance)
+        : next;
     }
 
     if (parsed.version === 5) {
+      const changedBeforeMaintenance = true;
       const next = coerceStorageValues(parsed as Partial<ShinromiiStorageV5>, fallback, {
         existingInstallation: true,
       });
 
-      return options.persistMaintenanceMigrations ? persistStorageMaintenanceMigrations(next) : next;
+      return options.persistMaintenanceMigrations
+        ? persistStorageMaintenanceMigrations(next, changedBeforeMaintenance)
+        : next;
     }
 
     if (parsed.version === 6) {
+      const changedBeforeMaintenance = true;
       const next = coerceStorageValues(parsed as Partial<ShinromiiStorageV6>, fallback, {
         existingInstallation: true,
       });
 
-      return options.persistMaintenanceMigrations ? persistStorageMaintenanceMigrations(next) : next;
+      return options.persistMaintenanceMigrations
+        ? persistStorageMaintenanceMigrations(next, changedBeforeMaintenance)
+        : next;
     }
 
     if (parsed.version !== STORAGE_VERSION) {
@@ -483,7 +500,7 @@ function readShinromiiStorageInternal(options: { persistMaintenanceMigrations: b
     }
 
     const next = coerceStorageValues(parsed as Partial<ShinromiiStorage>, fallback);
-    return options.persistMaintenanceMigrations ? persistStorageMaintenanceMigrations(next) : next;
+    return options.persistMaintenanceMigrations ? persistStorageMaintenanceMigrations(next, false) : next;
   } catch {
     return fallback;
   }
