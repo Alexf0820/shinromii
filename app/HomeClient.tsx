@@ -5,6 +5,7 @@ import Link from "next/link";
 import { APP_VERSION_LABEL } from "@/lib/app-version";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { BrandAccountLink } from "@/components/BrandAccountLink";
+import { BrandMark } from "@/components/BrandMark";
 import { UiIcon } from "@/components/UiIcon";
 import { recentItems } from "@/data/mockData";
 import {
@@ -316,8 +317,13 @@ export function HomeClient() {
         <div className="home-hero-inner">
           <div className="home-hero-head">
             <div className="home-hero-brand">
-              <p className="home-brand">SHINROMii</p>
-              <p className="home-brand-sub">わたしの進路ノート</p>
+              <div className="brand-lockup">
+                <BrandMark className="brand-mark" decorative />
+                <div className="brand-wordmark">
+                  <p className="home-brand">SHINROMii</p>
+                  <p className="home-brand-sub">わたしの進路ノート</p>
+                </div>
+              </div>
             </div>
             <div className="home-hero-meta">
               <BrandAccountLink />

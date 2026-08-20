@@ -4,6 +4,7 @@ import Image from "next/image";
 import Link from "next/link";
 import { useRef, useState } from "react";
 import { BrandAccountLink } from "@/components/BrandAccountLink";
+import { BrandMark } from "@/components/BrandMark";
 import { UiIcon } from "@/components/UiIcon";
 import { APP_VERSION_LABEL } from "@/lib/app-version";
 import { parseShinromiiBackupJson } from "@/lib/shinromii-backup";
@@ -98,8 +99,13 @@ export function WelcomeStart({ onStartFresh, onRestored, preview = false }: Welc
         <div className="home-hero-inner">
           <div className="home-hero-head">
             <div className="home-hero-brand">
-              <p className="home-brand">SHINROMii</p>
-              <p className="home-brand-sub">わたしの進路ノート</p>
+              <div className="brand-lockup">
+                <BrandMark className="brand-mark" decorative />
+                <div className="brand-wordmark">
+                  <p className="home-brand">SHINROMii</p>
+                  <p className="home-brand-sub">わたしの進路ノート</p>
+                </div>
+              </div>
             </div>
             <div className="home-hero-meta">
               <BrandAccountLink />

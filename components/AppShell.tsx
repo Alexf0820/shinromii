@@ -5,6 +5,7 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { BrandAccountLink } from "@/components/BrandAccountLink";
+import { BrandMark } from "@/components/BrandMark";
 import { FirstSetup } from "@/components/FirstSetup";
 import { MobileNav } from "@/components/MobileNav";
 import { SiteFooter } from "@/components/SiteFooter";
@@ -150,7 +151,12 @@ export function AppShell({ children }: AppShellProps) {
             <div className="brand-header">
               <div className="brand-header-copy">
                 <Link href="/" className="brand-home-link" aria-label="ホームへ">
-                  <span className="home-brand">SHINROMii</span>
+                  <span className="brand-lockup">
+                    <BrandMark className="brand-mark" decorative />
+                    <span className="brand-wordmark">
+                      <span className="home-brand">SHINROMii</span>
+                    </span>
+                  </span>
                 </Link>
                 <p className="home-brand-sub">わたしの進路ノート</p>
               </div>
