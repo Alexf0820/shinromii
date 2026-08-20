@@ -9,26 +9,12 @@ import {
   prepareLocalCloudMigrationPocFixture,
   runLocalCloudMigrationPoc,
   verifyStoredLocalCloudMigrationPoc,
-  type LocalCloudMigrationPocStep,
   type LocalCloudMigrationPocFixture,
+  type LocalCloudMigrationPocStep,
 } from "@/lib/shinromii-local-cloud-migration-poc";
 
 type StepStatus = "idle" | "success" | "error";
-
-type StepState = {
-  localPrepared: StepStatus;
-  migrationIdGenerated: StepStatus;
-  dekGenerated: StepStatus;
-  encrypted: StepStatus;
-  wrapped: StepStatus;
-  uploaded: StepStatus;
-  reloaded: StepStatus;
-  fetched: StepStatus;
-  unwrapped: StepStatus;
-  decrypted: StepStatus;
-  matched: StepStatus;
-  verified: StepStatus;
-};
+type StepState = Record<LocalCloudMigrationPocStep | "reloaded", StepStatus>;
 
 function createStepState(): StepState {
   return {
@@ -60,12 +46,10 @@ function buildStepState(
   const next = createStepState();
 
   completedSteps.forEach((step) => {
-    if (step in next) {
-      next[step] = "success";
-    }
+    next[step] = "success";
   });
 
-  if (failedStep && failedStep in next && !completedSteps.includes(failedStep)) {
+  if (failedStep && !completedSteps.includes(failedStep)) {
     next[failedStep] = "error";
   }
 
@@ -88,6 +72,39 @@ export function AdminLocalCloudMigrationPocPanel() {
   const [cloudUpdatedAt, setCloudUpdatedAt] = useState<string | null>(null);
   const inspectionRevision = useRef(0);
 
+  function applySnapshot(
+    snapshot: Awaited<ReturnType<typeof loadLocalCloudMigrationPocSnapshot>>,
+    reloaded: StepStatus,
+    nextSteps?: StepState,
+  ) {
+    setProfileId(snapshot.profileId);
+    setMigrationId(snapshot.migrationId);
+    setMigrationStatus(snapshot.migrationStatus);
+    setLocalUpdatedAt(snapshot.localUpdatedAt);
+    setCloudUpdatedAt(snapshot.cloudUpdatedAt);
+    setSteps(nextSteps ?? { ...buildStepState(snapshot.completedSteps, snapshot.failedStep), reloaded });
+  }
+
+  async function refreshSnapshotAfterFlowError(flowError: LocalCloudMigrationPocFlowError) {
+    const originalMessage = flowError.message;
+    const nextSteps = {
+      ...buildStepState(flowError.completedSteps, flowError.failedStep),
+      reloaded: steps.reloaded,
+    } satisfies StepState;
+
+    try {
+      const snapshot = await loadLocalCloudMigrationPocSnapshot();
+      applySnapshot(snapshot, steps.reloaded, nextSteps);
+    } catch {
+      setSteps((current) => ({
+        ...current,
+        ...nextSteps,
+      }));
+    }
+
+    setMessage(originalMessage);
+  }
+
   useEffect(() => {
     let cancelled = false;
     const revision = inspectionRevision.current;
@@ -97,18 +114,12 @@ export function AdminLocalCloudMigrationPocPanel() {
         const snapshot = await loadLocalCloudMigrationPocSnapshot();
         if (cancelled || revision !== inspectionRevision.current) return;
 
-        setProfileId(snapshot.profileId);
-        setMigrationId(snapshot.migrationId);
-        setMigrationStatus(snapshot.migrationStatus);
-        setLocalUpdatedAt(snapshot.localUpdatedAt);
-        setCloudUpdatedAt(snapshot.cloudUpdatedAt);
-        setSteps({
-          ...buildStepState(snapshot.completedSteps, snapshot.failedStep),
-          reloaded:
-            snapshot.hasLocalFixture && (snapshot.hasCloudRecord || snapshot.completedSteps.includes("localPrepared"))
-              ? "success"
-              : "idle",
-        });
+        applySnapshot(
+          snapshot,
+          snapshot.hasLocalFixture && (snapshot.hasCloudRecord || snapshot.completedSteps.includes("localPrepared"))
+            ? "success"
+            : "idle",
+        );
       } catch {
         if (cancelled || revision !== inspectionRevision.current) return;
         setSteps((current) => ({ ...current, reloaded: "error" }));
@@ -147,17 +158,12 @@ export function AdminLocalCloudMigrationPocPanel() {
 
     try {
       const result = await prepareLocalCloudMigrationPocFixture();
-      setSteps({
+      applySnapshot(result.snapshot, "idle", {
         ...createStepState(),
         localPrepared: "success",
       });
       setPayloadPreview(formatPayload(result.fixture));
-      setProfileId(result.snapshot.profileId);
-      setMigrationId(result.snapshot.migrationId);
-      setMigrationStatus(result.snapshot.migrationStatus);
-      setLocalUpdatedAt(result.snapshot.localUpdatedAt);
-      setCloudUpdatedAt(result.snapshot.cloudUpdatedAt);
-      setMessage("PoC専用の架空Localデータを準備しました。既存のSHINROMii実利用データには触れていません。");
+      setMessage("PoC専用の架空Localデータを準備しました。既存のSHINROMII実利用データには触れていません。");
     } catch (error) {
       setSteps((current) => ({ ...current, localPrepared: "error" }));
       setMessage(error instanceof Error ? error.message : "PoC用のLocalデータ準備に失敗しました。");
@@ -173,25 +179,18 @@ export function AdminLocalCloudMigrationPocPanel() {
 
     try {
       const result = await runLocalCloudMigrationPoc();
-      setSteps({
+      applySnapshot(result.snapshot, "idle", {
         ...buildStepState(result.completedSteps),
         reloaded: "idle",
       });
       setPayloadPreview(formatPayload(result.payload));
-      setProfileId(result.snapshot.profileId);
-      setMigrationId(result.snapshot.migrationId);
-      setMigrationStatus(result.snapshot.migrationStatus);
-      setLocalUpdatedAt(result.snapshot.localUpdatedAt);
-      setCloudUpdatedAt(result.snapshot.cloudUpdatedAt);
       setMessage("Local→Cloud Migration PoCで、暗号化・Cloud Mock保存・再取得・復号・一致確認まで完了しました。Local元データは残したままです。");
     } catch (error) {
-      const nextSteps =
-        error instanceof LocalCloudMigrationPocFlowError ? buildStepState(error.completedSteps, error.failedStep) : createStepState();
-      setSteps((current) => ({
-        ...current,
-        ...nextSteps,
-      }));
-      setMessage(error instanceof Error ? error.message : "Local→Cloud Migration PoCに失敗しました。");
+      if (error instanceof LocalCloudMigrationPocFlowError) {
+        await refreshSnapshotAfterFlowError(error);
+      } else {
+        setMessage(error instanceof Error ? error.message : "Local→Cloud Migration PoCに失敗しました。");
+      }
     } finally {
       setLoading(false);
     }
@@ -204,24 +203,15 @@ export function AdminLocalCloudMigrationPocPanel() {
 
     try {
       const result = await verifyStoredLocalCloudMigrationPoc();
-      setSteps((current) => ({
-        ...current,
+      applySnapshot(result.snapshot, steps.reloaded, {
         ...buildStepState(result.completedSteps),
-      }));
+        reloaded: steps.reloaded,
+      });
       setPayloadPreview(formatPayload(result.payload));
-      setProfileId(result.snapshot.profileId);
-      setMigrationId(result.snapshot.migrationId);
-      setMigrationStatus(result.snapshot.migrationStatus);
-      setLocalUpdatedAt(result.snapshot.localUpdatedAt);
-      setCloudUpdatedAt(result.snapshot.cloudUpdatedAt);
       setMessage("Cloud Mockから再取得した暗号データを復号し、Local元データとの完全一致を再確認しました。");
     } catch (error) {
       if (error instanceof LocalCloudMigrationPocFlowError) {
-        setSteps((current) => ({
-          ...current,
-          ...buildStepState(error.completedSteps, error.failedStep),
-        }));
-        setMessage(error.message);
+        await refreshSnapshotAfterFlowError(error);
       } else {
         setMessage(error instanceof Error ? error.message : "保存済みMigration PoCの再検証に失敗しました。");
       }

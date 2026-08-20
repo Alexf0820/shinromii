@@ -355,7 +355,10 @@ async function withDatabase<T>(
 
   return new Promise<T>((resolve, reject) => {
     let settled = false;
-    let result: T;
+    let transactionCompleted = false;
+    let operationResult: T | undefined;
+    let operationResolved = false;
+    let operationRejected = false;
     const finish = (callback: () => void) => {
       if (settled) return;
       settled = true;
@@ -366,11 +369,19 @@ async function withDatabase<T>(
     try {
       const transaction = database.transaction(stores, mode);
 
-      Promise.resolve(operation(transaction))
+      const operationPromise = Promise.resolve(operation(transaction))
         .then((value) => {
-          result = value;
+          operationResult = value;
+          operationResolved = true;
+
+          if (transactionCompleted) {
+            finish(() => {
+              resolve(operationResult as T);
+            });
+          }
         })
         .catch(() => {
+          operationRejected = true;
           try {
             transaction.abort();
           } catch {}
@@ -380,8 +391,16 @@ async function withDatabase<T>(
         });
 
       transaction.oncomplete = () => {
+        transactionCompleted = true;
+
+        if (operationRejected) return;
+        if (!operationResolved) {
+          void operationPromise;
+          return;
+        }
+
         finish(() => {
-          resolve(result);
+          resolve(operationResult as T);
         });
       };
 
@@ -418,6 +437,18 @@ function upgradeLocalDatabase(database: IDBDatabase) {
   }
 }
 
+function requestToPromise<T>(request: IDBRequest<T>, message: string) {
+  return new Promise<T>((resolve, reject) => {
+    request.onsuccess = () => {
+      resolve(request.result);
+    };
+
+    request.onerror = () => {
+      reject(new Error(message));
+    };
+  });
+}
+
 function upgradeCloudDatabase(database: IDBDatabase) {
   if (!database.objectStoreNames.contains(CLOUD_RECORD_STORE)) {
     database.createObjectStore(CLOUD_RECORD_STORE, { keyPath: "profileId" });
@@ -435,7 +466,9 @@ const localPocRepository = {
       "readwrite",
       upgradeLocalDatabase,
       (transaction) => {
-        transaction.objectStore(LOCAL_PROFILE_STORE).put(fixture);
+        const profileStore = transaction.objectStore(LOCAL_PROFILE_STORE);
+        profileStore.clear();
+        profileStore.put(fixture);
         transaction.objectStore(LOCAL_META_STORE).put(meta);
       },
     );
@@ -449,38 +482,22 @@ const localPocRepository = {
       [LOCAL_PROFILE_STORE, LOCAL_META_STORE, LOCAL_KEY_STORE],
       "readonly",
       upgradeLocalDatabase,
-      (transaction) =>
-        new Promise<LocalRepositoryState>((resolve, reject) => {
-          let fixture: LocalCloudMigrationPocFixture | null = null;
-          let meta: StoredMigrationMeta | null = null;
-          let actorKeyPair: StoredActorKeyPair | null = null;
-          const profileStore = transaction.objectStore(LOCAL_PROFILE_STORE);
-          const metaStore = transaction.objectStore(LOCAL_META_STORE);
-          const keyStore = transaction.objectStore(LOCAL_KEY_STORE);
-          const fixtureCursor = profileStore.openCursor();
-          const metaRequest = metaStore.get(META_ID);
-          const keyRequest = keyStore.get(ACTOR_KEYPAIR_ID);
+      async (transaction) => {
+        const profileStore = transaction.objectStore(LOCAL_PROFILE_STORE);
+        const metaStore = transaction.objectStore(LOCAL_META_STORE);
+        const keyStore = transaction.objectStore(LOCAL_KEY_STORE);
+        const [fixtures, metaResult, keyResult] = await Promise.all([
+          requestToPromise(profileStore.getAll() as IDBRequest<LocalCloudMigrationPocFixture[]>, "Migration PoC用Localデータの読み取りに失敗しました。"),
+          requestToPromise(metaStore.get(META_ID) as IDBRequest<StoredMigrationMeta | undefined>, "Migration PoC用メタ情報の読み取りに失敗しました。"),
+          requestToPromise(keyStore.get(ACTOR_KEYPAIR_ID) as IDBRequest<StoredActorKeyPair | undefined>, "Migration PoC用鍵の読み取りに失敗しました。"),
+        ]);
 
-          fixtureCursor.onsuccess = () => {
-            const cursor = fixtureCursor.result;
-            fixture = cursor ? ((cursor.value as LocalCloudMigrationPocFixture | undefined) ?? null) : null;
-          };
-          fixtureCursor.onerror = () => reject(new Error("Migration PoC用Localデータの読み取りに失敗しました。"));
-
-          metaRequest.onsuccess = () => {
-            meta = (metaRequest.result as StoredMigrationMeta | undefined) ?? null;
-          };
-          metaRequest.onerror = () => reject(new Error("Migration PoC用メタ情報の読み取りに失敗しました。"));
-
-          keyRequest.onsuccess = () => {
-            actorKeyPair = (keyRequest.result as StoredActorKeyPair | undefined) ?? null;
-          };
-          keyRequest.onerror = () => reject(new Error("Migration PoC用鍵の読み取りに失敗しました。"));
-
-          transaction.addEventListener("complete", () => {
-            resolve({ fixture, meta, actorKeyPair });
-          });
-        }),
+        return {
+          fixture: fixtures[0] ?? null,
+          meta: metaResult ?? null,
+          actorKeyPair: keyResult ?? null,
+        };
+      },
     );
   },
 
@@ -664,7 +681,7 @@ function maybeSimulateFailure(mode: LocalCloudMigrationPocFailureMode | undefine
   }
 }
 
-// TODO(v0.94): 実移行では BroadcastChannel / Web Locks API でマルチタブ同時実行と編集中データ更新を防ぐ。
+// TODO(v0.95): 実移行では BroadcastChannel / Web Locks API で、meta状態確認と書き込みの競合を含むマルチタブ同時実行を防ぐ。
 export async function prepareLocalCloudMigrationPocFixture() {
   const result = await localPocRepository.prepareFixture();
   const cloudRecord = await cloudMockRepository.loadRecord(result.fixture.profile.id);
@@ -713,10 +730,12 @@ export async function runLocalCloudMigrationPoc(
 
   const completedSteps: LocalCloudMigrationPocStep[] = ["localPrepared"];
   const migrationId = createShinromiiId("migration");
+  let currentStep: LocalCloudMigrationPocStep = "migrationIdGenerated";
   completedSteps.push("migrationIdGenerated");
   await persistMetaProgress(fixture, migrationId, "preparing", completedSteps);
 
   try {
+    currentStep = "dekGenerated";
     let dek: CryptoKey;
     try {
       dek = await generateDek();
@@ -726,10 +745,14 @@ export async function runLocalCloudMigrationPoc(
     completedSteps.push("dekGenerated");
     await persistMetaProgress(fixture, migrationId, "preparing", completedSteps);
 
-    maybeSimulateFailure(simulateFailure, "encrypt");
-
     const serializedFixture = serializeFixture(fixture);
     const iv = getRandomIv();
+    currentStep = "encrypted";
+    try {
+      maybeSimulateFailure(simulateFailure, "encrypt");
+    } catch (error) {
+      rethrowAsFlowError(error, "Localデータの暗号化に失敗しました。", completedSteps, currentStep);
+    }
     let cipherText: ArrayBuffer;
     try {
       cipherText = await window.crypto.subtle.encrypt(
@@ -745,6 +768,7 @@ export async function runLocalCloudMigrationPoc(
     }
     completedSteps.push("encrypted");
 
+    currentStep = "wrapped";
     let actorKeyPair: StoredActorKeyPair;
     let wrappedDek: ArrayBuffer;
     try {
@@ -756,8 +780,12 @@ export async function runLocalCloudMigrationPoc(
     completedSteps.push("wrapped");
     await persistMetaProgress(fixture, migrationId, "encrypted", completedSteps);
 
-    maybeSimulateFailure(simulateFailure, "cloudSave");
-
+    currentStep = "uploaded";
+    try {
+      maybeSimulateFailure(simulateFailure, "cloudSave");
+    } catch (error) {
+      rethrowAsFlowError(error, "Cloud Mockへの保存に失敗しました。", completedSteps, currentStep);
+    }
     try {
       await cloudMockRepository.saveRecord({
         profileId: fixture.profile.id,
@@ -776,8 +804,12 @@ export async function runLocalCloudMigrationPoc(
     completedSteps.push("uploaded");
     await persistMetaProgress(fixture, migrationId, "uploaded", completedSteps);
 
-    maybeSimulateFailure(simulateFailure, "cloudFetch");
-
+    currentStep = "fetched";
+    try {
+      maybeSimulateFailure(simulateFailure, "cloudFetch");
+    } catch (error) {
+      rethrowAsFlowError(error, "Cloud Mockから移行データを再取得できませんでした。", completedSteps, currentStep);
+    }
     let cloudRecord: StoredCloudRecord | null;
     try {
       cloudRecord = await cloudMockRepository.loadRecord(fixture.profile.id);
@@ -789,10 +821,15 @@ export async function runLocalCloudMigrationPoc(
       throw createFlowError("Cloud Mockから移行データを再取得できませんでした。", completedSteps, "fetched");
     }
 
-    ensureKnownSchemaVersion(cloudRecord.schemaVersion);
+    try {
+      ensureKnownSchemaVersion(cloudRecord.schemaVersion);
+    } catch (error) {
+      rethrowAsFlowError(error, "Cloud Mockから取得したschemaVersionを検証できませんでした。", completedSteps, currentStep);
+    }
     completedSteps.push("fetched");
     await persistMetaProgress(fixture, migrationId, "verifying", completedSteps);
 
+    currentStep = "unwrapped";
     let restoredDek: CryptoKey;
     try {
       restoredDek = await window.crypto.subtle.unwrapKey(
@@ -812,8 +849,12 @@ export async function runLocalCloudMigrationPoc(
     }
     completedSteps.push("unwrapped");
 
-    maybeSimulateFailure(simulateFailure, "decrypt");
-
+    currentStep = "decrypted";
+    try {
+      maybeSimulateFailure(simulateFailure, "decrypt");
+    } catch (error) {
+      rethrowAsFlowError(error, "Cloud Mockから再取得したpayloadの復号に失敗しました。", completedSteps, currentStep);
+    }
     let decrypted: ArrayBuffer;
     try {
       decrypted = await window.crypto.subtle.decrypt(
@@ -829,19 +870,25 @@ export async function runLocalCloudMigrationPoc(
     }
     completedSteps.push("decrypted");
 
+    currentStep = "matched";
     const decoded = new TextDecoder().decode(decrypted);
     if (simulateFailure === "mismatch") {
-      throw createFlowError("復号後のデータがLocal元データと一致しませんでした。", completedSteps, "matched");
+      throw createFlowError("復号後のデータがLocal元データと一致しませんでした。", completedSteps, currentStep);
     }
 
     if (decoded !== serializedFixture) {
-      throw createFlowError("復号後のデータがLocal元データと一致しませんでした。", completedSteps, "matched");
+      throw createFlowError("復号後のデータがLocal元データと一致しませんでした。", completedSteps, currentStep);
     }
 
     const payload = JSON.parse(decoded) as LocalCloudMigrationPocFixture;
-    ensureKnownSchemaVersion(payload.schemaVersion);
+    try {
+      ensureKnownSchemaVersion(payload.schemaVersion);
+    } catch (error) {
+      rethrowAsFlowError(error, "復号後データのschemaVersionを検証できませんでした。", completedSteps, currentStep);
+    }
     completedSteps.push("matched");
 
+    currentStep = "verified";
     try {
       await cloudMockRepository.saveRecord({
         ...cloudRecord,
@@ -868,7 +915,7 @@ export async function runLocalCloudMigrationPoc(
         : createFlowError(
             error instanceof Error ? error.message : "Local→Cloud Migration PoCに失敗しました。",
             completedSteps,
-            completedSteps.at(-1) === "verified" ? null : completedSteps.at(-1) ?? "migrationIdGenerated",
+            currentStep,
           );
 
     await persistMetaProgress(fixture, migrationId, "failed", flowError.completedSteps, flowError.failedStep);
@@ -892,20 +939,27 @@ export async function verifyStoredLocalCloudMigrationPoc(): Promise<LocalCloudMi
   }
 
   const completedSteps = [...meta.completedSteps];
+  let currentStep: LocalCloudMigrationPocStep = completedSteps.includes("fetched") ? "unwrapped" : "fetched";
 
   try {
+    currentStep = "fetched";
     let cloudRecord: StoredCloudRecord | null;
     try {
       cloudRecord = await cloudMockRepository.loadRecord(fixture.profile.id);
     } catch (error) {
       rethrowAsFlowError(error, "Cloud Mockから移行データを再取得できませんでした。", completedSteps, "fetched");
     }
-    if (!cloudRecord) {
+    if (!cloudRecord || cloudRecord.migrationId !== meta.migrationId) {
       throw createFlowError("Cloud Mockから移行データを再取得できませんでした。", completedSteps, "fetched");
     }
-    ensureKnownSchemaVersion(cloudRecord.schemaVersion);
+    try {
+      ensureKnownSchemaVersion(cloudRecord.schemaVersion);
+    } catch (error) {
+      rethrowAsFlowError(error, "Cloud Mockから取得したschemaVersionを検証できませんでした。", completedSteps, currentStep);
+    }
     if (!completedSteps.includes("fetched")) completedSteps.push("fetched");
 
+    currentStep = "unwrapped";
     let restoredDek: CryptoKey;
     try {
       const actorKeyPair = await localPocRepository.ensureActorKeyPair();
@@ -926,6 +980,7 @@ export async function verifyStoredLocalCloudMigrationPoc(): Promise<LocalCloudMi
     }
     if (!completedSteps.includes("unwrapped")) completedSteps.push("unwrapped");
 
+    currentStep = "decrypted";
     let decrypted: ArrayBuffer;
     try {
       decrypted = await window.crypto.subtle.decrypt(
@@ -941,16 +996,21 @@ export async function verifyStoredLocalCloudMigrationPoc(): Promise<LocalCloudMi
     }
     if (!completedSteps.includes("decrypted")) completedSteps.push("decrypted");
 
+    currentStep = "matched";
     const decoded = new TextDecoder().decode(decrypted);
     if (decoded !== serializeFixture(fixture)) {
       throw createFlowError("復号後のデータがLocal元データと一致しませんでした。", completedSteps, "matched");
     }
 
     const payload = JSON.parse(decoded) as LocalCloudMigrationPocFixture;
-    ensureKnownSchemaVersion(payload.schemaVersion);
+    try {
+      ensureKnownSchemaVersion(payload.schemaVersion);
+    } catch (error) {
+      rethrowAsFlowError(error, "復号後データのschemaVersionを検証できませんでした。", completedSteps, currentStep);
+    }
     if (!completedSteps.includes("matched")) completedSteps.push("matched");
-    if (!completedSteps.includes("verified")) completedSteps.push("verified");
 
+    currentStep = "verified";
     try {
       await cloudMockRepository.saveRecord({
         ...cloudRecord,
@@ -959,6 +1019,7 @@ export async function verifyStoredLocalCloudMigrationPoc(): Promise<LocalCloudMi
     } catch (error) {
       rethrowAsFlowError(error, "verified状態の確定保存に失敗しました。", completedSteps, "verified");
     }
+    if (!completedSteps.includes("verified")) completedSteps.push("verified");
     await persistMetaProgress(fixture, meta.migrationId, "verified", completedSteps);
 
     const snapshot = await loadLocalCloudMigrationPocSnapshot();
@@ -976,13 +1037,7 @@ export async function verifyStoredLocalCloudMigrationPoc(): Promise<LocalCloudMi
         : createFlowError(
             error instanceof Error ? error.message : "保存済みMigration PoCの再検証に失敗しました。",
             completedSteps,
-            completedSteps.includes("fetched")
-              ? completedSteps.includes("unwrapped")
-                ? completedSteps.includes("decrypted")
-                  ? "matched"
-                  : "decrypted"
-                : "unwrapped"
-              : "fetched",
+            currentStep,
           );
     await persistMetaProgress(fixture, meta.migrationId, "failed", flowError.completedSteps, flowError.failedStep);
     throw flowError;
