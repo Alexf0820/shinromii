@@ -65,6 +65,8 @@ type StoredFamilyRecord = {
   createdAt: string;
 };
 
+type StoredFamilyRecordInput = Omit<StoredFamilyRecord, "createdAt">;
+
 type StoredFamilyBundle = {
   parentKeyRecord: StoredKeyPairRecord | null;
   childKeyRecord: StoredKeyPairRecord | null;
@@ -209,113 +211,127 @@ async function loadStoredFamilyBundle(): Promise<StoredFamilyBundle> {
         let parentKeyRecord: StoredKeyPairRecord | null = null;
         let childKeyRecord: StoredKeyPairRecord | null = null;
         let familyRecord: StoredFamilyRecord | null = null;
-        const transaction = database.transaction([KEY_STORE, RECORD_STORE], "readonly");
-        const parentRequest = transaction.objectStore(KEY_STORE).get(PARENT_KEYPAIR_ID);
-        const childRequest = transaction.objectStore(KEY_STORE).get(CHILD_KEYPAIR_ID);
-        const recordRequest = transaction.objectStore(RECORD_STORE).get(RECORD_ID);
         const finish = (callback: () => void) => {
           if (settled) return;
           settled = true;
           database.close();
           callback();
         };
+        try {
+          const transaction = database.transaction([KEY_STORE, RECORD_STORE], "readonly");
+          const keyStore = transaction.objectStore(KEY_STORE);
+          const recordStore = transaction.objectStore(RECORD_STORE);
+          const parentRequest = keyStore.get(PARENT_KEYPAIR_ID);
+          const childRequest = keyStore.get(CHILD_KEYPAIR_ID);
+          const recordRequest = recordStore.get(RECORD_ID);
 
-        parentRequest.onsuccess = () => {
-          parentKeyRecord = (parentRequest.result as StoredKeyPairRecord | undefined) ?? null;
-        };
+          parentRequest.onsuccess = () => {
+            parentKeyRecord = (parentRequest.result as StoredKeyPairRecord | undefined) ?? null;
+          };
 
-        childRequest.onsuccess = () => {
-          childKeyRecord = (childRequest.result as StoredKeyPairRecord | undefined) ?? null;
-        };
+          childRequest.onsuccess = () => {
+            childKeyRecord = (childRequest.result as StoredKeyPairRecord | undefined) ?? null;
+          };
 
-        recordRequest.onsuccess = () => {
-          familyRecord = (recordRequest.result as StoredFamilyRecord | undefined) ?? null;
-        };
+          recordRequest.onsuccess = () => {
+            familyRecord = (recordRequest.result as StoredFamilyRecord | undefined) ?? null;
+          };
 
-        parentRequest.onerror = childRequest.onerror = recordRequest.onerror = () => {
+          parentRequest.onerror = childRequest.onerror = recordRequest.onerror = () => {
+            finish(() => {
+              reject(new Error("家族共有暗号化PoCのIndexedDB読み取りに失敗しました。"));
+            });
+          };
+
+          transaction.oncomplete = () => {
+            finish(() => {
+              resolve({ parentKeyRecord, childKeyRecord, familyRecord });
+            });
+          };
+
+          transaction.onerror = () => {
+            finish(() => {
+              reject(new Error("家族共有暗号化PoCのIndexedDB読み取りトランザクションに失敗しました。"));
+            });
+          };
+
+          transaction.onabort = () => {
+            finish(() => {
+              reject(new Error("家族共有暗号化PoCのIndexedDB読み取りトランザクションが中断されました。"));
+            });
+          };
+        } catch {
           finish(() => {
-            reject(new Error("家族共有暗号化PoCのIndexedDB読み取りに失敗しました。"));
+            reject(new Error("家族共有暗号化PoCのIndexedDB読み取り準備に失敗しました。"));
           });
-        };
-
-        transaction.oncomplete = () => {
-          finish(() => {
-            resolve({ parentKeyRecord, childKeyRecord, familyRecord });
-          });
-        };
-
-        transaction.onerror = () => {
-          finish(() => {
-            reject(new Error("家族共有暗号化PoCのIndexedDB読み取りトランザクションに失敗しました。"));
-          });
-        };
-
-        transaction.onabort = () => {
-          finish(() => {
-            reject(new Error("家族共有暗号化PoCのIndexedDB読み取りトランザクションが中断されました。"));
-          });
-        };
+        }
       }),
   );
 }
 
-async function saveStoredFamilyBundle(parentKeyPair: CryptoKeyPair, childKeyPair: CryptoKeyPair, record: StoredFamilyRecord) {
+async function saveStoredFamilyBundle(parentKeyPair: CryptoKeyPair, childKeyPair: CryptoKeyPair, record: StoredFamilyRecordInput) {
   const createdAt = new Date().toISOString();
 
   await openDatabase().then(
     (database) =>
       new Promise<void>((resolve, reject) => {
         let settled = false;
-        const transaction = database.transaction([KEY_STORE, RECORD_STORE], "readwrite");
-        const keyStore = transaction.objectStore(KEY_STORE);
-        const recordStore = transaction.objectStore(RECORD_STORE);
         const finish = (callback: () => void) => {
           if (settled) return;
           settled = true;
           database.close();
           callback();
         };
+        try {
+          const transaction = database.transaction([KEY_STORE, RECORD_STORE], "readwrite");
+          const keyStore = transaction.objectStore(KEY_STORE);
+          const recordStore = transaction.objectStore(RECORD_STORE);
 
-        keyStore.put({
-          id: PARENT_KEYPAIR_ID,
-          owner: "parent",
-          algorithm: "RSA-OAEP",
-          publicKey: parentKeyPair.publicKey,
-          privateKey: parentKeyPair.privateKey,
-          createdAt,
-        } satisfies StoredKeyPairRecord);
+          keyStore.put({
+            id: PARENT_KEYPAIR_ID,
+            owner: "parent",
+            algorithm: "RSA-OAEP",
+            publicKey: parentKeyPair.publicKey,
+            privateKey: parentKeyPair.privateKey,
+            createdAt,
+          } satisfies StoredKeyPairRecord);
 
-        keyStore.put({
-          id: CHILD_KEYPAIR_ID,
-          owner: "child",
-          algorithm: "RSA-OAEP",
-          publicKey: childKeyPair.publicKey,
-          privateKey: childKeyPair.privateKey,
-          createdAt,
-        } satisfies StoredKeyPairRecord);
+          keyStore.put({
+            id: CHILD_KEYPAIR_ID,
+            owner: "child",
+            algorithm: "RSA-OAEP",
+            publicKey: childKeyPair.publicKey,
+            privateKey: childKeyPair.privateKey,
+            createdAt,
+          } satisfies StoredKeyPairRecord);
 
-        recordStore.put({
-          ...record,
-          createdAt,
-        });
+          recordStore.put({
+            ...record,
+            createdAt,
+          } satisfies StoredFamilyRecord);
 
-        transaction.oncomplete = () => {
+          transaction.oncomplete = () => {
+            finish(() => {
+              resolve();
+            });
+          };
+
+          transaction.onerror = () => {
+            finish(() => {
+              reject(new Error("家族共有暗号化PoCの保存トランザクションに失敗しました。"));
+            });
+          };
+
+          transaction.onabort = () => {
+            finish(() => {
+              reject(new Error("家族共有暗号化PoCの保存トランザクションが中断されました。"));
+            });
+          };
+        } catch {
           finish(() => {
-            resolve();
+            reject(new Error("家族共有暗号化PoCの保存準備に失敗しました。"));
           });
-        };
-
-        transaction.onerror = () => {
-          finish(() => {
-            reject(new Error("家族共有暗号化PoCの保存トランザクションに失敗しました。"));
-          });
-        };
-
-        transaction.onabort = () => {
-          finish(() => {
-            reject(new Error("家族共有暗号化PoCの保存トランザクションが中断されました。"));
-          });
-        };
+        }
       }),
   );
 }
@@ -325,37 +341,43 @@ async function clearStoredFamilyBundle() {
     (database) =>
       new Promise<void>((resolve, reject) => {
         let settled = false;
-        const transaction = database.transaction([KEY_STORE, RECORD_STORE], "readwrite");
-        const keyStore = transaction.objectStore(KEY_STORE);
-        const recordStore = transaction.objectStore(RECORD_STORE);
         const finish = (callback: () => void) => {
           if (settled) return;
           settled = true;
           database.close();
           callback();
         };
+        try {
+          const transaction = database.transaction([KEY_STORE, RECORD_STORE], "readwrite");
+          const keyStore = transaction.objectStore(KEY_STORE);
+          const recordStore = transaction.objectStore(RECORD_STORE);
 
-        keyStore.delete(PARENT_KEYPAIR_ID);
-        keyStore.delete(CHILD_KEYPAIR_ID);
-        recordStore.delete(RECORD_ID);
+          keyStore.delete(PARENT_KEYPAIR_ID);
+          keyStore.delete(CHILD_KEYPAIR_ID);
+          recordStore.delete(RECORD_ID);
 
-        transaction.oncomplete = () => {
+          transaction.oncomplete = () => {
+            finish(() => {
+              resolve();
+            });
+          };
+
+          transaction.onerror = () => {
+            finish(() => {
+              reject(new Error("家族共有暗号化PoCの削除トランザクションに失敗しました。"));
+            });
+          };
+
+          transaction.onabort = () => {
+            finish(() => {
+              reject(new Error("家族共有暗号化PoCの削除トランザクションが中断されました。"));
+            });
+          };
+        } catch {
           finish(() => {
-            resolve();
+            reject(new Error("家族共有暗号化PoCの削除準備に失敗しました。"));
           });
-        };
-
-        transaction.onerror = () => {
-          finish(() => {
-            reject(new Error("家族共有暗号化PoCの削除トランザクションに失敗しました。"));
-          });
-        };
-
-        transaction.onabort = () => {
-          finish(() => {
-            reject(new Error("家族共有暗号化PoCの削除トランザクションが中断されました。"));
-          });
-        };
+        }
       }),
   );
 }
@@ -457,7 +479,6 @@ export async function runFamilyKeySharingPocEncryption() {
       cipherText,
       parentWrappedDek,
       childWrappedDek,
-      createdAt: new Date().toISOString(),
     });
     completedSteps.push(currentStep);
 
@@ -481,59 +502,95 @@ export async function decryptStoredFamilyKeySharingPoc(role: FamilyKeySharingPoc
     throw new Error("このブラウザでは家族共有暗号化PoCを実行できません。");
   }
 
-  const bundle = await loadStoredFamilyBundle();
-  const keyRecord = getKeyRecordForRole(bundle, role);
-  const wrappedRecord = bundle.familyRecord;
   const completedSteps: FamilyKeySharingPocStep[] = [];
-  const roleLabel = role === "parent" ? "parent" : "child";
+  const keyLoadedStep = role === "parent" ? "parentKeyLoaded" : "childKeyLoaded";
+  const unwrappedStep = role === "parent" ? "parentUnwrapped" : "childUnwrapped";
+  const decryptedStep = role === "parent" ? "parentDecrypted" : "childDecrypted";
+  const matchedStep = role === "parent" ? "parentMatched" : "childMatched";
 
-  if (!keyRecord?.privateKey) {
-    throw new Error(role === "parent" ? "保存済みの親秘密鍵が見つかりませんでした。" : "保存済みの子秘密鍵が見つかりませんでした。");
+  try {
+    const bundle = await loadStoredFamilyBundle();
+    const keyRecord = getKeyRecordForRole(bundle, role);
+    const wrappedRecord = bundle.familyRecord;
+
+    if (!keyRecord?.privateKey) {
+      throw new FamilyKeySharingPocFlowError(
+        role === "parent" ? "保存済みの親秘密鍵が見つかりませんでした。" : "保存済みの子秘密鍵が見つかりませんでした。",
+        completedSteps,
+        keyLoadedStep,
+      );
+    }
+    completedSteps.push(keyLoadedStep);
+
+    if (!wrappedRecord) {
+      throw new FamilyKeySharingPocFlowError("保存済みの家族共有PoCデータが見つかりませんでした。", completedSteps, unwrappedStep);
+    }
+
+    let unwrappedDek: CryptoKey;
+    try {
+      unwrappedDek = await window.crypto.subtle.unwrapKey(
+        "raw",
+        getWrappedDekForRole(wrappedRecord, role),
+        keyRecord.privateKey,
+        { name: "RSA-OAEP" },
+        {
+          name: "AES-GCM",
+          length: 256,
+        },
+        false,
+        ["decrypt"],
+      );
+    } catch {
+      throw new FamilyKeySharingPocFlowError("wrapped DEK のアンラップに失敗しました。", completedSteps, unwrappedStep);
+    }
+    completedSteps.push(unwrappedStep);
+
+    let decrypted: ArrayBuffer;
+    try {
+      decrypted = await window.crypto.subtle.decrypt(
+        {
+          name: "AES-GCM",
+          iv: toCryptoIv(wrappedRecord.iv),
+        },
+        unwrappedDek,
+        wrappedRecord.cipherText,
+      );
+    } catch {
+      throw new FamilyKeySharingPocFlowError("暗号化された進路JSONの復号に失敗しました。", completedSteps, decryptedStep);
+    }
+    completedSteps.push(decryptedStep);
+
+    let payload: FamilyKeySharingPocSample;
+    try {
+      payload = JSON.parse(new TextDecoder().decode(decrypted)) as FamilyKeySharingPocSample;
+    } catch {
+      throw new FamilyKeySharingPocFlowError("復号した進路JSONの解析に失敗しました。", completedSteps, matchedStep);
+    }
+
+    const matches = matchesSamplePayload(payload);
+    if (matches) {
+      completedSteps.push(matchedStep);
+    }
+
+    return {
+      payload,
+      matches,
+      role,
+      completedSteps,
+      snapshot: await loadFamilyKeySharingPocSnapshot(),
+    };
+  } catch (error) {
+    if (error instanceof FamilyKeySharingPocFlowError) {
+      throw error;
+    }
+
+    const message = error instanceof Error ? error.message : "家族共有暗号化PoCの復号に失敗しました。";
+    throw new FamilyKeySharingPocFlowError(message, completedSteps, completedSteps.at(-1) ?? keyLoadedStep);
   }
-  completedSteps.push(role === "parent" ? "parentKeyLoaded" : "childKeyLoaded");
+}
 
-  if (!wrappedRecord) {
-    throw new Error("保存済みの家族共有PoCデータが見つかりませんでした。");
-  }
-
-  const unwrappedDek = await window.crypto.subtle.unwrapKey(
-    "raw",
-    getWrappedDekForRole(wrappedRecord, role),
-    keyRecord.privateKey,
-    { name: "RSA-OAEP" },
-    {
-      name: "AES-GCM",
-      length: 256,
-    },
-    false,
-    ["decrypt"],
-  );
-  completedSteps.push(role === "parent" ? "parentUnwrapped" : "childUnwrapped");
-
-  const decrypted = await window.crypto.subtle.decrypt(
-    {
-      name: "AES-GCM",
-      iv: toCryptoIv(wrappedRecord.iv),
-    },
-    unwrappedDek,
-    wrappedRecord.cipherText,
-  );
-  completedSteps.push(role === "parent" ? "parentDecrypted" : "childDecrypted");
-
-  const payload = JSON.parse(new TextDecoder().decode(decrypted)) as FamilyKeySharingPocSample;
-  const matches = matchesSamplePayload(payload);
-
-  if (matches) {
-    completedSteps.push(role === "parent" ? "parentMatched" : "childMatched");
-  }
-
-  return {
-    payload,
-    matches,
-    role: roleLabel,
-    completedSteps,
-    snapshot: await loadFamilyKeySharingPocSnapshot(),
-  };
+function isExpectedWrongKeyReject(error: unknown) {
+  return error instanceof DOMException && error.name === "OperationError";
 }
 
 export async function runFamilyKeySharingNegativeTest() {
@@ -563,7 +620,10 @@ export async function runFamilyKeySharingNegativeTest() {
       false,
       ["decrypt"],
     );
-  } catch {
+  } catch (error) {
+    if (!isExpectedWrongKeyReject(error)) {
+      throw error;
+    }
     parentWrappedRejectedByChild = true;
   }
 
@@ -580,7 +640,10 @@ export async function runFamilyKeySharingNegativeTest() {
       false,
       ["decrypt"],
     );
-  } catch {
+  } catch (error) {
+    if (!isExpectedWrongKeyReject(error)) {
+      throw error;
+    }
     childWrappedRejectedByParent = true;
   }
 

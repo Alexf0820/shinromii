@@ -1,5 +1,12 @@
 import { AdminClient } from "@/app/admin/AdminClient";
+import { requireAdminPreviewAccess } from "@/lib/admin-access-server";
 
-export default function AdminPage() {
-  return <AdminClient />;
+type AdminPageProps = {
+  searchParams?: Promise<Record<string, string | string[] | undefined>>;
+};
+
+export default async function AdminPage({ searchParams }: AdminPageProps) {
+  const { adminKey } = await requireAdminPreviewAccess(searchParams);
+
+  return <AdminClient adminKey={adminKey} />;
 }

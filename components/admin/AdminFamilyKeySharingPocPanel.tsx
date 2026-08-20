@@ -82,6 +82,41 @@ function buildStepState(completedSteps: FamilyKeySharingPocStep[] = [], failedSt
   return nextState;
 }
 
+function mergeRoleSteps(
+  current: StepState,
+  role: "parent" | "child",
+  completedSteps: FamilyKeySharingPocStep[] = [],
+  failedStep: FamilyKeySharingPocStep | null = null,
+  matches: boolean | null = null,
+): StepState {
+  const nextState = { ...current };
+  const roleKeys: Array<keyof StepState> =
+    role === "parent"
+      ? ["parentKeyLoaded", "parentUnwrapped", "parentDecrypted", "parentMatched"]
+      : ["childKeyLoaded", "childUnwrapped", "childDecrypted", "childMatched"];
+
+  roleKeys.forEach((key) => {
+    nextState[key] = "idle";
+  });
+
+  completedSteps.forEach((step) => {
+    if (step in nextState) {
+      nextState[step as keyof StepState] = "success";
+    }
+  });
+
+  if (failedStep && roleKeys.includes(failedStep)) {
+    nextState[failedStep] = "error";
+  }
+
+  const matchedKey = role === "parent" ? "parentMatched" : "childMatched";
+  if (matches !== null) {
+    nextState[matchedKey] = matches ? "success" : "error";
+  }
+
+  return nextState;
+}
+
 export function AdminFamilyKeySharingPocPanel() {
   const [steps, setSteps] = useState<StepState>(createStepState);
   const [loading, setLoading] = useState(false);
@@ -155,7 +190,7 @@ export function AdminFamilyKeySharingPocPanel() {
       const result = await runFamilyKeySharingPocEncryption();
       setSteps({
         ...buildStepState(result.completedSteps),
-        reloaded: result.snapshot.hasParentKeyPair && result.snapshot.hasChildKeyPair && result.snapshot.hasFamilyRecord ? "success" : "idle",
+        reloaded: "idle",
         parentKeyLoaded: "idle",
         parentUnwrapped: "idle",
         parentDecrypted: "idle",
@@ -188,17 +223,8 @@ export function AdminFamilyKeySharingPocPanel() {
     try {
       const result = await decryptStoredFamilyKeySharingPoc(role);
       setSteps((current) => ({
-        ...current,
-        ...buildStepState(result.completedSteps),
+        ...mergeRoleSteps(current, role, result.completedSteps, null, result.matches),
         reloaded: result.snapshot.hasParentKeyPair && result.snapshot.hasChildKeyPair && result.snapshot.hasFamilyRecord ? "success" : current.reloaded,
-        ...(role === "parent"
-          ? { childKeyLoaded: current.childKeyLoaded, childUnwrapped: current.childUnwrapped, childDecrypted: current.childDecrypted, childMatched: current.childMatched }
-          : {
-              parentKeyLoaded: current.parentKeyLoaded,
-              parentUnwrapped: current.parentUnwrapped,
-              parentDecrypted: current.parentDecrypted,
-              parentMatched: current.parentMatched,
-            }),
       }));
       setStoredAt(result.snapshot.storedCreatedAt);
       setPayloadPreview(formatPayload(result.payload));
@@ -212,13 +238,13 @@ export function AdminFamilyKeySharingPocPanel() {
             : "子側の復号はできましたが、元JSONと一致しませんでした。",
       );
     } catch (error) {
-      setSteps((current) => ({
-        ...current,
-        ...(role === "parent"
-          ? { parentKeyLoaded: "error", parentUnwrapped: "error", parentDecrypted: "error", parentMatched: "error" }
-          : { childKeyLoaded: "error", childUnwrapped: "error", childDecrypted: "error", childMatched: "error" }),
-      }));
-      setMessage(error instanceof Error ? error.message : "家族共有暗号化PoCの復号に失敗しました。");
+      if (error instanceof FamilyKeySharingPocFlowError) {
+        setSteps((current) => mergeRoleSteps(current, role, error.completedSteps, error.failedStep));
+        setMessage(error.message);
+      } else {
+        setSteps((current) => mergeRoleSteps(current, role, [], role === "parent" ? "parentKeyLoaded" : "childKeyLoaded"));
+        setMessage(error instanceof Error ? error.message : "家族共有暗号化PoCの復号に失敗しました。");
+      }
     } finally {
       setLoading(false);
     }
@@ -273,7 +299,7 @@ export function AdminFamilyKeySharingPocPanel() {
 
   return (
     <div className="admin-choice">
-      <strong>Ver.0.86 家族共有暗号化PoC</strong>
+      <strong>Ver.0.87 家族共有暗号化PoC</strong>
       <span>
         1つのStudent Profile DEKで架空の進路JSONを暗号化し、そのDEKを親公開鍵と子公開鍵の両方でラップします。
         <br />

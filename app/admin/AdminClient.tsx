@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { useEffect, useState } from "react";
+import { buildAdminPath } from "@/lib/admin-paths";
 import { APP_VERSION_LABEL } from "@/lib/app-version";
 import { AdminCryptoPocPanel } from "@/components/admin/AdminCryptoPocPanel";
 import { AdminDekWrapPocPanel } from "@/components/admin/AdminDekWrapPocPanel";
@@ -17,7 +18,11 @@ function createFallback(): ShinromiiStorage | null {
   return null;
 }
 
-export function AdminClient() {
+type AdminClientProps = {
+  adminKey?: string | null;
+};
+
+export function AdminClient({ adminKey = null }: AdminClientProps) {
   const [storage, setStorage] = useState<ShinromiiStorage | null>(createFallback);
 
   useEffect(() => {
@@ -42,11 +47,11 @@ export function AdminClient() {
       <section className="admin-section">
         <h2 className="admin-section-title">画面プレビュー</h2>
         <div className="admin-actions">
-          <Link href="/admin/preview/welcome" className="admin-choice">
+          <Link href={buildAdminPath("/admin/preview/welcome", adminKey)} className="admin-choice">
             <strong>初回案内画面を見る</strong>
             <span>新規ユーザー向けの案内を、実データはそのまま確認します</span>
           </Link>
-          <Link href="/admin/preview/setup" className="admin-choice">
+          <Link href={buildAdminPath("/admin/preview/setup", adminKey)} className="admin-choice">
             <strong>初回セットアップ画面を見る</strong>
             <span>入力しても保存されません</span>
           </Link>
