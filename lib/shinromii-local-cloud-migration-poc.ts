@@ -12,6 +12,21 @@ const CLOUD_RECORD_STORE = "records";
 const META_ID = "local-cloud-migration-meta";
 const ACTOR_KEYPAIR_ID = "migration-actor-rsa-oaep-keypair";
 const LOCAL_SCHEMA_VERSION = "local-cloud-poc-v1";
+const MIGRATION_STALE_AFTER_MS = 60_000;
+const IN_PROGRESS_MIGRATION_STATUSES: LocalCloudMigrationPocStatus[] = ["preparing", "encrypted", "uploaded", "verifying"];
+const STEP_SEQUENCE: LocalCloudMigrationPocStep[] = [
+  "localPrepared",
+  "migrationIdGenerated",
+  "dekGenerated",
+  "encrypted",
+  "wrapped",
+  "uploaded",
+  "fetched",
+  "unwrapped",
+  "decrypted",
+  "matched",
+  "verified",
+];
 
 export type LocalCloudMigrationPocStatus =
   | "idle"
@@ -135,6 +150,7 @@ type LocalCloudMigrationSnapshot = {
   profileId: string | null;
   migrationId: string | null;
   migrationStatus: LocalCloudMigrationPocStatus;
+  staleRecovered: boolean;
   completedSteps: LocalCloudMigrationPocStep[];
   failedStep: LocalCloudMigrationPocStep | null;
   localUpdatedAt: string | null;
@@ -629,10 +645,65 @@ function buildSnapshot(state: LocalRepositoryState, cloudRecord: StoredCloudReco
     profileId: state.fixture?.profile.id ?? meta.profileId,
     migrationId: meta.migrationId,
     migrationStatus: meta.migrationStatus,
+    staleRecovered: false,
     completedSteps: meta.completedSteps,
     failedStep: meta.failedStep,
     localUpdatedAt: state.fixture?.updatedAt ?? null,
     cloudUpdatedAt: cloudRecord?.updatedAt ?? null,
+  };
+}
+
+function inferPendingStep(completedSteps: LocalCloudMigrationPocStep[]) {
+  return STEP_SEQUENCE.find((step) => !completedSteps.includes(step)) ?? completedSteps.at(-1) ?? "migrationIdGenerated";
+}
+
+function isStaleInProgressMeta(meta: StoredMigrationMeta) {
+  if (!IN_PROGRESS_MIGRATION_STATUSES.includes(meta.migrationStatus)) {
+    return false;
+  }
+
+  const updatedAt = Date.parse(meta.updatedAt);
+  if (!Number.isFinite(updatedAt)) {
+    return true;
+  }
+
+  return Date.now() - updatedAt >= MIGRATION_STALE_AFTER_MS;
+}
+
+function createStaleFailedMeta(meta: StoredMigrationMeta): StoredMigrationMeta {
+  return {
+    ...meta,
+    migrationStatus: "failed",
+    failedStep: meta.failedStep ?? inferPendingStep(meta.completedSteps),
+    updatedAt: new Date().toISOString(),
+  };
+}
+
+function reportMigrationPersistenceFailure(context: string, error: unknown) {
+  console.error(`[LocalCloudMigrationPoC] ${context}`, error);
+}
+
+async function reconcileLocalStateIfStale(state: LocalRepositoryState) {
+  const meta = state.meta;
+
+  if (!meta || !isStaleInProgressMeta(meta)) {
+    return { state, staleRecovered: false };
+  }
+
+  const reconciledMeta = createStaleFailedMeta(meta);
+
+  try {
+    await localPocRepository.saveMeta(reconciledMeta);
+  } catch (error) {
+    reportMigrationPersistenceFailure("Failed to persist stale migration recovery state.", error);
+  }
+
+  return {
+    state: {
+      ...state,
+      meta: reconciledMeta,
+    },
+    staleRecovered: true,
   };
 }
 
@@ -700,17 +771,21 @@ export async function prepareLocalCloudMigrationPocFixture() {
 }
 
 export async function loadLocalCloudMigrationPocSnapshot() {
-  const state = await localPocRepository.loadState();
+  const loadedState = await localPocRepository.loadState();
+  const { state, staleRecovered } = await reconcileLocalStateIfStale(loadedState);
   const profileId = state.fixture?.profile.id ?? state.meta?.profileId ?? null;
   const cloudRecord = profileId ? await cloudMockRepository.loadRecord(profileId) : null;
-  return buildSnapshot(state, cloudRecord);
+  return {
+    ...buildSnapshot(state, cloudRecord),
+    staleRecovered,
+  };
 }
 
 export async function runLocalCloudMigrationPoc(
   options: { simulateFailure?: LocalCloudMigrationPocFailureMode } = {},
 ): Promise<LocalCloudMigrationPocResult> {
   const { simulateFailure } = options;
-  const state = await localPocRepository.loadState();
+  const { state } = await reconcileLocalStateIfStale(await localPocRepository.loadState());
   const fixture = state.fixture;
 
   if (!fixture) {
@@ -920,13 +995,15 @@ export async function runLocalCloudMigrationPoc(
 
     try {
       await persistMetaProgress(fixture, migrationId, "failed", flowError.completedSteps, flowError.failedStep);
-    } catch {}
+    } catch (persistenceError) {
+      reportMigrationPersistenceFailure("Failed to persist migration failure state.", persistenceError);
+    }
     throw flowError;
   }
 }
 
 export async function verifyStoredLocalCloudMigrationPoc(): Promise<LocalCloudMigrationPocResult> {
-  const state = await localPocRepository.loadState();
+  const { state } = await reconcileLocalStateIfStale(await localPocRepository.loadState());
   const fixture = state.fixture;
 
   if (!fixture) {
@@ -1043,7 +1120,9 @@ export async function verifyStoredLocalCloudMigrationPoc(): Promise<LocalCloudMi
           );
     try {
       await persistMetaProgress(fixture, meta.migrationId, "failed", flowError.completedSteps, flowError.failedStep);
-    } catch {}
+    } catch (persistenceError) {
+      reportMigrationPersistenceFailure("Failed to persist migration verification failure state.", persistenceError);
+    }
     throw flowError;
   }
 }
