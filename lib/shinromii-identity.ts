@@ -238,12 +238,21 @@ export function normalizeIdentity(candidate: unknown, profile?: UserProfile): Sh
   const safeUsers = users.length > 0 ? users : fallback.users;
   const safeFamilies = families.length > 0 ? families : fallback.families;
   const safeStudentProfiles = studentProfiles.length > 0 ? studentProfiles : fallback.studentProfiles;
+  const validFamilyMembers = familyMembers.filter(
+    (member) =>
+      safeUsers.some((user) => user.id === member.userId) &&
+      safeFamilies.some((family) => family.id === member.familyId),
+  );
   const safeFamilyMembers =
-    familyMembers.length > 0 &&
-    familyMembers.some((member) => safeUsers.some((user) => user.id === member.userId)) &&
-    familyMembers.some((member) => safeFamilies.some((family) => family.id === member.familyId))
-      ? familyMembers
-      : fallback.familyMembers;
+    validFamilyMembers.length > 0
+      ? validFamilyMembers
+      : [
+          {
+            ...fallback.familyMembers[0],
+            userId: safeUsers[0].id,
+            familyId: safeFamilies[0].id,
+          },
+        ];
 
   const entitlements: ShinromiiEntitlement[] = Array.isArray(candidate.entitlements)
     ? candidate.entitlements
