@@ -4575,6 +4575,11 @@ a {
   line-height: 1.5;
 }
 
+.admin-poc-stack {
+  display: grid;
+  gap: 16px;
+}
+
 .admin-auth-actions {
   display: flex;
   flex-wrap: wrap;
