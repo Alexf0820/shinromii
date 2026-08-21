@@ -8,6 +8,7 @@ import { BrandAccountLink } from "@/components/BrandAccountLink";
 import { BrandMark } from "@/components/BrandMark";
 import { FirstSetup } from "@/components/FirstSetup";
 import { MobileNav } from "@/components/MobileNav";
+import { SettingsLink } from "@/components/SettingsLink";
 import { SiteFooter } from "@/components/SiteFooter";
 import { UiIcon } from "@/components/UiIcon";
 import { WelcomeStart } from "@/components/WelcomeStart";
@@ -66,6 +67,30 @@ const pageMeta: Record<string, PageMeta> = {
   "/about": {
     title: "SHINROMiiについて",
     subtitle: "",
+  },
+  "/settings": {
+    title: "設定",
+    subtitle: "今の使い方やデータの扱いを確認する",
+  },
+  "/settings/plans": {
+    title: "プラン・機能比較",
+    subtitle: "使い方に合わせて選べるようにします",
+  },
+  "/settings/data-protection": {
+    title: "データの守り方",
+    subtitle: "どこに保存されるかを、わかりやすく確認",
+  },
+  "/settings/backup": {
+    title: "バックアップ・データ管理",
+    subtitle: "この端末のデータを守るための準備",
+  },
+  "/settings/family": {
+    title: "家族との共有",
+    subtitle: "今できることと、これからできるようにしたいこと",
+  },
+  "/settings/account": {
+    title: "アカウント",
+    subtitle: "この端末だけで使う場合の状態を確認",
   },
   "/guide": {
     title: "使い方",
@@ -161,7 +186,10 @@ export function AppShell({ children }: AppShellProps) {
                 <p className="home-brand-sub">わたしの進路ノート</p>
               </div>
               <div className="home-hero-meta">
-                {hideUserChrome ? null : <BrandAccountLink />}
+                <div className="home-hero-actions">
+                  {hideUserChrome ? null : <BrandAccountLink />}
+                  {hideUserChrome ? null : <SettingsLink />}
+                </div>
                 <span className="home-version">{APP_VERSION_LABEL}</span>
               </div>
             </div>
