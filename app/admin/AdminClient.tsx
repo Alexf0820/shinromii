@@ -7,6 +7,7 @@ import { APP_VERSION_LABEL } from "@/lib/app-version";
 import { AdminCryptoPocPanel } from "@/components/admin/AdminCryptoPocPanel";
 import { AdminDekWrapPocPanel } from "@/components/admin/AdminDekWrapPocPanel";
 import { AdminFamilyKeySharingPocPanel } from "@/components/admin/AdminFamilyKeySharingPocPanel";
+import { AdminLocalCloudMigrationPocPanel } from "@/components/admin/AdminLocalCloudMigrationPocPanel";
 import {
   loadShinromiiStorage,
   signInForLocalPreview,
@@ -102,6 +103,7 @@ export function AdminClient() {
           <AdminCryptoPocPanel />
           <AdminDekWrapPocPanel />
           <AdminFamilyKeySharingPocPanel />
+          <AdminLocalCloudMigrationPocPanel />
         </div>
       </section>
     </div>
