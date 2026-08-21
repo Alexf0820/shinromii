@@ -1334,7 +1334,7 @@ export async function verifyStoredLocalCloudMigrationPoc(): Promise<LocalCloudMi
         migrationId ?? "unknown-migration",
         claimFence,
         "failed",
-        ["uploaded", "verifying", "verified"],
+        ["uploaded", "verifying"],
         flowError.completedSteps,
         flowError.failedStep,
       );
