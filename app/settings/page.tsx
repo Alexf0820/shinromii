@@ -2,6 +2,7 @@ import Link from "next/link";
 import { UiIcon } from "@/components/UiIcon";
 
 const menuItems = [
+  { href: "/settings/app-update", title: "バージョン・更新", icon: "settings" as const },
   { href: "/settings/plans", title: "プラン・機能比較", icon: "spark" as const },
   { href: "/settings/data-protection", title: "データの守り方", icon: "lock" as const },
   { href: "/settings/backup", title: "バックアップ・データ管理", icon: "download" as const },

@@ -572,7 +572,8 @@ a {
 .subject-chip,
 .feedback-card,
 .note-card,
-.info-strip {
+.info-strip,
+.pwa-update-notice {
   border-radius: 18px;
   background: var(--surface-soft);
   padding: 14px;
@@ -587,9 +588,49 @@ a {
 
 .feedback-card p:last-child,
 .note-card p:last-child,
-.info-strip p:last-child {
+.info-strip p:last-child,
+.pwa-update-copy p:last-child {
   margin-top: 6px;
   color: var(--text);
+}
+
+.pwa-update-notice {
+  position: sticky;
+  bottom: calc(var(--nav-height) + 16px + env(safe-area-inset-bottom));
+  z-index: 20;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  border: 1px solid rgba(47, 103, 216, 0.14);
+  box-shadow: var(--shadow-soft);
+  background: rgba(250, 252, 255, 0.96);
+  -webkit-backdrop-filter: blur(10px);
+  backdrop-filter: blur(10px);
+}
+
+.pwa-update-copy {
+  display: flex;
+  flex-direction: column;
+}
+
+.pwa-update-title {
+  margin: 0;
+  color: var(--ink);
+  font-size: 0.86rem;
+  font-weight: 800;
+}
+
+.pwa-update-text {
+  margin: 0;
+  color: var(--ink-sub);
+  font-size: 0.78rem;
+  line-height: 1.6;
+}
+
+.pwa-update-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
 }
 
 .text-link {
@@ -3967,6 +4008,18 @@ a {
 .settings-account-glyph {
   width: 22px;
   height: 22px;
+}
+
+.settings-version-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0 4px;
+  color: var(--primary);
+  font-size: 0.72rem;
+  font-weight: 800;
+  line-height: 1.2;
+  text-align: center;
 }
 
 .settings-status-label {
