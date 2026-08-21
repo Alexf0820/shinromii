@@ -271,7 +271,6 @@ export function PwaRegistration({ children }: PropsWithChildren) {
     setStatus("updating");
     applyRequestedRef.current = true;
     applyTimeoutIdRef.current = window.setTimeout(() => {
-      applyRequestedRef.current = false;
       applyTimeoutIdRef.current = null;
       setErrorMessage(APPLY_FAILED_MESSAGE);
       setShowUpdateNotice(true);
@@ -371,6 +370,7 @@ export function PwaRegistration({ children }: PropsWithChildren) {
 
     return () => {
       cancelled = true;
+      applyRequestedRef.current = false;
       clearApplyTimeout();
       if (delayedCheckId !== null) {
         window.clearTimeout(delayedCheckId);
