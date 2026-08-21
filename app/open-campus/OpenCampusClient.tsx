@@ -1621,8 +1621,7 @@ export function OpenCampusClient() {
                   )}
                 </div>
               ) : null}
-              {isUpcoming || event.attachments.length > 0 ? (
-                <div className={isUpcoming || event.links.length > 0 ? "top-gap" : ""}>
+              <div className={isUpcoming || event.links.length > 0 ? "top-gap" : ""}>
                   <div className="row-between gap-sm align-start">
                     <span className="review-note-label">資料・添付ファイル</span>
                     <button
@@ -1757,9 +1756,8 @@ export function OpenCampusClient() {
                     </p>
                   ) : null}
                 </div>
-              ) : null}
               {event.dayMemo ? (
-                <div className={isUpcoming || event.links.length > 0 || event.attachments.length > 0 ? "top-gap" : ""}>
+                <div className="top-gap">
                   {renderNoteBlock("当日のメモ", event.dayMemo)}
                 </div>
               ) : null}
@@ -2186,6 +2184,10 @@ export function OpenCampusClient() {
     }
   }
 
+  async function rollbackSavedAttachments(attachmentIds: string[]) {
+    await Promise.all(attachmentIds.map((id) => deleteAttachmentBlob(id).catch(() => undefined)));
+  }
+
   function openDirectAttachmentPicker(eventId: string) {
     if (!attachmentsAvailable) {
       window.alert("このブラウザでは添付ファイル保存に対応していません。");
@@ -2234,7 +2236,15 @@ export function OpenCampusClient() {
 
     try {
       const newAttachmentMetas = await persistPendingAttachments(eventId, nextPending);
-      const nextEvents = events.map((event) =>
+      const latestEvents = loadShinromiiStorage().openCampusEvents;
+      const latestEvent = latestEvents.find((event) => event.id === eventId);
+
+      if (!latestEvent) {
+        await rollbackSavedAttachments(newAttachmentMetas.map((attachment) => attachment.id));
+        throw new Error("missing-open-campus-event");
+      }
+
+      const nextEvents = latestEvents.map((event) =>
         event.id === eventId
           ? {
               ...event,
@@ -2244,15 +2254,21 @@ export function OpenCampusClient() {
           : event,
       );
 
+      try {
+        saveOpenCampusEvents(nextEvents);
+      } catch {
+        await rollbackSavedAttachments(newAttachmentMetas.map((attachment) => attachment.id));
+        throw new Error("open-campus-attachment-meta-save-failed");
+      }
+
       setEvents(nextEvents);
-      saveOpenCampusEvents(nextEvents);
 
       if (editingEventId === eventId) {
         setEventForm((current) =>
           current.id === eventId
             ? {
                 ...current,
-                attachments: [...current.attachments, ...newAttachmentMetas],
+                attachments: [...latestEvent.attachments, ...newAttachmentMetas],
               }
             : current,
         );
