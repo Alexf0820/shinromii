@@ -142,9 +142,9 @@ export function WelcomeStart({ onStartFresh, onRestored, preview = false }: Welc
             </span>
             <span className="welcome-choice-copy">
               <strong>家族・複数端末で使う</strong>
-              <span>アカウントを作成</span>
-              <span>家族と共有</span>
-              <span>複数端末で利用・自動バックアップ</span>
+              <span>アカウントを作成して使う予定です</span>
+              <span>家族と共有できるようにする予定です</span>
+              <span>複数端末で使えて、自動バックアップも使える予定です</span>
             </span>
             <UiIcon name="chevron-right" className="welcome-choice-arrow" aria-hidden="true" />
           </Link>

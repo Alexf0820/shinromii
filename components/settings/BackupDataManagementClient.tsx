@@ -92,6 +92,10 @@ export function BackupDataManagementClient() {
 
   async function handleBackupImport(fileList: FileList | null) {
     const file = fileList?.[0];
+    const fileReadErrorMessage =
+      "バックアップファイルを読み込めませんでした。ファイルを確認して、もう一度お試しください。";
+    const restoreErrorMessage =
+      "データを復元できませんでした。バックアップ内容を確認して、もう一度お試しください。";
 
     if (!file) {
       return;
@@ -116,15 +120,18 @@ export function BackupDataManagementClient() {
         return;
       }
 
-      await storageRepository.saveStorage(parsed.storage);
-      await refreshHistory();
-      setMessage("バックアップから復元しました。");
-      window.alert("バックアップから復元しました。");
+      try {
+        await storageRepository.saveStorage(parsed.storage);
+        await refreshHistory();
+        setMessage("バックアップから復元しました。");
+        window.alert("バックアップから復元しました。");
+      } catch {
+        window.alert(restoreErrorMessage);
+        setMessage(restoreErrorMessage);
+      }
     } catch {
-      const nextMessage =
-        "バックアップファイルを読み込めませんでした。SHINROMiiで作成したバックアップファイルか確認してください。";
-      window.alert(nextMessage);
-      setMessage(nextMessage);
+      window.alert(fileReadErrorMessage);
+      setMessage(fileReadErrorMessage);
     }
   }
 
