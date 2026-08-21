@@ -262,6 +262,9 @@ export function PwaRegistration({ children }: PropsWithChildren) {
     }
 
     if (registrationRef.current) {
+      if (effectActiveRef.current) {
+        bindRegistration(registrationRef.current);
+      }
       return registrationRef.current;
     }
 
