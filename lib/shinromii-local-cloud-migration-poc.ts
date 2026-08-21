@@ -575,6 +575,10 @@ const localPocRepository = {
   },
 
   async saveMetaIfCurrentClaim(meta: StoredMigrationMeta) {
+    await this.saveMetaIfCurrentClaimWithStatuses(meta, [meta.migrationStatus]);
+  },
+
+  async saveMetaIfCurrentClaimWithStatuses(meta: StoredMigrationMeta, expectedStatuses: LocalCloudMigrationPocStatus[]) {
     await withDatabase(
       SHINROMII_LOCAL_MIGRATION_POC_LOCAL_DB,
       [LOCAL_META_STORE],
@@ -593,7 +597,8 @@ const localPocRepository = {
           !existing ||
           existing.profileId !== meta.profileId ||
           existing.claimFence !== meta.claimFence ||
-          existing.migrationId !== meta.migrationId
+          existing.migrationId !== meta.migrationId ||
+          !expectedStatuses.includes(existing.migrationStatus)
         ) {
           throw new Error("現在のclaimと一致しない移行処理はメタ情報を書き換えできません。");
         }
@@ -860,7 +865,7 @@ async function reconcileLocalStateIfStale(state: LocalRepositoryState) {
   const reconciledMeta = createStaleFailedMeta(meta);
 
   try {
-    await localPocRepository.saveMetaIfCurrentClaim(reconciledMeta);
+    await localPocRepository.saveMetaIfCurrentClaimWithStatuses(reconciledMeta, IN_PROGRESS_MIGRATION_STATUSES);
   } catch (error) {
     reportMigrationPersistenceFailure("Failed to persist stale migration recovery state.", error);
 
@@ -882,19 +887,23 @@ async function persistMetaProgress(
   migrationId: string,
   claimFence: number,
   migrationStatus: LocalCloudMigrationPocStatus,
+  expectedStatuses: LocalCloudMigrationPocStatus[],
   completedSteps: LocalCloudMigrationPocStep[],
   failedStep: LocalCloudMigrationPocStep | null = null,
 ) {
-  await localPocRepository.saveMetaIfCurrentClaim({
-    id: META_ID,
-    profileId: fixture.profile.id,
-    migrationId,
-    claimFence,
-    migrationStatus,
-    completedSteps,
-    failedStep,
-    updatedAt: new Date().toISOString(),
-  });
+  await localPocRepository.saveMetaIfCurrentClaimWithStatuses(
+    {
+      id: META_ID,
+      profileId: fixture.profile.id,
+      migrationId,
+      claimFence,
+      migrationStatus,
+      completedSteps,
+      failedStep,
+      updatedAt: new Date().toISOString(),
+    },
+    expectedStatuses,
+  );
 }
 
 function createFlowError(
@@ -998,7 +1007,7 @@ export async function runLocalCloudMigrationPoc(
       rethrowAsFlowError(error, "Student Profile用DEKの生成に失敗しました。", completedSteps, "dekGenerated");
     }
     completedSteps.push("dekGenerated");
-    await persistMetaProgress(fixture, migrationId, claimFence, "preparing", completedSteps);
+    await persistMetaProgress(fixture, migrationId, claimFence, "preparing", ["preparing"], completedSteps);
 
     const serializedFixture = serializeFixture(fixture);
     const iv = getRandomIv();
@@ -1033,7 +1042,7 @@ export async function runLocalCloudMigrationPoc(
       rethrowAsFlowError(error, "wrapped DEKの生成に失敗しました。", completedSteps, "wrapped");
     }
     completedSteps.push("wrapped");
-    await persistMetaProgress(fixture, migrationId, claimFence, "encrypted", completedSteps);
+    await persistMetaProgress(fixture, migrationId, claimFence, "encrypted", ["preparing"], completedSteps);
 
     currentStep = "uploaded";
     try {
@@ -1059,7 +1068,7 @@ export async function runLocalCloudMigrationPoc(
       rethrowAsFlowError(error, "Cloud Mockへの保存に失敗しました。", completedSteps, "uploaded");
     }
     completedSteps.push("uploaded");
-    await persistMetaProgress(fixture, migrationId, claimFence, "uploaded", completedSteps);
+    await persistMetaProgress(fixture, migrationId, claimFence, "uploaded", ["encrypted"], completedSteps);
 
     currentStep = "fetched";
     try {
@@ -1084,7 +1093,7 @@ export async function runLocalCloudMigrationPoc(
       rethrowAsFlowError(error, "Cloud Mockから取得したschemaVersionを検証できませんでした。", completedSteps, currentStep);
     }
     completedSteps.push("fetched");
-    await persistMetaProgress(fixture, migrationId, claimFence, "verifying", completedSteps);
+    await persistMetaProgress(fixture, migrationId, claimFence, "verifying", ["uploaded"], completedSteps);
 
     currentStep = "unwrapped";
     let restoredDek: CryptoKey;
@@ -1157,7 +1166,7 @@ export async function runLocalCloudMigrationPoc(
       rethrowAsFlowError(error, "verified状態の確定保存に失敗しました。", completedSteps, "verified");
     }
     completedSteps.push("verified");
-    await persistMetaProgress(fixture, migrationId, claimFence, "verified", completedSteps);
+    await persistMetaProgress(fixture, migrationId, claimFence, "verified", ["verifying"], completedSteps);
 
     const snapshot = await loadLocalCloudMigrationPocSnapshot();
 
@@ -1178,7 +1187,15 @@ export async function runLocalCloudMigrationPoc(
           );
 
     try {
-      await persistMetaProgress(fixture, migrationId ?? claim.meta.migrationId ?? "unknown-migration", claimFence, "failed", flowError.completedSteps, flowError.failedStep);
+      await persistMetaProgress(
+        fixture,
+        migrationId ?? claim.meta.migrationId ?? "unknown-migration",
+        claimFence,
+        "failed",
+        ["preparing", "encrypted", "uploaded", "verifying"],
+        flowError.completedSteps,
+        flowError.failedStep,
+      );
     } catch (persistenceError) {
       reportMigrationPersistenceFailure("Failed to persist migration failure state.", persistenceError);
     }
@@ -1292,7 +1309,7 @@ export async function verifyStoredLocalCloudMigrationPoc(): Promise<LocalCloudMi
       rethrowAsFlowError(error, "verified状態の確定保存に失敗しました。", completedSteps, "verified");
     }
     if (!completedSteps.includes("verified")) completedSteps.push("verified");
-    await persistMetaProgress(fixture, migrationId, claimFence, "verified", completedSteps);
+    await persistMetaProgress(fixture, migrationId, claimFence, "verified", ["uploaded", "verifying", "verified"], completedSteps);
 
     const snapshot = await loadLocalCloudMigrationPocSnapshot();
 
@@ -1312,7 +1329,15 @@ export async function verifyStoredLocalCloudMigrationPoc(): Promise<LocalCloudMi
             currentStep,
           );
     try {
-      await persistMetaProgress(fixture, migrationId ?? "unknown-migration", claimFence, "failed", flowError.completedSteps, flowError.failedStep);
+      await persistMetaProgress(
+        fixture,
+        migrationId ?? "unknown-migration",
+        claimFence,
+        "failed",
+        ["uploaded", "verifying", "verified"],
+        flowError.completedSteps,
+        flowError.failedStep,
+      );
     } catch (persistenceError) {
       reportMigrationPersistenceFailure("Failed to persist migration verification failure state.", persistenceError);
     }
