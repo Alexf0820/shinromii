@@ -378,6 +378,11 @@ export function OpenCampusClient() {
   const [pendingAttachments, setPendingAttachments] = useState<PendingAttachment[]>([]);
   const [removedAttachmentIds, setRemovedAttachmentIds] = useState<string[]>([]);
   const [attachmentWarning, setAttachmentWarning] = useState<string | null>(null);
+  const [directAttachmentMessage, setDirectAttachmentMessage] = useState<{
+    eventId: string;
+    tone: "success" | "error";
+    text: string;
+  } | null>(null);
   const [attachmentPreviews, setAttachmentPreviews] = useState<Record<string, AttachmentPreview>>({});
   const [expandedImageId, setExpandedImageId] = useState<string | null>(null);
   const [pendingScrollId, setPendingScrollId] = useState<string | null>(null);
@@ -385,6 +390,8 @@ export function OpenCampusClient() {
   const [pendingEvalScrollId, setPendingEvalScrollId] = useState<string | null>(null);
   const [deferredAttendanceIds, setDeferredAttendanceIds] = useState<string[]>([]);
   const attachmentInputRef = useRef<HTMLInputElement | null>(null);
+  const directAttachmentInputRef = useRef<HTMLInputElement | null>(null);
+  const directAttachmentEventIdRef = useRef<string | null>(null);
   const objectUrlsRef = useRef<string[]>([]);
   const detailRefs = useRef<Record<string, HTMLElement | null>>({});
   const editRefs = useRef<Record<string, HTMLElement | null>>({});
@@ -630,6 +637,7 @@ export function OpenCampusClient() {
     setPendingAttachments([]);
     setRemovedAttachmentIds([]);
     setAttachmentWarning(null);
+    setDirectAttachmentMessage(null);
   }
 
   function closeEventEditor() {
@@ -674,11 +682,13 @@ export function OpenCampusClient() {
   }
 
   function handleAttended(event: OpenCampusEvent) {
+    setDirectAttachmentMessage(null);
     persistEventStatus(event, "参加済み");
     openEvaluationEditor(event);
   }
 
   function handleSkipped(event: OpenCampusEvent) {
+    setDirectAttachmentMessage(null);
     persistEventStatus(event, "不参加");
     closeEvaluationEditor();
     setSelectedId(null);
@@ -1463,8 +1473,7 @@ export function OpenCampusClient() {
     ].filter((item): item is { label: string; value: string } => item !== null);
     const hasDayInfo = dayInfoItems.length > 0 || lookForChips.length > 0;
     const isUpcoming = event.status === "検討中" || event.status === "予約済み";
-    const hasMaterials = event.links.length > 0 || event.attachments.length > 0 || Boolean(event.dayMemo);
-    const showMaterials = isUpcoming || hasMaterials;
+    const showMaterials = true;
     const simpleMarks = [
       detailEvaluation.simpleRatings?.campus
         ? { label: "校舎・設備", value: OC_CAMPUS_MARK_LABELS[detailEvaluation.simpleRatings.campus] }
@@ -1614,7 +1623,18 @@ export function OpenCampusClient() {
               ) : null}
               {isUpcoming || event.attachments.length > 0 ? (
                 <div className={isUpcoming || event.links.length > 0 ? "top-gap" : ""}>
-                  <span className="review-note-label">資料・添付ファイル</span>
+                  <div className="row-between gap-sm align-start">
+                    <span className="review-note-label">資料・添付ファイル</span>
+                    <button
+                      type="button"
+                      className="card-action subtle"
+                      onClick={() => openDirectAttachmentPicker(event.id)}
+                      disabled={!attachmentsAvailable}
+                    >
+                      <UiIcon name="plus" className="action-icon" />
+                      ファイル追加
+                    </button>
+                  </div>
                   {event.attachments.length > 0 ? (
                     <div className="list-stack top-gap">
                       {!attachmentsAvailable ? (
@@ -1731,6 +1751,11 @@ export function OpenCampusClient() {
                   ) : (
                     <p className="muted-text top-gap">まだ添付ファイルはありません。</p>
                   )}
+                  {directAttachmentMessage?.eventId === event.id ? (
+                    <p className={`muted-text top-gap${directAttachmentMessage.tone === "error" ? " danger-text" : ""}`}>
+                      {directAttachmentMessage.text}
+                    </p>
+                  ) : null}
                 </div>
               ) : null}
               {event.dayMemo ? (
@@ -2083,6 +2108,22 @@ export function OpenCampusClient() {
       return;
     }
 
+    const { nextPending, warningMessage } = collectPendingAttachments(fileList);
+
+    if (warningMessage) {
+      const message = warningMessage;
+      setAttachmentWarning(message);
+      window.alert(message);
+    } else {
+      setAttachmentWarning(null);
+    }
+
+    if (nextPending.length > 0) {
+      setPendingAttachments((current) => [...current, ...nextPending]);
+    }
+  }
+
+  function collectPendingAttachments(fileList: FileList) {
     const nextPending: PendingAttachment[] = [];
     const errors: string[] = [];
 
@@ -2103,26 +2144,19 @@ export function OpenCampusClient() {
       });
     });
 
-    if (errors.length > 0) {
-      const message = errors.join("\n");
-      setAttachmentWarning(message);
-      window.alert(message);
-    } else {
-      setAttachmentWarning(null);
-    }
-
-    if (nextPending.length > 0) {
-      setPendingAttachments((current) => [...current, ...nextPending]);
-    }
+    return {
+      nextPending,
+      warningMessage: errors.length > 0 ? errors.join("\n") : null,
+    };
   }
 
-  async function persistPendingAttachments(ocId: string) {
+  async function persistPendingAttachments(ocId: string, attachments: PendingAttachment[]) {
     const savedAttachmentIds: string[] = [];
 
     try {
       const metas: OpenCampusAttachmentMeta[] = [];
 
-      for (const pendingAttachment of pendingAttachments) {
+      for (const pendingAttachment of attachments) {
         const meta: OpenCampusAttachmentMeta = {
           id: pendingAttachment.id,
           ocId,
@@ -2149,6 +2183,94 @@ export function OpenCampusClient() {
     } catch (error) {
       await Promise.all(savedAttachmentIds.map((id) => deleteAttachmentBlob(id).catch(() => undefined)));
       throw error;
+    }
+  }
+
+  function openDirectAttachmentPicker(eventId: string) {
+    if (!attachmentsAvailable) {
+      window.alert("このブラウザでは添付ファイル保存に対応していません。");
+      return;
+    }
+
+    directAttachmentEventIdRef.current = eventId;
+    directAttachmentInputRef.current?.click();
+  }
+
+  async function handleDirectAttachmentFiles(fileList: FileList | null) {
+    const eventId = directAttachmentEventIdRef.current;
+    directAttachmentEventIdRef.current = null;
+
+    if (!fileList || fileList.length === 0 || !eventId) {
+      return;
+    }
+
+    if (!attachmentsAvailable) {
+      window.alert("このブラウザでは添付ファイル保存に対応していません。");
+      return;
+    }
+
+    const currentEvent = events.find((event) => event.id === eventId);
+
+    if (!currentEvent) {
+      const message = "ファイルを追加できませんでした。もう一度お試しください。";
+      window.alert(message);
+      setDirectAttachmentMessage({
+        eventId,
+        tone: "error",
+        text: message,
+      });
+      return;
+    }
+
+    const { nextPending, warningMessage } = collectPendingAttachments(fileList);
+
+    if (warningMessage) {
+      window.alert(warningMessage);
+    }
+
+    if (nextPending.length === 0) {
+      return;
+    }
+
+    try {
+      const newAttachmentMetas = await persistPendingAttachments(eventId, nextPending);
+      const nextEvents = events.map((event) =>
+        event.id === eventId
+          ? {
+              ...event,
+              attachments: [...event.attachments, ...newAttachmentMetas],
+              updatedAt: todayString(),
+            }
+          : event,
+      );
+
+      setEvents(nextEvents);
+      saveOpenCampusEvents(nextEvents);
+
+      if (editingEventId === eventId) {
+        setEventForm((current) =>
+          current.id === eventId
+            ? {
+                ...current,
+                attachments: [...current.attachments, ...newAttachmentMetas],
+              }
+            : current,
+        );
+      }
+
+      setDirectAttachmentMessage({
+        eventId,
+        tone: "success",
+        text: "ファイルを追加しました。",
+      });
+    } catch {
+      const message = "ファイルを追加できませんでした。もう一度お試しください。";
+      window.alert(message);
+      setDirectAttachmentMessage({
+        eventId,
+        tone: "error",
+        text: message,
+      });
     }
   }
 
@@ -2182,7 +2304,7 @@ export function OpenCampusClient() {
 
     try {
       const newAttachmentMetas = pendingAttachments.length > 0
-        ? await persistPendingAttachments(eventForm.id)
+        ? await persistPendingAttachments(eventForm.id, pendingAttachments)
         : [];
 
       const nextEvent = normalizeOpenCampusEvent({
@@ -2231,6 +2353,7 @@ export function OpenCampusClient() {
 
       setPendingAttachments([]);
       setRemovedAttachmentIds([]);
+      setDirectAttachmentMessage(null);
       closeEventEditor();
     } catch (error) {
       const message =
@@ -2419,6 +2542,17 @@ export function OpenCampusClient() {
 
   return (
     <div className="oc-page">
+      <input
+        ref={directAttachmentInputRef}
+        type="file"
+        accept=".pdf,.jpg,.jpeg,.png,.webp,application/pdf,image/jpeg,image/png,image/webp"
+        multiple
+        hidden
+        onChange={(event) => {
+          void handleDirectAttachmentFiles(event.target.files);
+          event.target.value = "";
+        }}
+      />
       <section className="list-section">
         <div className="list-section-head">
           <div className="list-section-copy">
