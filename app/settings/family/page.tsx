@@ -5,7 +5,8 @@ export default function SettingsFamilyPage() {
   return (
     <div className="page-stack compact settings-stack">
       <section className="panel settings-card-block">
-        <p className="settings-card-title">無料版での共有方法</p>
+        <p className="settings-mini-label">無料版での共有方法</p>
+        <p className="settings-card-title">バックアップを渡して共有できます</p>
         <p className="settings-copy">
           バックアップを作って、家族に渡すことで共有できます。今の無料版でも、必要なときに受け渡しできます。
         </p>
@@ -30,13 +31,24 @@ export default function SettingsFamilyPage() {
         </Link>
       </section>
 
+      <section className="panel settings-family-benefit-card">
+        <p className="settings-mini-label">Cloud版で使うと（予定）</p>
+        <p className="settings-card-title">家族で見やすくする準備を進めています</p>
+        <ul className="settings-bullet-list">
+          <li>家族が最新の進路情報を見やすくなる予定です</li>
+          <li>別の端末からも同じ内容を確認できるようにする予定です</li>
+          <li>必要な人だけが確認できる形を目指しています</li>
+        </ul>
+      </section>
+
       <section className="panel settings-cloud-card">
-        <p className="settings-cloud-title">Cloud版ならもっと便利に</p>
+        <p className="settings-cloud-eyebrow">Cloud版のご案内</p>
+        <p className="settings-cloud-title">Cloud版なら、もっと手間なく共有へ（予定）</p>
         <p className="settings-cloud-text">
           家族が自動で最新の情報を見られるようにし、別の端末からも同じ内容を使えるようにする予定です。
         </p>
         <Link href="/settings/plans" className="action-button primary">
-          Cloud版で使う
+          Cloud版の案内を見る
         </Link>
       </section>
 

@@ -13,13 +13,24 @@ export function PlanComparisonTable() {
 
   return (
     <section className="plan-table-section">
+      <div className="plan-table-intro">
+        <span className="plan-table-intro-icon" aria-hidden="true">
+          〇
+        </span>
+        <div>
+          <p className="plan-table-intro-title">いつでも変更できます</p>
+          <p className="plan-table-intro-text">
+            無料版からこの端末だけで始めて、必要になったときにCloud版を選べる形を予定しています。
+          </p>
+        </div>
+      </div>
       <div className="plan-table-wrap">
         <table className="plan-table">
           <thead>
             <tr>
               <th scope="col">機能</th>
               <th scope="col">この端末だけ・無料</th>
-              <th scope="col">Cloud版</th>
+              <th scope="col">Cloud版（予定）</th>
             </tr>
           </thead>
           <tbody>

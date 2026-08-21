@@ -18,30 +18,34 @@ export default function SettingsPage() {
           <UiIcon name="lock" className="settings-status-glyph" />
         </div>
         <div>
-          <p className="settings-status-label">現在</p>
+          <p className="settings-status-label">現在の利用方法</p>
           <p className="settings-status-title">この端末だけで使用中</p>
           <p className="settings-status-text">
-            登録なしで、そのまま使える状態です。必要になったときに、あとから使い方を見直せます。
+            登録なしで使っています。今の進路情報は、この端末の中に保存されています。
           </p>
         </div>
       </section>
 
-      <nav className="settings-menu" aria-label="設定メニュー">
-        {menuItems.map((item) => (
-          <Link key={item.href} href={item.href} className="settings-menu-item">
-            <span className="settings-menu-icon" aria-hidden="true">
-              <UiIcon name={item.icon} className="settings-menu-glyph" />
-            </span>
-            <span className="settings-menu-text">{item.title}</span>
-            <UiIcon name="chevron-right" className="settings-menu-arrow" aria-hidden="true" />
-          </Link>
-        ))}
-      </nav>
+      <section className="settings-menu-section">
+        <p className="settings-section-label">設定メニュー</p>
+        <nav className="settings-menu" aria-label="設定メニュー">
+          {menuItems.map((item) => (
+            <Link key={item.href} href={item.href} className="settings-menu-item">
+              <span className="settings-menu-icon" aria-hidden="true">
+                <UiIcon name={item.icon} className="settings-menu-glyph" />
+              </span>
+              <span className="settings-menu-text">{item.title}</span>
+              <UiIcon name="chevron-right" className="settings-menu-arrow" aria-hidden="true" />
+            </Link>
+          ))}
+        </nav>
+      </section>
 
       <section className="panel settings-cloud-card">
-        <p className="settings-cloud-title">Cloud版で使う</p>
+        <p className="settings-cloud-eyebrow">Cloud版のご案内</p>
+        <p className="settings-cloud-title">Cloud版で、もっと便利に（予定）</p>
         <p className="settings-cloud-text">
-          今まで入力したデータは、そのまま引き継げる予定です。家族共有・複数端末・自動バックアップを利用できます。
+          今まで入力したデータは、そのまま引き継げる予定です。家族との共有、複数端末での利用、自動バックアップに対応できるよう準備しています。
         </p>
         <Link href="/settings/plans" className="action-button primary">
           Cloud版の案内を見る

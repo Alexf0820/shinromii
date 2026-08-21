@@ -11,31 +11,34 @@ const GUIDE_ITEMS = [
     number: "1",
     icon: "lock" as const,
     title: "この端末だけで使う",
-    summary: "登録なしで使えます。入力した進路情報は、この端末に保存されます。",
-    points: ["登録なしで使えます", "入力した進路情報は、この端末に保存されます"],
+    summary: "入力した進路情報は、この端末の中に保存されます。",
+    points: ["登録なしで使えます", "入力した進路情報は、この端末の中に保存されます"],
+    flowLabel: "この端末の中に保存",
     tone: "local",
   },
   {
     number: "2",
     icon: "cloud" as const,
-    title: "Cloudで使う",
+    title: "Cloudで使う（予定）",
     summary:
-      "進路情報は、そのまま読める形で送らず、安全な形にしてから保存する仕組みを予定しています。",
+      "そのまま読める形で送らずに、読めない形にしてからCloudへ保存する仕組みを予定しています。",
     points: [
-      "そのまま読める形で送らずに保存する仕組みを予定しています",
+      "そのまま読める形で送らずに、読めない形にしてからCloudへ保存する仕組みを予定しています",
       "別の端末でも使いやすくする予定です",
     ],
+    flowLabel: "読めない形にしてからCloudへ保存",
     tone: "cloud",
   },
   {
     number: "3",
     icon: "person-fill" as const,
-    title: "家族といっしょに使う",
-    summary: "Cloud版では、家族や別の端末から同じ進路情報を確認できるようにします。",
+    title: "家族といっしょに使う（予定）",
+    summary: "家族や別の端末から、必要な人だけが同じ進路情報を確認できるようにします。",
     points: [
-      "家族や別の端末から同じ進路情報を確認できるようにします",
-      "必要な人だけが見られる形を目指しています",
+      "家族や別の端末から、必要な人だけが同じ進路情報を確認できるようにします",
+      "家族で相談しながら進路を整理しやすくする予定です",
     ],
+    flowLabel: "家族や別の端末と確認できるようにする",
     tone: "family",
   },
 ] as const;
@@ -61,15 +64,19 @@ export function DataProtectionGuide({
       <div className={`data-guide-list ${detailed ? "is-detailed" : ""}`}>
         {GUIDE_ITEMS.map((item) => (
           <article key={item.number} className={`data-guide-card tone-${item.tone}`}>
-            <div className="data-guide-card-head">
+            <div className="data-guide-card-topline">
               <span className="data-guide-number" aria-hidden="true">
                 {item.number}
               </span>
-              <span className="data-guide-icon" aria-hidden="true">
+              <h3>{item.title}</h3>
+            </div>
+            <div className="data-guide-flow" aria-hidden="true">
+              <span className="data-guide-device">
                 <UiIcon name={item.icon} className="data-guide-glyph" />
               </span>
+              <span className="data-guide-flow-arrow">↓</span>
+              <span className="data-guide-flow-text">{item.flowLabel}</span>
             </div>
-            <h3>{item.title}</h3>
             {detailed ? (
               <ul className="data-guide-points">
                 {item.points.map((point) => (
