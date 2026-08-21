@@ -43,6 +43,7 @@ const APPLY_FAILED_MESSAGE =
   "更新できませんでした。通信環境を確認して、もう一度お試しください。";
 const UPDATE_CHECK_DELAY_MS = 4000;
 const AUTO_RECHECK_DELAY_MS = 6000;
+const APPLY_UPDATE_TIMEOUT_MS = 10000;
 
 const PwaUpdateContext = createContext<PwaUpdateContextValue | null>(null);
 
@@ -136,7 +137,9 @@ export function PwaRegistration({ children }: PropsWithChildren) {
   const [isStandalone, setIsStandalone] = useState(false);
   const registrationRef = useRef<ServiceWorkerRegistration | null>(null);
   const waitingWorkerRef = useRef<ServiceWorker | null>(null);
+  const dismissedWorkerRef = useRef<ServiceWorker | null>(null);
   const applyRequestedRef = useRef(false);
+  const applyTimeoutIdRef = useRef<number | null>(null);
   const statusRef = useRef<UpdateStatus>("idle");
   const checkInFlightRef = useRef<Promise<void> | null>(null);
   const updateFoundHandlerRef = useRef<((event: Event) => void) | null>(null);
@@ -145,14 +148,27 @@ export function PwaRegistration({ children }: PropsWithChildren) {
     statusRef.current = status;
   }, [status]);
 
-  const markUpdateAvailable = useCallback((worker?: ServiceWorker | null) => {
+  const clearApplyTimeout = useCallback(() => {
+    if (applyTimeoutIdRef.current !== null) {
+      window.clearTimeout(applyTimeoutIdRef.current);
+      applyTimeoutIdRef.current = null;
+    }
+  }, []);
+
+  const markUpdateAvailable = useCallback((worker?: ServiceWorker | null, forceNotice = false) => {
     if (worker) {
+      if (dismissedWorkerRef.current && dismissedWorkerRef.current !== worker) {
+        dismissedWorkerRef.current = null;
+      }
       waitingWorkerRef.current = worker;
     }
 
     setErrorMessage(null);
-    setShowUpdateNotice(true);
     setStatus("available");
+
+    if (forceNotice || dismissedWorkerRef.current !== worker) {
+      setShowUpdateNotice(true);
+    }
   }, []);
 
   const attachInstallingWorker = useCallback(
@@ -199,7 +215,7 @@ export function PwaRegistration({ children }: PropsWithChildren) {
 
         try {
           if (registration.waiting && registration.active) {
-            markUpdateAvailable(registration.waiting);
+            markUpdateAvailable(registration.waiting, userInitiated);
             return;
           }
 
@@ -207,7 +223,7 @@ export function PwaRegistration({ children }: PropsWithChildren) {
           const waitingWorker = await waitForWaitingWorker(registration, UPDATE_CHECK_DELAY_MS);
 
           if (waitingWorker) {
-            markUpdateAvailable(waitingWorker);
+            markUpdateAvailable(waitingWorker, userInitiated);
             return;
           }
 
@@ -249,20 +265,32 @@ export function PwaRegistration({ children }: PropsWithChildren) {
       return;
     }
 
+    dismissedWorkerRef.current = null;
+    clearApplyTimeout();
     setErrorMessage(null);
     setStatus("updating");
     applyRequestedRef.current = true;
+    applyTimeoutIdRef.current = window.setTimeout(() => {
+      applyRequestedRef.current = false;
+      applyTimeoutIdRef.current = null;
+      setErrorMessage(APPLY_FAILED_MESSAGE);
+      setShowUpdateNotice(true);
+      setStatus("error");
+    }, APPLY_UPDATE_TIMEOUT_MS);
 
     try {
       waitingWorker.postMessage({ type: "SKIP_WAITING" });
     } catch {
+      clearApplyTimeout();
       applyRequestedRef.current = false;
       setErrorMessage(APPLY_FAILED_MESSAGE);
+      setShowUpdateNotice(true);
       setStatus("error");
     }
-  }, [checkForUpdate]);
+  }, [checkForUpdate, clearApplyTimeout]);
 
   const dismissUpdateNotice = useCallback(() => {
+    dismissedWorkerRef.current = waitingWorkerRef.current;
     setShowUpdateNotice(false);
   }, []);
 
@@ -285,6 +313,7 @@ export function PwaRegistration({ children }: PropsWithChildren) {
         return;
       }
 
+      clearApplyTimeout();
       applyRequestedRef.current = false;
       window.location.reload();
     };
@@ -342,6 +371,7 @@ export function PwaRegistration({ children }: PropsWithChildren) {
 
     return () => {
       cancelled = true;
+      clearApplyTimeout();
       if (delayedCheckId !== null) {
         window.clearTimeout(delayedCheckId);
       }
@@ -354,7 +384,7 @@ export function PwaRegistration({ children }: PropsWithChildren) {
         registration.removeEventListener("updatefound", updateFoundHandlerRef.current);
       }
     };
-  }, [attachInstallingWorker, checkForUpdate, markUpdateAvailable]);
+  }, [attachInstallingWorker, checkForUpdate, clearApplyTimeout, markUpdateAvailable]);
 
   const contextValue = useMemo<PwaUpdateContextValue>(
     () => ({
