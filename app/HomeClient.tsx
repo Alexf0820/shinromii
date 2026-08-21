@@ -6,6 +6,7 @@ import { APP_VERSION_LABEL } from "@/lib/app-version";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { BrandAccountLink } from "@/components/BrandAccountLink";
 import { BrandMark } from "@/components/BrandMark";
+import { SettingsLink } from "@/components/SettingsLink";
 import { UiIcon } from "@/components/UiIcon";
 import { recentItems } from "@/data/mockData";
 import {
@@ -349,7 +350,10 @@ export function HomeClient() {
               </div>
             </div>
             <div className="home-hero-meta">
-              <BrandAccountLink />
+              <div className="home-hero-actions">
+                <BrandAccountLink />
+                <SettingsLink />
+              </div>
               <span className="home-version">{APP_VERSION_LABEL}</span>
             </div>
           </div>

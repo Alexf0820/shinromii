@@ -5,7 +5,9 @@ import Link from "next/link";
 import { useRef, useState } from "react";
 import { BrandAccountLink } from "@/components/BrandAccountLink";
 import { BrandMark } from "@/components/BrandMark";
+import { SettingsLink } from "@/components/SettingsLink";
 import { UiIcon } from "@/components/UiIcon";
+import { DataProtectionGuide } from "@/components/settings/DataProtectionGuide";
 import { APP_VERSION_LABEL } from "@/lib/app-version";
 import { parseShinromiiBackupJson } from "@/lib/shinromii-backup";
 import { saveShinromiiStorage } from "@/lib/shinromii-storage";
@@ -14,13 +16,6 @@ const HERO_IMAGE = "/images/shinromii-home-hero.png";
 const HERO_IMAGE_WIDTH = 1024;
 const HERO_IMAGE_HEIGHT = 661;
 const HERO_IMAGE_SIZES = "(max-width: 639px) 100vw, 920px";
-
-const welcomeFeatures = [
-  { icon: "grades-fill" as const, label: "成績や資格" },
-  { icon: "university-fill" as const, label: "気になる大学" },
-  { icon: "campus" as const, label: "オープンキャンパス" },
-  { icon: "ai-fill" as const, label: "AIに相談したこと" },
-];
 
 type WelcomeStartProps = {
   onStartFresh: () => void;
@@ -108,7 +103,10 @@ export function WelcomeStart({ onStartFresh, onRestored, preview = false }: Welc
               </div>
             </div>
             <div className="home-hero-meta">
-              <BrandAccountLink />
+              <div className="home-hero-actions">
+                {preview ? null : <BrandAccountLink />}
+                {preview ? null : <SettingsLink />}
+              </div>
               <span className="home-version">{APP_VERSION_LABEL}</span>
             </div>
           </div>
@@ -117,31 +115,13 @@ export function WelcomeStart({ onStartFresh, onRestored, preview = false }: Welc
 
       <div className="welcome-body">
         <div className="welcome-copy">
-          <h1 className="welcome-title">進路のこと、ひとつにまとめよう。</h1>
-          <p className="welcome-tagline">未来のわたしへ、今日から一歩。</p>
-          <ul className="welcome-features">
-            {welcomeFeatures.map((item) => (
-              <li key={item.label}>
-                <span className="welcome-feature-icon" aria-hidden="true">
-                  <UiIcon name={item.icon} className="welcome-feature-glyph" />
-                </span>
-                <span>{item.label}</span>
-              </li>
-            ))}
-          </ul>
+          <h1 className="welcome-title">SHINROMiiをはじめる</h1>
+          <p className="welcome-intro">
+            進路情報を、自分だけでも家族とでも整理できます。
+          </p>
         </div>
 
-        <div className="welcome-privacy">
-          <span className="welcome-note-icon" aria-hidden="true">
-            <UiIcon name="lock" className="welcome-note-glyph" />
-          </span>
-          <div>
-            <p className="welcome-privacy-title">進路情報は、この端末の中だけに保存されます</p>
-            <p className="welcome-privacy-text">
-              入力した成績・大学候補・進路情報などが、SHINROMiiのサーバーへ送信されることはありません。
-            </p>
-          </div>
-        </div>
+        <DataProtectionGuide showLink />
 
         <div className="welcome-actions">
           <button type="button" className="welcome-choice primary" onClick={onStartFresh}>
@@ -149,25 +129,25 @@ export function WelcomeStart({ onStartFresh, onRestored, preview = false }: Welc
               <UiIcon name="edit" className="welcome-choice-glyph" />
             </span>
             <span className="welcome-choice-copy">
-              <strong>はじめて使う</strong>
-              <span>新しく進路ノートをはじめる</span>
+              <strong>この端末だけで無料ではじめる</strong>
+              <span>登録不要</span>
+              <span>件数制限なし</span>
+              <span>いつでもCloud版へ変更できます</span>
             </span>
             <UiIcon name="chevron-right" className="welcome-choice-arrow" aria-hidden="true" />
           </button>
-          <button
-            type="button"
-            className="welcome-choice"
-            onClick={() => restoreInputRef.current?.click()}
-          >
+          <Link href="/settings/plans" className="welcome-choice">
             <span className="welcome-choice-icon" aria-hidden="true">
-              <UiIcon name="download" className="welcome-choice-glyph" />
+              <UiIcon name="cloud" className="welcome-choice-glyph" />
             </span>
             <span className="welcome-choice-copy">
-              <strong>バックアップからはじめる</strong>
-              <span>以前のSHINROMiiのデータを引き継ぐ</span>
+              <strong>家族・複数端末で使う</strong>
+              <span>アカウントを作成して使う予定です</span>
+              <span>家族と共有できるようにする予定です</span>
+              <span>複数端末で使えて、自動バックアップも使える予定です</span>
             </span>
             <UiIcon name="chevron-right" className="welcome-choice-arrow" aria-hidden="true" />
-          </button>
+          </Link>
         </div>
 
         <div className="welcome-tip">
@@ -177,9 +157,20 @@ export function WelcomeStart({ onStartFresh, onRestored, preview = false }: Welc
           <div>
             <p className="welcome-privacy-title">あとからいつでも変更できます</p>
             <p className="welcome-privacy-text">
-              学年や気になる大学など、いつでも編集できます。空のままではじめても大丈夫です。
+              最初はこの端末だけで使い、必要になったときにCloud版を選ぶ形も予定しています。
             </p>
           </div>
+        </div>
+
+        <div className="welcome-secondary-actions">
+          <button
+            type="button"
+            className="action-button"
+            onClick={() => restoreInputRef.current?.click()}
+          >
+            <UiIcon name="upload" className="action-icon" />
+            バックアップから復元
+          </button>
         </div>
 
         <p className="welcome-legal">

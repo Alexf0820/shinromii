@@ -30,7 +30,9 @@ type UiIconName =
   | "bulb"
   | "check"
   | "heart"
-  | "mail";
+  | "mail"
+  | "settings"
+  | "cloud";
 
 type UiIconProps = SVGProps<SVGSVGElement> & {
   name: UiIconName;
@@ -261,6 +263,19 @@ export function UiIcon({ name, ...props }: UiIconProps) {
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" {...props}>
           <rect x="3.6" y="6.2" width="16.8" height="11.6" rx="2.2" />
           <path d="m4.4 7.6 7.6 5.4 7.6-5.4" />
+        </svg>
+      );
+    case "settings":
+      return (
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" {...props}>
+          <path d="M12 8.6a3.4 3.4 0 1 0 0 6.8 3.4 3.4 0 0 0 0-6.8Z" />
+          <path d="m19.2 13.1 1.1-1.1-1.6-2.8-1.5.3a6.8 6.8 0 0 0-1.2-.7l-.4-1.5h-3.2l-.4 1.5c-.43.16-.84.4-1.22.68l-1.47-.28L3.7 12l1.16 1.14c-.03.28-.06.57-.06.86 0 .3.03.6.08.9L3.7 16l1.63 2.8 1.48-.3c.37.28.78.5 1.22.68l.41 1.54h3.22l.4-1.54c.44-.17.85-.4 1.23-.7l1.5.31 1.6-2.79-1.12-1.12c.06-.3.1-.62.1-.94 0-.28-.03-.56-.08-.83Z" />
+        </svg>
+      );
+    case "cloud":
+      return (
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" {...props}>
+          <path d="M7.2 18.4a3.6 3.6 0 0 1-.4-7.18 5.8 5.8 0 0 1 11.3-1.3 4 4 0 0 1-.9 7.98H7.2Z" />
         </svg>
       );
     default:
