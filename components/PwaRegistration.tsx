@@ -143,6 +143,9 @@ export function PwaRegistration({ children }: PropsWithChildren) {
   const statusRef = useRef<UpdateStatus>("idle");
   const checkInFlightRef = useRef<Promise<void> | null>(null);
   const registerInFlightRef = useRef<Promise<ServiceWorkerRegistration | null> | null>(null);
+  const effectActiveRef = useRef(false);
+  const installingWorkerRef = useRef<ServiceWorker | null>(null);
+  const clearInstallingWorkerListenerRef = useRef<(() => void) | null>(null);
   const updateFoundHandlerRef = useRef<((event: Event) => void) | null>(null);
   const updateFoundRegistrationRef = useRef<ServiceWorkerRegistration | null>(null);
 
@@ -185,13 +188,37 @@ export function PwaRegistration({ children }: PropsWithChildren) {
         return;
       }
 
+      if (installingWorkerRef.current === worker) {
+        return;
+      }
+
+      clearInstallingWorkerListenerRef.current?.();
+      clearInstallingWorkerListenerRef.current = null;
+      installingWorkerRef.current = worker;
+
       const handleStateChange = () => {
         if (worker.state === "installed" && registration.active) {
           markUpdateAvailable(registration.waiting ?? worker);
         }
+
+        if (worker.state !== "installing") {
+          worker.removeEventListener("statechange", handleStateChange);
+
+          if (installingWorkerRef.current === worker) {
+            installingWorkerRef.current = null;
+            clearInstallingWorkerListenerRef.current = null;
+          }
+        }
       };
 
       worker.addEventListener("statechange", handleStateChange);
+      clearInstallingWorkerListenerRef.current = () => {
+        worker.removeEventListener("statechange", handleStateChange);
+        if (installingWorkerRef.current === worker) {
+          installingWorkerRef.current = null;
+          clearInstallingWorkerListenerRef.current = null;
+        }
+      };
     },
     [markUpdateAvailable],
   );
@@ -245,6 +272,10 @@ export function PwaRegistration({ children }: PropsWithChildren) {
     const task = navigator.serviceWorker
       .register("/sw.js", { scope: "/" })
       .then((registration) => {
+        if (!effectActiveRef.current) {
+          return registration;
+        }
+
         bindRegistration(registration);
         return registration;
       })
@@ -375,6 +406,7 @@ export function PwaRegistration({ children }: PropsWithChildren) {
     }
 
     setIsSupported(true);
+    effectActiveRef.current = true;
 
     let cancelled = false;
     let delayedCheckId: number | null = null;
@@ -432,8 +464,10 @@ export function PwaRegistration({ children }: PropsWithChildren) {
 
     return () => {
       cancelled = true;
+      effectActiveRef.current = false;
       applyRequestedRef.current = false;
       clearApplyTimeout();
+      clearInstallingWorkerListenerRef.current?.();
       if (delayedCheckId !== null) {
         window.clearTimeout(delayedCheckId);
       }
