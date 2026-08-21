@@ -380,7 +380,12 @@ export function PwaRegistration({ children }: PropsWithChildren) {
     let delayedCheckId: number | null = null;
 
     const handleControllerChange = () => {
+      clearUpdateCandidate();
+
       if (!applyRequestedRef.current) {
+        if (statusRef.current === "available") {
+          setStatus("idle");
+        }
         return;
       }
 
@@ -440,7 +445,7 @@ export function PwaRegistration({ children }: PropsWithChildren) {
         updateFoundRegistrationRef.current.removeEventListener("updatefound", updateFoundHandlerRef.current);
       }
     };
-  }, [checkForUpdate, clearApplyTimeout, ensureRegistration]);
+  }, [checkForUpdate, clearApplyTimeout, clearUpdateCandidate, ensureRegistration]);
 
   const contextValue = useMemo<PwaUpdateContextValue>(
     () => ({
