@@ -142,7 +142,9 @@ export function PwaRegistration({ children }: PropsWithChildren) {
   const applyTimeoutIdRef = useRef<number | null>(null);
   const statusRef = useRef<UpdateStatus>("idle");
   const checkInFlightRef = useRef<Promise<void> | null>(null);
+  const registerInFlightRef = useRef<Promise<ServiceWorkerRegistration | null> | null>(null);
   const updateFoundHandlerRef = useRef<((event: Event) => void) | null>(null);
+  const updateFoundRegistrationRef = useRef<ServiceWorkerRegistration | null>(null);
 
   useEffect(() => {
     statusRef.current = status;
@@ -153,6 +155,12 @@ export function PwaRegistration({ children }: PropsWithChildren) {
       window.clearTimeout(applyTimeoutIdRef.current);
       applyTimeoutIdRef.current = null;
     }
+  }, []);
+
+  const clearUpdateCandidate = useCallback(() => {
+    waitingWorkerRef.current = null;
+    dismissedWorkerRef.current = null;
+    setShowUpdateNotice(false);
   }, []);
 
   const markUpdateAvailable = useCallback((worker?: ServiceWorker | null, forceNotice = false) => {
@@ -188,6 +196,66 @@ export function PwaRegistration({ children }: PropsWithChildren) {
     [markUpdateAvailable],
   );
 
+  const bindRegistration = useCallback(
+    (registration: ServiceWorkerRegistration) => {
+      if (
+        updateFoundRegistrationRef.current &&
+        updateFoundHandlerRef.current &&
+        updateFoundRegistrationRef.current !== registration
+      ) {
+        updateFoundRegistrationRef.current.removeEventListener("updatefound", updateFoundHandlerRef.current);
+      }
+
+      registrationRef.current = registration;
+
+      if (registration.waiting && registration.active) {
+        markUpdateAvailable(registration.waiting);
+      }
+
+      attachInstallingWorker(registration, registration.installing);
+
+      const handleUpdateFound = () => {
+        attachInstallingWorker(registration, registration.installing);
+      };
+
+      if (updateFoundRegistrationRef.current === registration && updateFoundHandlerRef.current) {
+        registration.removeEventListener("updatefound", updateFoundHandlerRef.current);
+      }
+
+      updateFoundHandlerRef.current = handleUpdateFound;
+      updateFoundRegistrationRef.current = registration;
+      registration.addEventListener("updatefound", handleUpdateFound);
+    },
+    [attachInstallingWorker, markUpdateAvailable],
+  );
+
+  const ensureRegistration = useCallback(async () => {
+    if (!("serviceWorker" in navigator)) {
+      return null;
+    }
+
+    if (registrationRef.current) {
+      return registrationRef.current;
+    }
+
+    if (registerInFlightRef.current) {
+      return registerInFlightRef.current;
+    }
+
+    const task = navigator.serviceWorker
+      .register("/sw.js", { scope: "/" })
+      .then((registration) => {
+        bindRegistration(registration);
+        return registration;
+      })
+      .finally(() => {
+        registerInFlightRef.current = null;
+      });
+
+    registerInFlightRef.current = task;
+    return task;
+  }, [bindRegistration]);
+
   const checkForUpdate = useCallback(
     async ({ userInitiated = true }: CheckOptions = {}) => {
       if (!("serviceWorker" in navigator)) {
@@ -196,17 +264,12 @@ export function PwaRegistration({ children }: PropsWithChildren) {
         return;
       }
 
-      const registration = registrationRef.current;
-      if (!registration) {
-        if (userInitiated) {
-          setErrorMessage(CHECK_FAILED_MESSAGE);
-          setStatus("error");
-        }
-        return;
+      if (checkInFlightRef.current) {
+        return checkInFlightRef.current;
       }
 
       if (statusRef.current === "checking" || statusRef.current === "updating") {
-        return checkInFlightRef.current ?? Promise.resolve();
+        return Promise.resolve();
       }
 
       const task = (async () => {
@@ -214,6 +277,12 @@ export function PwaRegistration({ children }: PropsWithChildren) {
         setStatus("checking");
 
         try {
+          const registration = await ensureRegistration();
+
+          if (!registration) {
+            throw new Error("registration-unavailable");
+          }
+
           if (registration.waiting && registration.active) {
             markUpdateAvailable(registration.waiting, userInitiated);
             return;
@@ -227,12 +296,15 @@ export function PwaRegistration({ children }: PropsWithChildren) {
             return;
           }
 
+          clearUpdateCandidate();
+
           if (userInitiated) {
             setStatus("latest");
           } else {
             setStatus("idle");
           }
         } catch {
+          clearUpdateCandidate();
           if (userInitiated) {
             setErrorMessage(CHECK_FAILED_MESSAGE);
             setStatus("error");
@@ -250,7 +322,7 @@ export function PwaRegistration({ children }: PropsWithChildren) {
         checkInFlightRef.current = null;
       }
     },
-    [markUpdateAvailable],
+    [clearUpdateCandidate, ensureRegistration, markUpdateAvailable],
   );
 
   const applyUpdate = useCallback(async () => {
@@ -333,26 +405,11 @@ export function PwaRegistration({ children }: PropsWithChildren) {
 
     const register = async () => {
       try {
-        const registration = await navigator.serviceWorker.register("/sw.js", { scope: "/" });
+        const registration = await ensureRegistration();
 
-        if (cancelled) {
+        if (cancelled || !registration) {
           return;
         }
-
-        registrationRef.current = registration;
-
-        if (registration.waiting && registration.active) {
-          markUpdateAvailable(registration.waiting);
-        }
-
-        attachInstallingWorker(registration, registration.installing);
-
-        const handleUpdateFound = () => {
-          attachInstallingWorker(registration, registration.installing);
-        };
-
-        updateFoundHandlerRef.current = handleUpdateFound;
-        registration.addEventListener("updatefound", handleUpdateFound);
 
         runAutoCheck();
         delayedCheckId = window.setTimeout(() => {
@@ -379,12 +436,11 @@ export function PwaRegistration({ children }: PropsWithChildren) {
       window.removeEventListener("focus", runAutoCheck);
       document.removeEventListener("visibilitychange", handleVisibilityChange);
 
-      const registration = registrationRef.current;
-      if (registration && updateFoundHandlerRef.current) {
-        registration.removeEventListener("updatefound", updateFoundHandlerRef.current);
+      if (updateFoundRegistrationRef.current && updateFoundHandlerRef.current) {
+        updateFoundRegistrationRef.current.removeEventListener("updatefound", updateFoundHandlerRef.current);
       }
     };
-  }, [attachInstallingWorker, checkForUpdate, clearApplyTimeout, markUpdateAvailable]);
+  }, [checkForUpdate, clearApplyTimeout, ensureRegistration]);
 
   const contextValue = useMemo<PwaUpdateContextValue>(
     () => ({
