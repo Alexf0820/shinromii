@@ -1,4 +1,4 @@
-const CACHE_NAME = "shinromii-v082-static";
+const CACHE_NAME = "shinromii-v0999-static";
 const APP_SHELL_ROUTES = [
   "/",
   "/grades",
@@ -15,7 +15,13 @@ const APP_SHELL_ROUTES = [
 
 self.addEventListener("install", (event) => {
   event.waitUntil(
-    caches.open(CACHE_NAME).then((cache) => cache.addAll(APP_SHELL_ROUTES)).then(() => self.skipWaiting()),
+    caches.open(CACHE_NAME).then((cache) => cache.addAll(APP_SHELL_ROUTES)).then(() => {
+      if (!self.registration.active) {
+        return self.skipWaiting();
+      }
+
+      return undefined;
+    }),
   );
 });
 
@@ -26,6 +32,12 @@ self.addEventListener("activate", (event) => {
       .then((keys) => Promise.all(keys.filter((key) => key !== CACHE_NAME).map((key) => caches.delete(key))))
       .then(() => self.clients.claim()),
   );
+});
+
+self.addEventListener("message", (event) => {
+  if (event.data?.type === "SKIP_WAITING") {
+    self.skipWaiting();
+  }
 });
 
 self.addEventListener("fetch", (event) => {

@@ -8,6 +8,7 @@ import { BrandAccountLink } from "@/components/BrandAccountLink";
 import { BrandMark } from "@/components/BrandMark";
 import { FirstSetup } from "@/components/FirstSetup";
 import { MobileNav } from "@/components/MobileNav";
+import { PwaUpdateNotice } from "@/components/PwaUpdateNotice";
 import { SettingsLink } from "@/components/SettingsLink";
 import { SiteFooter } from "@/components/SiteFooter";
 import { UiIcon } from "@/components/UiIcon";
@@ -71,6 +72,10 @@ const pageMeta: Record<string, PageMeta> = {
   "/settings": {
     title: "設定",
     subtitle: "今の使い方やデータの扱いを確認する",
+  },
+  "/settings/app-update": {
+    title: "バージョン・更新",
+    subtitle: "今のバージョンと更新の確認",
   },
   "/settings/plans": {
     title: "プラン・機能比較",
@@ -230,6 +235,7 @@ export function AppShell({ children }: AppShellProps) {
             />
           ) : (
             <>
+              {isAdminPath ? null : <PwaUpdateNotice />}
               {children}
               {isAdminPath ? null : <SiteFooter currentPath={pathname} />}
             </>

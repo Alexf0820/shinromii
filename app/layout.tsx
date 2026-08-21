@@ -38,8 +38,9 @@ export default function RootLayout({ children }: RootLayoutProps) {
   return (
     <html lang="ja">
       <body>
-        <PwaRegistration />
-        <AppShell>{children}</AppShell>
+        <PwaRegistration>
+          <AppShell>{children}</AppShell>
+        </PwaRegistration>
       </body>
     </html>
   );
