@@ -150,8 +150,9 @@ export function BackupDataManagementClient() {
         </div>
       </section>
 
-      <section className="panel settings-card-block">
-        <p className="item-title small">自動で戻せる最近の状態</p>
+      <section className="panel settings-card-block settings-block-prominent">
+        <p className="settings-mini-label">自動で戻せる最近の状態</p>
+        <p className="settings-card-title">最近の保存状態を1件だけ残しています</p>
         <p className="settings-copy">
           間違えて消してしまったときのために、最近の状態を1件だけこの端末に残します。
         </p>
@@ -181,7 +182,8 @@ export function BackupDataManagementClient() {
       </section>
 
       <section className="panel settings-card-block">
-        <p className="item-title small">手動バックアップ（無料版）</p>
+        <p className="settings-mini-label">手動バックアップ</p>
+        <p className="settings-card-title">手動バックアップ（無料版）</p>
         <p className="settings-copy">
           データをファイルにして保存したり、家族に渡したりできます。
         </p>
@@ -194,7 +196,8 @@ export function BackupDataManagementClient() {
       </section>
 
       <section className="panel settings-card-block">
-        <p className="item-title small">データの復元</p>
+        <p className="settings-mini-label">データの復元</p>
+        <p className="settings-card-title">保存したバックアップから戻す</p>
         <p className="settings-copy">以前に作成したバックアップから、今の内容を戻せます。</p>
         <div className="action-row">
           <button
@@ -226,7 +229,7 @@ export function BackupDataManagementClient() {
 
       {message ? (
         <div className="info-strip" role="status" aria-live="polite" aria-atomic="true">
-          <p className="item-title small">データの状況</p>
+          <p className="settings-mini-label">データの状況</p>
           <p>{message}</p>
         </div>
       ) : null}
