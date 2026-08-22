@@ -2263,16 +2263,14 @@ export function OpenCampusClient() {
 
       setEvents(nextEvents);
 
-      if (editingEventId === eventId) {
-        setEventForm((current) =>
-          current.id === eventId
-            ? {
-                ...current,
-                attachments: [...latestEvent.attachments, ...newAttachmentMetas],
-              }
-            : current,
-        );
-      }
+      setEventForm((current) =>
+        current.id === eventId
+          ? {
+              ...current,
+              attachments: [...current.attachments, ...newAttachmentMetas],
+            }
+          : current,
+      );
 
       setDirectAttachmentMessage({
         eventId,
