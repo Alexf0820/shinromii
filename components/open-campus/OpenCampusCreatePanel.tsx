@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { CampusEvaluationForm } from "@/components/open-campus/CampusEvaluationForm";
 import { SectionHeader } from "@/components/SectionHeader";
-import type { CampusEvaluation, CampusEvaluationEntry, OpenCampusEvent } from "@/data/mockData";
+import type { CampusEvaluation, CampusEvaluationEntry, CampusEvaluator, OpenCampusEvent } from "@/data/mockData";
 import {
   applyCreateIntent,
   buildOpenCampusEventFromForm,
@@ -11,7 +11,6 @@ import {
   type OpenCampusCreateIntent,
 } from "@/lib/oc-form";
 import {
-  createDefaultCampusEvaluators,
   createEmptyEvaluation,
   normalizeCampusEvaluation,
   normalizeCampusEvaluationEntry,
@@ -22,6 +21,7 @@ import { createShinromiiId } from "@/lib/shinromii-id";
 
 type OpenCampusCreatePanelProps = {
   events: OpenCampusEvent[];
+  campusEvaluators: CampusEvaluator[];
   evaluations: Record<string, CampusEvaluationEntry[]>;
   onEventsChange: (next: OpenCampusEvent[]) => void;
   onEvaluationsChange: (next: Record<string, CampusEvaluationEntry[]>) => void;
@@ -29,6 +29,7 @@ type OpenCampusCreatePanelProps = {
 
 export function OpenCampusCreatePanel({
   events,
+  campusEvaluators,
   evaluations,
   onEventsChange,
   onEvaluationsChange,
@@ -79,7 +80,13 @@ export function OpenCampusCreatePanel({
       return;
     }
 
-    const evaluator = createDefaultCampusEvaluators()[0];
+    const evaluator = campusEvaluators.find((item) => item.role === "self") ?? campusEvaluators[0];
+
+    if (!evaluator) {
+      window.alert("評価する人を確認できませんでした。もう一度お試しください。");
+      return;
+    }
+
     const today = new Date().toISOString().slice(0, 10);
     const nextEntry = normalizeCampusEvaluationEntry({
       ...normalizeCampusEvaluation(evaluationForm),

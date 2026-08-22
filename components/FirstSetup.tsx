@@ -388,6 +388,7 @@ export function FirstSetup({ onFinished, preview = false, resume = false }: Firs
           <p className="first-setup-lead">これから参加も、参加済みも残せます。何も登録せず進めても大丈夫です。</p>
           <OpenCampusCreatePanel
             events={events}
+            campusEvaluators={campusEvaluators}
             evaluations={evaluations}
             onEventsChange={setEvents}
             onEvaluationsChange={setEvaluations}

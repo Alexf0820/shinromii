@@ -89,6 +89,10 @@ const ASPIRATIONS = new Set(OC_ASPIRATION_OPTIONS.map((item) => item.id));
 const TRIAL_MATCHES = new Set(OC_TRIAL_MATCH_OPTIONS.map((item) => item.id));
 const CAMPUS_EVALUATOR_ROLES = new Set<CampusEvaluatorRole>(["self", "guardian", "family", "other", "legacy"]);
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null;
+}
+
 function todayString() {
   return new Date().toISOString().slice(0, 10);
 }
@@ -168,7 +172,9 @@ export function normalizeCampusEvaluator(evaluator: CampusEvaluator): CampusEval
 }
 
 export function normalizeCampusEvaluators(evaluators: CampusEvaluator[] | undefined) {
-  const next = Array.isArray(evaluators) ? evaluators.map((evaluator) => normalizeCampusEvaluator(evaluator)) : [];
+  const next = Array.isArray(evaluators)
+    ? evaluators.filter(isRecord).map((evaluator) => normalizeCampusEvaluator(evaluator as CampusEvaluator))
+    : [];
 
   if (!next.some((evaluator) => evaluator.role === "self")) {
     next.push(createDefaultCampusEvaluators()[0]);
@@ -436,11 +442,13 @@ export function normalizeCampusEvaluationEntries(
   value: CampusEvaluation | CampusEvaluationEntry[] | undefined,
 ): CampusEvaluationEntry[] {
   if (Array.isArray(value)) {
-    return value.map((entry) => normalizeCampusEvaluationEntry(entry));
+    return value
+      .filter(isRecord)
+      .map((entry) => normalizeCampusEvaluationEntry(entry as CampusEvaluationEntry));
   }
 
-  if (value && typeof value === "object") {
-    return [createLegacyCampusEvaluationEntry(eventId, value)];
+  if (isRecord(value)) {
+    return [createLegacyCampusEvaluationEntry(eventId, value as CampusEvaluation)];
   }
 
   return [];

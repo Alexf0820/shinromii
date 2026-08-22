@@ -710,8 +710,9 @@ export function OpenCampusClient() {
     setIsCreatingEvent(false);
     setEditingEventId(null);
     setPendingEditScrollId(null);
-    setPendingScrollId(null);
     setPendingEvalInviteId(null);
+    setSelectedId(eventId);
+    setPendingScrollId(eventId);
     setEvaluationChooserEventId(eventId);
     setEditingEvaluationTarget(null);
     setPendingEvalScrollId(null);
@@ -720,7 +721,17 @@ export function OpenCampusClient() {
 
   function openEvaluationEditor(event: OpenCampusEvent, evaluatorId: string) {
     const existingEntry = findEvaluationEntry(event.id, evaluatorId);
-    const evaluator = findCampusEvaluator(evaluatorId);
+    const evaluator =
+      findCampusEvaluator(evaluatorId) ??
+      (existingEntry
+        ? {
+            id: existingEntry.evaluatorId,
+            name: existingEntry.evaluatorName,
+            role: existingEntry.evaluatorRole,
+            createdAt: existingEntry.createdAt,
+            updatedAt: existingEntry.updatedAt,
+          }
+        : null);
 
     if (!existingEntry && !evaluator) {
       window.alert("評価する人を確認できませんでした。もう一度お試しください。");
@@ -2432,10 +2443,11 @@ export function OpenCampusClient() {
     }
 
     const today = todayString();
+    const newEvaluatorId = createId("oc-evaluator");
     const nextEvaluator = normalizeCampusEvaluators([
       ...campusEvaluators,
       {
-        id: createId("oc-evaluator"),
+        id: newEvaluatorId,
         name,
         role: "family",
         createdAt: today,
@@ -2445,7 +2457,7 @@ export function OpenCampusClient() {
 
     setCampusEvaluators(nextEvaluator);
     saveCampusEvaluationState(evaluations, nextEvaluator);
-    openEvaluationEditor(event, nextEvaluator[nextEvaluator.length - 1].id);
+    openEvaluationEditor(event, newEvaluatorId);
   }
 
   async function handleSaveEvent() {
@@ -2541,7 +2553,18 @@ export function OpenCampusClient() {
       return;
     }
 
-    const evaluator = findCampusEvaluator(editingEvaluationTarget.evaluatorId);
+    const existingEntry = findEvaluationEntry(editingEvaluationTarget.eventId, editingEvaluationTarget.evaluatorId);
+    const evaluator =
+      findCampusEvaluator(editingEvaluationTarget.evaluatorId) ??
+      (existingEntry
+        ? {
+            id: existingEntry.evaluatorId,
+            name: existingEntry.evaluatorName,
+            role: existingEntry.evaluatorRole,
+            createdAt: existingEntry.createdAt,
+            updatedAt: existingEntry.updatedAt,
+          }
+        : null);
 
     if (!evaluator) {
       window.alert("評価する人を確認できませんでした。もう一度お試しください。");
@@ -2566,7 +2589,6 @@ export function OpenCampusClient() {
       trialLesson: evaluationForm.trialLesson,
     });
 
-    const existingEntry = findEvaluationEntry(editingEvaluationTarget.eventId, editingEvaluationTarget.evaluatorId);
     const nextEntry = normalizeCampusEvaluationEntry({
       ...nextEvaluation,
       id: existingEntry?.id ?? createId("oc-eval"),
@@ -2578,12 +2600,12 @@ export function OpenCampusClient() {
       legacyLabel: existingEntry?.legacyLabel,
     });
 
-    const nextEventEvaluations = [
-      ...eventEvaluations(editingEvaluationTarget.eventId).filter(
-        (entry) => entry.evaluatorId !== editingEvaluationTarget.evaluatorId,
-      ),
-      nextEntry,
-    ];
+    const currentEntries = eventEvaluations(editingEvaluationTarget.eventId);
+    const nextEventEvaluations = existingEntry
+      ? currentEntries.map((entry) =>
+          entry.evaluatorId === editingEvaluationTarget.evaluatorId ? nextEntry : entry,
+        )
+      : [...currentEntries, nextEntry];
     const nextEvaluations = {
       ...evaluations,
       [editingEvaluationTarget.eventId]: nextEventEvaluations,
