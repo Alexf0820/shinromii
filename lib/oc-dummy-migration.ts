@@ -1,5 +1,6 @@
 import { campusDone, openCampusEvents } from "@/data/mockData";
-import type { CampusEvaluation, OpenCampusEvent } from "@/data/mockData";
+import type { CampusEvaluationEntry, OpenCampusEvent } from "@/data/mockData";
+import { normalizeCampusEvaluationEntries } from "@/lib/oc-record";
 
 const LEGACY_DUMMY_OC_IDS = new Set([
   "campus-upcoming-hoshigaoka",
@@ -35,7 +36,7 @@ function isSameCanonicalOpenCampus(event: OpenCampusEvent, canonical: OpenCampus
   return event.university === canonical.university && event.facultyDepartment === canonical.facultyDepartment;
 }
 
-function ocSignature(events: OpenCampusEvent[], evaluations: Record<string, CampusEvaluation>) {
+function ocSignature(events: OpenCampusEvent[], evaluations: Record<string, CampusEvaluationEntry[]>) {
   const eventPart = events
     .map((event) => `${event.id}|${event.university}|${event.facultyDepartment}|${event.status}`)
     .sort()
@@ -47,10 +48,10 @@ function ocSignature(events: OpenCampusEvent[], evaluations: Record<string, Camp
 /** 既知のアプリ配布OCダミーだけを、大妻女子大学の実データへ置き換える。ユーザー追加分は残す。 */
 export function migrateLegacyDummyOpenCampus(
   events: OpenCampusEvent[],
-  evaluations: Record<string, CampusEvaluation>,
+  evaluations: Record<string, CampusEvaluationEntry[]>,
 ): {
   events: OpenCampusEvent[];
-  evaluations: Record<string, CampusEvaluation>;
+  evaluations: Record<string, CampusEvaluationEntry[]>;
   changed: boolean;
 } {
   const userEvents = events.filter((event) => !isLegacyDummyOpenCampus(event));
@@ -75,9 +76,9 @@ export function migrateLegacyDummyOpenCampus(
     Object.entries(evaluations).filter(([id]) => !dummyIds.has(id) && !LEGACY_DUMMY_OC_IDS.has(id)),
   );
 
-  const canonicalEvaluations = campusDone.reduce<Record<string, CampusEvaluation>>((acc, item) => {
+  const canonicalEvaluations = campusDone.reduce<Record<string, CampusEvaluationEntry[]>>((acc, item) => {
     if (item.evaluation && nextEvents.some((event) => event.id === item.id) && !nextEvaluations[item.id]) {
-      acc[item.id] = item.evaluation;
+      acc[item.id] = normalizeCampusEvaluationEntries(item.id, item.evaluation);
     }
 
     return acc;

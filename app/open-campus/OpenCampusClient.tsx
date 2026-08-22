@@ -8,7 +8,9 @@ import { UiIcon } from "@/components/UiIcon";
 import { openCampusEvents as initialOpenCampusEvents } from "@/data/mockData";
 import type {
   CampusEvaluation,
+  CampusEvaluationEntry,
   CampusEvaluationCategory,
+  CampusEvaluator,
   OcLookForId,
   OcPointTagId,
   OcSimpleMark,
@@ -28,13 +30,18 @@ import {
 import {
   loadShinromiiStorage,
   saveCampusEvaluations,
+  saveCampusEvaluationState,
   saveOpenCampusEvents,
 } from "@/lib/shinromii-storage";
 import {
   aspirationLabel,
+  campusEvaluatorRoleLabel,
+  createDefaultCampusEvaluators,
   hasCategoryScores,
   lookForLabel,
   normalizeCampusEvaluation,
+  normalizeCampusEvaluationEntry,
+  normalizeCampusEvaluators,
   normalizeOpenCampusEvent,
   OC_ACCESS_MARK_LABELS,
   OC_ASPIRATION_OPTIONS,
@@ -93,6 +100,11 @@ type EventFormState = {
   attachments: OpenCampusAttachmentMeta[];
   lookFor: OcLookForId[];
   lookForOther: string;
+};
+
+type EvaluationEditorTarget = {
+  eventId: string;
+  evaluatorId: string;
 };
 
 function statusPillTone(status: OpenCampusStatus) {
@@ -366,10 +378,13 @@ function revokeObjectUrls(urls: string[]) {
 
 export function OpenCampusClient() {
   const [events, setEvents] = useState<OpenCampusEvent[]>(initialOpenCampusEvents);
-  const [evaluations, setEvaluations] = useState<Record<string, CampusEvaluation>>({});
+  const [campusEvaluators, setCampusEvaluators] = useState<CampusEvaluator[]>(createDefaultCampusEvaluators);
+  const [evaluations, setEvaluations] = useState<Record<string, CampusEvaluationEntry[]>>({});
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [editingEventId, setEditingEventId] = useState<string | null>(null);
-  const [editingEvaluationId, setEditingEvaluationId] = useState<string | null>(null);
+  const [editingEvaluationTarget, setEditingEvaluationTarget] = useState<EvaluationEditorTarget | null>(null);
+  const [evaluationChooserEventId, setEvaluationChooserEventId] = useState<string | null>(null);
+  const [newEvaluatorName, setNewEvaluatorName] = useState("");
   const [isCreatingEvent, setIsCreatingEvent] = useState(false);
   const [createIntent, setCreateIntent] = useState<"upcoming" | "done">("upcoming");
   const [pendingEvalInviteId, setPendingEvalInviteId] = useState<string | null>(null);
@@ -401,6 +416,7 @@ export function OpenCampusClient() {
   useEffect(() => {
     const stored = loadShinromiiStorage();
     setEvents(stored.openCampusEvents);
+    setCampusEvaluators(stored.campusEvaluators);
     setEvaluations(stored.campusEvaluations);
     setSelectedId(null);
   }, []);
@@ -431,14 +447,6 @@ export function OpenCampusClient() {
     () => events.find((event) => event.id === selectedId) ?? null,
     [events, selectedId],
   );
-
-  const selectedEvaluation = useMemo(() => {
-    if (!selectedEvent) {
-      return createEmptyEvaluation();
-    }
-
-    return evaluations[selectedEvent.id] ?? createEmptyEvaluation();
-  }, [evaluations, selectedEvent]);
 
   const expandedImageAttachment = useMemo(() => {
     if (!selectedEvent || !expandedImageId) {
@@ -574,7 +582,7 @@ export function OpenCampusClient() {
   }, [editingEventId, pendingEditScrollId]);
 
   useLayoutEffect(() => {
-    if (!pendingEvalScrollId || pendingEvalScrollId !== editingEvaluationId) {
+    if (!pendingEvalScrollId || pendingEvalScrollId !== editingEvaluationTarget?.eventId) {
       return;
     }
 
@@ -589,7 +597,7 @@ export function OpenCampusClient() {
       block: "start",
     });
     setPendingEvalScrollId(null);
-  }, [editingEvaluationId, pendingEvalScrollId]);
+  }, [editingEvaluationTarget, pendingEvalScrollId]);
 
   useLayoutEffect(() => {
     if (!pendingEvalInviteId) {
@@ -608,12 +616,57 @@ export function OpenCampusClient() {
     });
   }, [pendingEvalInviteId]);
 
+  function eventEvaluations(eventId: string) {
+    return evaluations[eventId] ?? [];
+  }
+
+  function findEvaluationEntry(eventId: string, evaluatorId: string) {
+    return eventEvaluations(eventId).find((entry) => entry.evaluatorId === evaluatorId) ?? null;
+  }
+
+  function findCampusEvaluator(evaluatorId: string) {
+    return campusEvaluators.find((evaluator) => evaluator.id === evaluatorId) ?? null;
+  }
+
+  function representativeEvaluation(eventId: string) {
+    return eventEvaluations(eventId)[0] ?? null;
+  }
+
+  function evaluationDisplayName(entry: CampusEvaluationEntry) {
+    return entry.legacyLabel ?? entry.evaluatorName;
+  }
+
+  function hasSavedEvaluation(entry: CampusEvaluationEntry | CampusEvaluation) {
+    return Boolean(
+      entry.overall ||
+        (entry.simpleRatings && Object.keys(entry.simpleRatings).length > 0) ||
+        entry.aspiration ||
+        (entry.goodTags && entry.goodTags.length > 0) ||
+        (entry.concernTags && entry.concernTags.length > 0) ||
+        entry.goodPoint ||
+        entry.badPoint ||
+        entry.wantToKnow ||
+        entry.freeNote ||
+        entry.studentComment ||
+        entry.familyComment ||
+        hasCategoryScores(entry) ||
+        entry.trialLesson?.courseName ||
+        entry.trialLesson?.instructor ||
+        entry.trialLesson?.date ||
+        entry.trialLesson?.expected ||
+        entry.trialLesson?.match ||
+        entry.trialLesson?.noticed,
+    );
+  }
+
   function openCreateEvent() {
     setIsCreatingEvent(true);
     setCreateIntent("upcoming");
     setPendingEvalInviteId(null);
     setEditingEventId(null);
-    setEditingEvaluationId(null);
+    setEditingEvaluationTarget(null);
+    setEvaluationChooserEventId(null);
+    setNewEvaluatorName("");
     setSelectedId(null);
     setPendingScrollId(null);
     setPendingEditScrollId(null);
@@ -628,7 +681,9 @@ export function OpenCampusClient() {
   function openEditEvent(event: OpenCampusEvent) {
     setIsCreatingEvent(false);
     setEditingEventId(event.id);
-    setEditingEvaluationId(null);
+    setEditingEvaluationTarget(null);
+    setEvaluationChooserEventId(null);
+    setNewEvaluatorName("");
     setSelectedId(null);
     setPendingScrollId(null);
     setPendingEditScrollId(event.id);
@@ -651,21 +706,64 @@ export function OpenCampusClient() {
     setAttachmentWarning(null);
   }
 
-  function openEvaluationEditor(event: OpenCampusEvent) {
+  function openEvaluationChooser(eventId: string) {
+    setIsCreatingEvent(false);
+    setEditingEventId(null);
+    setPendingEditScrollId(null);
+    setPendingEvalInviteId(null);
+    setSelectedId(eventId);
+    setPendingScrollId(eventId);
+    setEvaluationChooserEventId(eventId);
+    setEditingEvaluationTarget(null);
+    setPendingEvalScrollId(null);
+    setNewEvaluatorName("");
+  }
+
+  function openEvaluationEditor(
+    event: OpenCampusEvent,
+    evaluatorId: string,
+    providedEvaluator?: CampusEvaluator,
+  ) {
+    const existingEntry = findEvaluationEntry(event.id, evaluatorId);
+    const evaluator =
+      providedEvaluator ??
+      findCampusEvaluator(evaluatorId) ??
+      (existingEntry
+        ? {
+            id: existingEntry.evaluatorId,
+            name: existingEntry.evaluatorName,
+            role: existingEntry.evaluatorRole,
+            createdAt: existingEntry.createdAt,
+            updatedAt: existingEntry.updatedAt,
+          }
+        : null);
+
+    if (!existingEntry && !evaluator) {
+      window.alert("評価する人を確認できませんでした。もう一度お試しください。");
+      return;
+    }
+
     setIsCreatingEvent(false);
     setEditingEventId(null);
     setPendingEditScrollId(null);
     setPendingScrollId(null);
     setSelectedId(null);
     setPendingEvalInviteId(null);
-    setEditingEvaluationId(event.id);
+    setEvaluationChooserEventId(null);
+    setNewEvaluatorName("");
+    setEditingEvaluationTarget({
+      eventId: event.id,
+      evaluatorId,
+    });
     setPendingEvalScrollId(event.id);
-    setEvaluationForm(formFromEvaluation(evaluations[event.id] ?? createEmptyEvaluation()));
+    setEvaluationForm(formFromEvaluation(existingEntry ?? createEmptyEvaluation()));
   }
 
   function closeEvaluationEditor() {
-    setEditingEvaluationId(null);
+    setEditingEvaluationTarget(null);
+    setEvaluationChooserEventId(null);
     setPendingEvalScrollId(null);
+    setNewEvaluatorName("");
     setEvaluationForm(createEmptyEvaluation());
   }
 
@@ -684,7 +782,7 @@ export function OpenCampusClient() {
   function handleAttended(event: OpenCampusEvent) {
     setDirectAttachmentMessage(null);
     persistEventStatus(event, "参加済み");
-    openEvaluationEditor(event);
+    openEvaluationChooser(event.id);
   }
 
   function handleSkipped(event: OpenCampusEvent) {
@@ -854,9 +952,12 @@ export function OpenCampusClient() {
       closeEventEditor();
     }
 
-    if (editingEvaluationId) {
+    if (editingEvaluationTarget) {
       closeEvaluationEditor();
     }
+
+    setEvaluationChooserEventId(null);
+    setNewEvaluatorName("");
 
     setSelectedId((current) => {
       const nextId = current === id ? null : id;
@@ -872,8 +973,9 @@ export function OpenCampusClient() {
   }
 
   function renderEventCard(event: OpenCampusEvent) {
-    const evaluation = evaluations[event.id] ?? createEmptyEvaluation();
-    const isOpen = selectedId === event.id || editingEventId === event.id || editingEvaluationId === event.id;
+    const evaluation = representativeEvaluation(event.id);
+    const isOpen =
+      selectedId === event.id || editingEventId === event.id || editingEvaluationTarget?.eventId === event.id;
     const dateLabel = formatEventDate(event.eventDate);
     const timeLabel =
       event.startTime && event.endTime
@@ -914,7 +1016,7 @@ export function OpenCampusClient() {
             </p>
           ) : null}
 
-          {event.status === "参加済み" && evaluation.overall ? (
+          {event.status === "参加済み" && evaluation?.overall ? (
             <div className="oc-card-score">{renderStars(evaluation.overall)}</div>
           ) : null}
         </div>
@@ -944,7 +1046,7 @@ export function OpenCampusClient() {
           <div className="oc-attend-prompt oc-eval-invite">
             <p className="oc-attend-prompt-title">登録しました。続けて評価しますか？</p>
             <div className="oc-attend-actions">
-              <button type="button" className="card-action primary" onClick={() => openEvaluationEditor(event)}>
+              <button type="button" className="card-action primary" onClick={() => openEvaluationChooser(event.id)}>
                 30秒で評価する
               </button>
               <button
@@ -974,11 +1076,11 @@ export function OpenCampusClient() {
               ? [
                   {
                     icon: "star" as const,
-                    label: editingEvaluationId === event.id ? "閉じる" : "評価する",
+                    label: editingEvaluationTarget?.eventId === event.id ? "閉じる" : "評価する",
                     onClick: () =>
-                      editingEvaluationId === event.id
+                      editingEvaluationTarget?.eventId === event.id
                         ? closeEvaluationEditor()
-                        : openEvaluationEditor(event),
+                        : openEvaluationChooser(event.id),
                   },
                 ]
               : []),
@@ -1458,7 +1560,7 @@ export function OpenCampusClient() {
   }
 
   function renderDetailBlock(event: OpenCampusEvent) {
-    const detailEvaluation = evaluations[event.id] ?? createEmptyEvaluation();
+    const detailEvaluations = eventEvaluations(event.id);
     const imageAttachments = event.attachments.filter((attachment) => getAttachmentKind(attachment) === "image");
     const documentAttachments = event.attachments.filter((attachment) => getAttachmentKind(attachment) !== "image");
     const dateTimeLabel = formatEventDateTime(event);
@@ -1473,59 +1575,6 @@ export function OpenCampusClient() {
     ].filter((item): item is { label: string; value: string } => item !== null);
     const hasDayInfo = dayInfoItems.length > 0 || lookForChips.length > 0;
     const isUpcoming = event.status === "検討中" || event.status === "予約済み";
-    const showMaterials = true;
-    const simpleMarks = [
-      detailEvaluation.simpleRatings?.campus
-        ? { label: "校舎・設備", value: OC_CAMPUS_MARK_LABELS[detailEvaluation.simpleRatings.campus] }
-        : null,
-      detailEvaluation.simpleRatings?.students
-        ? { label: "学生の雰囲気", value: OC_STUDENT_MARK_LABELS[detailEvaluation.simpleRatings.students] }
-        : null,
-      detailEvaluation.simpleRatings?.learning
-        ? { label: "授業・学び", value: OC_LEARNING_MARK_LABELS[detailEvaluation.simpleRatings.learning] }
-        : null,
-      detailEvaluation.simpleRatings?.access
-        ? { label: "通いやすさ", value: OC_ACCESS_MARK_LABELS[detailEvaluation.simpleRatings.access] }
-        : null,
-    ].filter((item): item is { label: string; value: string } => item !== null);
-    const goodTagChips = [
-      ...(detailEvaluation.goodTags ?? []).map((id) => pointTagLabel(id)),
-      detailEvaluation.goodTags?.includes("other") && detailEvaluation.goodOther
-        ? detailEvaluation.goodOther
-        : "",
-    ].filter(Boolean);
-    const concernTagChips = [
-      ...(detailEvaluation.concernTags ?? []).map((id) => pointTagLabel(id)),
-      detailEvaluation.concernTags?.includes("other") && detailEvaluation.concernOther
-        ? detailEvaluation.concernOther
-        : "",
-    ].filter(Boolean);
-    const trial = detailEvaluation.trialLesson;
-    const trialMatchLabel = trial?.match
-      ? OC_TRIAL_MATCH_OPTIONS.find((option) => option.id === trial.match)?.label
-      : "";
-    const hasEvaluation =
-      event.status === "参加済み" &&
-      Boolean(
-        detailEvaluation.overall ||
-          simpleMarks.length > 0 ||
-          detailEvaluation.aspiration ||
-          goodTagChips.length > 0 ||
-          concernTagChips.length > 0 ||
-          detailEvaluation.goodPoint ||
-          detailEvaluation.badPoint ||
-          detailEvaluation.wantToKnow ||
-          detailEvaluation.freeNote ||
-          detailEvaluation.studentComment ||
-          detailEvaluation.familyComment ||
-          hasCategoryScores(detailEvaluation) ||
-          trial?.courseName ||
-          trial?.instructor ||
-          trial?.date ||
-          trial?.expected ||
-          trial?.match ||
-          trial?.noticed,
-      );
 
     return (
       <section
@@ -1543,9 +1592,7 @@ export function OpenCampusClient() {
               {event.eventName}
             </p>
           </div>
-          <span className={`status-pill ${statusPillTone(event.status)}`}>
-            {event.status}
-          </span>
+          <span className={`status-pill ${statusPillTone(event.status)}`}>{event.status}</span>
         </div>
 
         <div className="list-actions top-gap">
@@ -1557,21 +1604,13 @@ export function OpenCampusClient() {
             <UiIcon name="edit" className="action-icon" />
             {editingEventId === event.id ? "編集を閉じる" : "編集"}
           </button>
-          <button
-            type="button"
-            className="card-action danger"
-            onClick={() => void handleDeleteEvent(event)}
-          >
+          <button type="button" className="card-action danger" onClick={() => void handleDeleteEvent(event)}>
             <UiIcon name="delete" className="action-icon" />
             削除
           </button>
           {event.status === "参加済み" ? (
-            <button
-              type="button"
-              className="card-action subtle"
-              onClick={() => openEvaluationEditor(event)}
-            >
-              評価を編集
+            <button type="button" className="card-action subtle" onClick={() => openEvaluationChooser(event.id)}>
+              評価を追加
             </button>
           ) : null}
         </div>
@@ -1599,238 +1638,344 @@ export function OpenCampusClient() {
             </section>
           ) : null}
 
-          {showMaterials ? (
-            <section className="detail-group">
-              <p className="detail-group-title">メモ・資料</p>
-              {isUpcoming || event.links.length > 0 ? (
-                <div>
-                  <span className="review-note-label">当日リンク</span>
-                  {event.links.length > 0 ? (
-                    <div className="oc-day-links">
-                      {event.links.map((link) => (
-                        <a key={link.id} className="oc-day-link" href={link.url}>
-                          <span>{link.label || "当日ページを開く"}</span>
-                          <span className="oc-day-link-arrow" aria-hidden="true">
-                            ↗
-                          </span>
-                        </a>
-                      ))}
-                    </div>
-                  ) : (
-                    <p className="muted-text top-gap">まだリンクはありません。</p>
-                  )}
-                </div>
-              ) : null}
-              <div className={isUpcoming || event.links.length > 0 ? "top-gap" : ""}>
-                  <div className="row-between gap-sm align-start">
-                    <span className="review-note-label">資料・添付ファイル</span>
-                    <button
-                      type="button"
-                      className="card-action subtle"
-                      onClick={() => openDirectAttachmentPicker(event.id)}
-                      disabled={!attachmentsAvailable}
-                    >
-                      <UiIcon name="plus" className="action-icon" />
-                      ファイル追加
-                    </button>
+          <section className="detail-group">
+            <p className="detail-group-title">メモ・資料</p>
+            {isUpcoming || event.links.length > 0 ? (
+              <div>
+                <span className="review-note-label">当日リンク</span>
+                {event.links.length > 0 ? (
+                  <div className="oc-day-links">
+                    {event.links.map((link) => (
+                      <a key={link.id} className="oc-day-link" href={link.url}>
+                        <span>{link.label || "当日ページを開く"}</span>
+                        <span className="oc-day-link-arrow" aria-hidden="true">
+                          ↗
+                        </span>
+                      </a>
+                    ))}
                   </div>
-                  {event.attachments.length > 0 ? (
-                    <div className="list-stack top-gap">
-                      {!attachmentsAvailable ? (
-                        <p className="muted-text">
-                          このブラウザでは添付ファイル保存に対応していません。
-                        </p>
-                      ) : null}
-                      {imageAttachments.length > 0 ? (
-                        <div className="attachment-image-grid">
-                          {imageAttachments.map((attachment) => {
-                            const preview = attachmentPreviews[attachment.id];
-
-                            return (
-                              <article key={attachment.id} className="attachment-image-card">
-                                {preview?.available && preview.objectUrl ? (
-                                  <button
-                                    type="button"
-                                    className="attachment-image-button"
-                                    onClick={() => setExpandedImageId(attachment.id)}
-                                  >
-                                    <img
-                                      src={preview.objectUrl}
-                                      alt={attachment.name}
-                                      className="attachment-image-thumb"
-                                    />
-                                  </button>
-                                ) : (
-                                  <div className="attachment-missing-card">
-                                    <p className="item-title small">{attachment.name}</p>
-                                    <p className="muted-text">
-                                      この端末にはファイルがありません。添付ファイル本体はバックアップ対象外です。
-                                    </p>
-                                  </div>
-                                )}
-
-                                <div className="attachment-caption">
-                                  <p className="item-title small">{attachment.name}</p>
-                                  <p className="item-subtitle">
-                                    {(attachment.size / (1024 * 1024)).toFixed(1)}MB
-                                  </p>
-                                </div>
-
-                                <div className="list-actions">
-                                  <button
-                                    type="button"
-                                    className="card-action subtle"
-                                    onClick={() => setExpandedImageId(attachment.id)}
-                                    disabled={!preview?.available || !preview.objectUrl}
-                                  >
-                                    大きく表示
-                                  </button>
-                                  <button
-                                    type="button"
-                                    className="card-action danger"
-                                    onClick={() => void handleDeleteAttachment(attachment)}
-                                  >
-                                    削除
-                                  </button>
-                                </div>
-                              </article>
-                            );
-                          })}
-                        </div>
-                      ) : null}
-
-                      {documentAttachments.map((attachment) => {
+                ) : (
+                  <p className="muted-text top-gap">まだリンクはありません。</p>
+                )}
+              </div>
+            ) : null}
+            <div className={isUpcoming || event.links.length > 0 ? "top-gap" : ""}>
+              <div className="row-between gap-sm align-start">
+                <span className="review-note-label">資料・添付ファイル</span>
+                <button
+                  type="button"
+                  className="card-action subtle"
+                  onClick={() => openDirectAttachmentPicker(event.id)}
+                  disabled={!attachmentsAvailable}
+                >
+                  <UiIcon name="plus" className="action-icon" />
+                  ファイル追加
+                </button>
+              </div>
+              {event.attachments.length > 0 ? (
+                <div className="list-stack top-gap">
+                  {!attachmentsAvailable ? (
+                    <p className="muted-text">このブラウザでは添付ファイル保存に対応していません。</p>
+                  ) : null}
+                  {imageAttachments.length > 0 ? (
+                    <div className="attachment-image-grid">
+                      {imageAttachments.map((attachment) => {
                         const preview = attachmentPreviews[attachment.id];
-                        const isPdf = getAttachmentKind(attachment) === "pdf";
 
                         return (
-                          <article key={attachment.id} className="list-card compact-card">
-                            <div className="row-between gap-sm align-start">
-                              <div>
-                                <p className="item-title small">
-                                  {isPdf ? "PDF" : "資料"} / {attachment.name}
-                                </p>
-                                <p className="item-subtitle">
-                                  {(attachment.size / (1024 * 1024)).toFixed(1)}MB
+                          <article key={attachment.id} className="attachment-image-card">
+                            {preview?.available && preview.objectUrl ? (
+                              <button
+                                type="button"
+                                className="attachment-image-button"
+                                onClick={() => setExpandedImageId(attachment.id)}
+                              >
+                                <img
+                                  src={preview.objectUrl}
+                                  alt={attachment.name}
+                                  className="attachment-image-thumb"
+                                />
+                              </button>
+                            ) : (
+                              <div className="attachment-missing-card">
+                                <p className="item-title small">{attachment.name}</p>
+                                <p className="muted-text">
+                                  この端末にはファイルがありません。添付ファイル本体はバックアップ対象外です。
                                 </p>
                               </div>
-                              <div className="list-actions">
-                                {preview?.available && preview.objectUrl ? (
-                                  <a
-                                    className="card-action subtle"
-                                    href={preview.objectUrl}
-                                    target="_blank"
-                                    rel="noopener noreferrer"
-                                  >
-                                    {isPdf ? "PDFを開く" : "開く"}
-                                  </a>
-                                ) : (
-                                  <button type="button" className="card-action subtle" disabled>
-                                    開けません
-                                  </button>
-                                )}
-                                <button
-                                  type="button"
-                                  className="card-action danger"
-                                  onClick={() => void handleDeleteAttachment(attachment)}
-                                >
-                                  削除
-                                </button>
-                              </div>
+                            )}
+
+                            <div className="attachment-caption">
+                              <p className="item-title small">{attachment.name}</p>
+                              <p className="item-subtitle">{(attachment.size / (1024 * 1024)).toFixed(1)}MB</p>
                             </div>
-                            {!preview?.available ? (
-                              <p className="muted-text top-gap">
-                                この端末にはファイルがありません。添付ファイル本体はバックアップ対象外です。
-                              </p>
-                            ) : null}
+
+                            <div className="list-actions">
+                              <button
+                                type="button"
+                                className="card-action subtle"
+                                onClick={() => setExpandedImageId(attachment.id)}
+                                disabled={!preview?.available || !preview.objectUrl}
+                              >
+                                大きく表示
+                              </button>
+                              <button
+                                type="button"
+                                className="card-action danger"
+                                onClick={() => void handleDeleteAttachment(attachment)}
+                              >
+                                削除
+                              </button>
+                            </div>
                           </article>
                         );
                       })}
                     </div>
-                  ) : (
-                    <p className="muted-text top-gap">まだ添付ファイルはありません。</p>
-                  )}
-                  {directAttachmentMessage?.eventId === event.id ? (
-                    <p className={`muted-text top-gap${directAttachmentMessage.tone === "error" ? " danger-text" : ""}`}>
-                      {directAttachmentMessage.text}
-                    </p>
                   ) : null}
-                </div>
-              {event.dayMemo ? (
-                <div className="top-gap">
-                  {renderNoteBlock("当日のメモ", event.dayMemo)}
-                </div>
-              ) : null}
-            </section>
-          ) : null}
 
-          {hasEvaluation ? (
-            <section className="detail-group">
-              <p className="detail-group-title">評価</p>
-              {detailEvaluation.overall ? (
-                <div className="oc-eval-hero">
-                  {renderStars(detailEvaluation.overall)}
-                  <span className="oc-eval-hero-value">{detailEvaluation.overall} / 5</span>
-                </div>
-              ) : null}
-              {simpleMarks.length > 0 ? (
-                <div className="oc-eval-marks">
-                  {simpleMarks.map((item) => (
-                    <div key={item.label} className="oc-eval-mark">
-                      <span className="oc-eval-mark-label">{item.label}</span>
-                      <span className="oc-eval-mark-value">{item.value}</span>
-                    </div>
-                  ))}
-                </div>
-              ) : null}
-              {detailEvaluation.aspiration ? (
-                <div className={simpleMarks.length > 0 ? "top-gap" : ""}>
-                  <span className="review-note-label">今の志望度</span>
-                  <div className="top-gap">
-                    {renderChipRow([aspirationLabel(detailEvaluation.aspiration)])}
-                  </div>
-                </div>
-              ) : null}
-              {hasCategoryScores(detailEvaluation) ? (
-                <div className="oc-eval-marks top-gap">
-                  {(Object.entries(categoryLabels) as [CampusEvaluationCategory, string][]).map(
-                    ([key, label]) =>
-                      detailEvaluation.categoryScores[key] != null ? (
-                        <div key={key} className="oc-eval-mark">
-                          <span className="oc-eval-mark-label">{label}</span>
-                          <span className="oc-eval-mark-value">{detailEvaluation.categoryScores[key]}</span>
+                  {documentAttachments.map((attachment) => {
+                    const preview = attachmentPreviews[attachment.id];
+                    const isPdf = getAttachmentKind(attachment) === "pdf";
+
+                    return (
+                      <article key={attachment.id} className="list-card compact-card">
+                        <div className="row-between gap-sm align-start">
+                          <div>
+                            <p className="item-title small">
+                              {isPdf ? "PDF" : "資料"} / {attachment.name}
+                            </p>
+                            <p className="item-subtitle">{(attachment.size / (1024 * 1024)).toFixed(1)}MB</p>
+                          </div>
+                          <div className="list-actions">
+                            {preview?.available && preview.objectUrl ? (
+                              <a
+                                className="card-action subtle"
+                                href={preview.objectUrl}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                              >
+                                {isPdf ? "PDFを開く" : "開く"}
+                              </a>
+                            ) : (
+                              <button type="button" className="card-action subtle" disabled>
+                                開けません
+                              </button>
+                            )}
+                            <button
+                              type="button"
+                              className="card-action danger"
+                              onClick={() => void handleDeleteAttachment(attachment)}
+                            >
+                              削除
+                            </button>
+                          </div>
                         </div>
-                      ) : null,
-                  )}
+                        {!preview?.available ? (
+                          <p className="muted-text top-gap">
+                            この端末にはファイルがありません。添付ファイル本体はバックアップ対象外です。
+                          </p>
+                        ) : null}
+                      </article>
+                    );
+                  })}
                 </div>
+              ) : (
+                <p className="muted-text top-gap">まだ添付ファイルはありません。</p>
+              )}
+              {directAttachmentMessage?.eventId === event.id ? (
+                <p className={`muted-text top-gap${directAttachmentMessage.tone === "error" ? " danger-text" : ""}`}>
+                  {directAttachmentMessage.text}
+                </p>
               ) : null}
-              {goodTagChips.length > 0 ? (
-                <div className="top-gap">
-                  <span className="review-note-label">良かったところ</span>
-                  <div className="top-gap">{renderChipRow(goodTagChips)}</div>
+            </div>
+            {event.dayMemo ? (
+              <div className="top-gap">{renderNoteBlock("当日のメモ", event.dayMemo)}</div>
+            ) : null}
+          </section>
+
+          {event.status === "参加済み" ? (
+            <section className="detail-group">
+              <div className="row-between gap-sm align-start">
+                <div>
+                  <p className="detail-group-title">みんなの評価</p>
+                  <p className="muted-text">
+                    {detailEvaluations.length > 0 ? `${detailEvaluations.length}人分の評価があります。` : "まだ評価はありません。"}
+                  </p>
                 </div>
-              ) : null}
-              {concernTagChips.length > 0 ? (
-                <div className="top-gap">
-                  <span className="review-note-label">気になったところ</span>
-                  <div className="top-gap">{renderChipRow(concernTagChips)}</div>
+                <button type="button" className="card-action subtle" onClick={() => openEvaluationChooser(event.id)}>
+                  評価を追加
+                </button>
+              </div>
+
+              {detailEvaluations.length > 0 ? (
+                <div className="list-stack top-gap">
+                  {detailEvaluations.map((entry) => {
+                    const simpleMarks = [
+                      entry.simpleRatings?.campus
+                        ? { label: "校舎・設備", value: OC_CAMPUS_MARK_LABELS[entry.simpleRatings.campus] }
+                        : null,
+                      entry.simpleRatings?.students
+                        ? { label: "学生の雰囲気", value: OC_STUDENT_MARK_LABELS[entry.simpleRatings.students] }
+                        : null,
+                      entry.simpleRatings?.learning
+                        ? { label: "授業・学び", value: OC_LEARNING_MARK_LABELS[entry.simpleRatings.learning] }
+                        : null,
+                      entry.simpleRatings?.access
+                        ? { label: "通いやすさ", value: OC_ACCESS_MARK_LABELS[entry.simpleRatings.access] }
+                        : null,
+                    ].filter((item): item is { label: string; value: string } => item !== null);
+                    const goodTagChips = [
+                      ...(entry.goodTags ?? []).map((id) => pointTagLabel(id)),
+                      entry.goodTags?.includes("other") && entry.goodOther ? entry.goodOther : "",
+                    ].filter(Boolean);
+                    const concernTagChips = [
+                      ...(entry.concernTags ?? []).map((id) => pointTagLabel(id)),
+                      entry.concernTags?.includes("other") && entry.concernOther ? entry.concernOther : "",
+                    ].filter(Boolean);
+                    const trialMatchLabel = entry.trialLesson?.match
+                      ? OC_TRIAL_MATCH_OPTIONS.find((option) => option.id === entry.trialLesson?.match)?.label
+                      : "";
+
+                    return (
+                      <article key={entry.id} className="list-card compact-card">
+                        <div className="row-between gap-sm align-start">
+                          <div>
+                            <p className="item-title small">{evaluationDisplayName(entry)}</p>
+                            <p className="item-subtitle">{campusEvaluatorRoleLabel(entry.evaluatorRole)}</p>
+                          </div>
+                          <button
+                            type="button"
+                            className="card-action subtle"
+                            onClick={() => openEvaluationEditor(event, entry.evaluatorId)}
+                          >
+                            編集
+                          </button>
+                        </div>
+                        {entry.overall ? (
+                          <div className="oc-eval-hero top-gap">
+                            {renderStars(entry.overall)}
+                            <span className="oc-eval-hero-value">{entry.overall} / 5</span>
+                          </div>
+                        ) : null}
+                        {simpleMarks.length > 0 ? (
+                          <div className="oc-eval-marks top-gap">
+                            {simpleMarks.map((item) => (
+                              <div key={item.label} className="oc-eval-mark">
+                                <span className="oc-eval-mark-label">{item.label}</span>
+                                <span className="oc-eval-mark-value">{item.value}</span>
+                              </div>
+                            ))}
+                          </div>
+                        ) : null}
+                        {entry.aspiration ? (
+                          <div className="top-gap">
+                            <span className="review-note-label">今の志望度</span>
+                            <div className="top-gap">{renderChipRow([aspirationLabel(entry.aspiration)])}</div>
+                          </div>
+                        ) : null}
+                        {hasCategoryScores(entry) ? (
+                          <div className="oc-eval-marks top-gap">
+                            {(Object.entries(categoryLabels) as [CampusEvaluationCategory, string][]).map(
+                              ([key, label]) =>
+                                entry.categoryScores[key] != null ? (
+                                  <div key={key} className="oc-eval-mark">
+                                    <span className="oc-eval-mark-label">{label}</span>
+                                    <span className="oc-eval-mark-value">{entry.categoryScores[key]}</span>
+                                  </div>
+                                ) : null,
+                            )}
+                          </div>
+                        ) : null}
+                        {goodTagChips.length > 0 ? (
+                          <div className="top-gap">
+                            <span className="review-note-label">良かったところ</span>
+                            <div className="top-gap">{renderChipRow(goodTagChips)}</div>
+                          </div>
+                        ) : null}
+                        {concernTagChips.length > 0 ? (
+                          <div className="top-gap">
+                            <span className="review-note-label">気になったところ</span>
+                            <div className="top-gap">{renderChipRow(concernTagChips)}</div>
+                          </div>
+                        ) : null}
+                        {!hasSavedEvaluation(entry) ? (
+                          <p className="muted-text top-gap">まだ入力はありません。</p>
+                        ) : null}
+                        {renderNoteBlock("良かったこと", entry.goodPoint)}
+                        {renderNoteBlock("気になったこと", entry.badPoint)}
+                        {renderNoteBlock("もっと知りたいこと", entry.wantToKnow)}
+                        {renderNoteBlock("ひとことメモ", entry.freeNote)}
+                        {renderNoteBlock("感想", entry.studentComment)}
+                        {renderNoteBlock("追加メモ", entry.familyComment)}
+                        {entry.trialLesson?.courseName ||
+                        entry.trialLesson?.instructor ||
+                        entry.trialLesson?.date ||
+                        entry.trialLesson?.expected ||
+                        entry.trialLesson?.match ||
+                        entry.trialLesson?.noticed ? (
+                          <div className="top-gap">
+                            <span className="review-note-label">模擬・体験授業</span>
+                            {renderNoteBlock("講座名", entry.trialLesson?.courseName)}
+                            {renderNoteBlock("講師名", entry.trialLesson?.instructor)}
+                            {renderNoteBlock("受講日", entry.trialLesson?.date)}
+                            {renderNoteBlock("受ける前に想像していたこと", entry.trialLesson?.expected)}
+                            {renderNoteBlock("実際に受けてどうだったか", trialMatchLabel)}
+                            {renderNoteBlock("授業を受けて気づいたこと", entry.trialLesson?.noticed)}
+                          </div>
+                        ) : null}
+                      </article>
+                    );
+                  })}
                 </div>
-              ) : null}
-              {renderNoteBlock("良かったこと", detailEvaluation.goodPoint)}
-              {renderNoteBlock("いまいちだったこと", detailEvaluation.badPoint)}
-              {renderNoteBlock("もっと知りたいこと", detailEvaluation.wantToKnow)}
-              {renderNoteBlock("ひとことメモ", detailEvaluation.freeNote)}
-              {renderNoteBlock("本人の感想", detailEvaluation.studentComment)}
-              {renderNoteBlock("家族の感想", detailEvaluation.familyComment)}
-              {trial?.courseName || trial?.instructor || trial?.date || trial?.expected || trial?.match || trial?.noticed ? (
-                <div className="top-gap">
-                  <span className="review-note-label">模擬・体験授業</span>
-                  {renderNoteBlock("講座名", trial?.courseName)}
-                  {renderNoteBlock("講師名", trial?.instructor)}
-                  {renderNoteBlock("受講日", trial?.date)}
-                  {renderNoteBlock("受ける前に想像していたこと", trial?.expected)}
-                  {renderNoteBlock("実際に受けてどうだったか", trialMatchLabel)}
-                  {renderNoteBlock("授業を受けて気づいたこと", trial?.noticed)}
+              ) : (
+                <p className="muted-text top-gap">まだ評価はありません。</p>
+              )}
+
+              {evaluationChooserEventId === event.id ? (
+                <div className="list-card compact-card top-gap">
+                  <p className="item-title small">だれの評価？</p>
+                  <div className="choice-chips oc-choice-chips top-gap">
+                    {campusEvaluators.map((evaluator) => {
+                      const existingEntry = findEvaluationEntry(event.id, evaluator.id);
+
+                      return (
+                        <button
+                          key={evaluator.id}
+                          type="button"
+                          className="choice-chip oc-choice-chip"
+                          onClick={() => openEvaluationEditor(event, evaluator.id)}
+                        >
+                          {evaluator.name}
+                          {existingEntry ? "（編集）" : ""}
+                        </button>
+                      );
+                    })}
+                  </div>
+                  <label className="field-block top-gap">
+                    <span className="field-label">新しく評価する人の名前</span>
+                    <input
+                      className="text-input"
+                      type="text"
+                      value={newEvaluatorName}
+                      onChange={(eventDom) => setNewEvaluatorName(eventDom.target.value)}
+                      placeholder="例: お母さん"
+                    />
+                  </label>
+                  <div className="action-row">
+                    <button type="button" className="action-button primary" onClick={() => handleAddCampusEvaluator(event)}>
+                      ＋ 評価する人を追加
+                    </button>
+                    <button
+                      type="button"
+                      className="action-button"
+                      onClick={() => {
+                        setEvaluationChooserEventId(null);
+                        setNewEvaluatorName("");
+                      }}
+                    >
+                      閉じる
+                    </button>
+                  </div>
                 </div>
               ) : null}
             </section>
@@ -1841,6 +1986,9 @@ export function OpenCampusClient() {
   }
 
   function renderEvaluationEditor() {
+    const editingEvaluator = editingEvaluationTarget
+      ? findCampusEvaluator(editingEvaluationTarget.evaluatorId)
+      : null;
     const goodTags = evaluationForm.goodTags ?? [];
     const concernTags = evaluationForm.concernTags ?? [];
     const trial = evaluationForm.trialLesson ?? {};
@@ -1852,7 +2000,10 @@ export function OpenCampusClient() {
         }}
         className="panel inline-detail-card inline-editor-card oc-eval-editor"
       >
-        <SectionHeader title="OCどうだった？" description="選ぶだけで残せます。全部空でも保存できます。" />
+        <SectionHeader
+          title={editingEvaluator ? `${editingEvaluator.name}の評価` : "OCどうだった？"}
+          description="選ぶだけで残せます。全部空でも保存できます。"
+        />
         <div className="form-stack">
           <ScoreSelector
             label="総合評価"
@@ -2062,7 +2213,7 @@ export function OpenCampusClient() {
               </label>
 
               <label className="field-block">
-                <span className="field-label">本人の感想（任意）</span>
+                <span className="field-label">感想（任意）</span>
                 <textarea
                   className="text-area"
                   rows={3}
@@ -2072,7 +2223,7 @@ export function OpenCampusClient() {
               </label>
 
               <label className="field-block">
-                <span className="field-label">家族の感想（任意）</span>
+                <span className="field-label">追加メモ（任意）</span>
                 <textarea
                   className="text-area"
                   rows={3}
@@ -2288,6 +2439,39 @@ export function OpenCampusClient() {
     }
   }
 
+  function handleAddCampusEvaluator(event: OpenCampusEvent) {
+    const name = newEvaluatorName.trim();
+
+    if (!name) {
+      window.alert("評価する人の名前を入力してください。");
+      return;
+    }
+
+    const today = todayString();
+    const newEvaluatorId = createId("oc-evaluator");
+    const nextEvaluator = normalizeCampusEvaluators([
+      ...campusEvaluators,
+      {
+        id: newEvaluatorId,
+        name,
+        role: "family",
+        createdAt: today,
+        updatedAt: today,
+      },
+    ]);
+
+    const nextEvaluatorEntry = nextEvaluator.find((item) => item.id === newEvaluatorId);
+
+    if (!nextEvaluatorEntry) {
+      window.alert("評価する人を確認できませんでした。もう一度お試しください。");
+      return;
+    }
+
+    setCampusEvaluators(nextEvaluator);
+    saveCampusEvaluationState(evaluations, nextEvaluator);
+    openEvaluationEditor(event, newEvaluatorId, nextEvaluatorEntry);
+  }
+
   async function handleSaveEvent() {
     if (!eventForm.university.trim()) {
       window.alert("大学名を入力してください。");
@@ -2377,7 +2561,25 @@ export function OpenCampusClient() {
   }
 
   function handleSaveEvaluation() {
-    if (!editingEvaluationId) {
+    if (!editingEvaluationTarget) {
+      return;
+    }
+
+    const existingEntry = findEvaluationEntry(editingEvaluationTarget.eventId, editingEvaluationTarget.evaluatorId);
+    const evaluator =
+      findCampusEvaluator(editingEvaluationTarget.evaluatorId) ??
+      (existingEntry
+        ? {
+            id: existingEntry.evaluatorId,
+            name: existingEntry.evaluatorName,
+            role: existingEntry.evaluatorRole,
+            createdAt: existingEntry.createdAt,
+            updatedAt: existingEntry.updatedAt,
+          }
+        : null);
+
+    if (!evaluator) {
+      window.alert("評価する人を確認できませんでした。もう一度お試しください。");
       return;
     }
 
@@ -2399,13 +2601,30 @@ export function OpenCampusClient() {
       trialLesson: evaluationForm.trialLesson,
     });
 
+    const nextEntry = normalizeCampusEvaluationEntry({
+      ...nextEvaluation,
+      id: existingEntry?.id ?? createId("oc-eval"),
+      evaluatorId: evaluator.id,
+      evaluatorName: evaluator.name,
+      evaluatorRole: evaluator.role,
+      createdAt: existingEntry?.createdAt ?? todayString(),
+      updatedAt: todayString(),
+      legacyLabel: existingEntry?.legacyLabel,
+    });
+
+    const currentEntries = eventEvaluations(editingEvaluationTarget.eventId);
+    const nextEventEvaluations = existingEntry
+      ? currentEntries.map((entry) =>
+          entry.evaluatorId === editingEvaluationTarget.evaluatorId ? nextEntry : entry,
+        )
+      : [...currentEntries, nextEntry];
     const nextEvaluations = {
       ...evaluations,
-      [editingEvaluationId]: nextEvaluation,
+      [editingEvaluationTarget.eventId]: nextEventEvaluations,
     };
 
     setEvaluations(nextEvaluations);
-    saveCampusEvaluations(nextEvaluations);
+    saveCampusEvaluationState(nextEvaluations, campusEvaluators);
     closeEvaluationEditor();
   }
 
@@ -2434,8 +2653,13 @@ export function OpenCampusClient() {
       closeEventEditor();
     }
 
-    if (editingEvaluationId === event.id) {
+    if (editingEvaluationTarget?.eventId === event.id) {
       closeEvaluationEditor();
+    }
+
+    if (evaluationChooserEventId === event.id) {
+      setEvaluationChooserEventId(null);
+      setNewEvaluatorName("");
     }
 
     if (attachmentsAvailable) {
@@ -2607,7 +2831,7 @@ export function OpenCampusClient() {
                       event.id,
                     )
                   : null}
-                {editingEvaluationId === event.id ? renderEvaluationEditor() : null}
+                {editingEvaluationTarget?.eventId === event.id ? renderEvaluationEditor() : null}
               </div>
             ))
           )}
@@ -2642,7 +2866,7 @@ export function OpenCampusClient() {
                       event.id,
                     )
                   : null}
-                {editingEvaluationId === event.id ? renderEvaluationEditor() : null}
+                {editingEvaluationTarget?.eventId === event.id ? renderEvaluationEditor() : null}
               </div>
             ))
           )}

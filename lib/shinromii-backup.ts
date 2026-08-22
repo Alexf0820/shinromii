@@ -54,6 +54,7 @@ export function buildShinromiiBackup(
     data: {
       version: storage.version,
       aiNotes: storage.aiNotes,
+      campusEvaluators: storage.campusEvaluators,
       campusEvaluations: storage.campusEvaluations,
       universityCandidates: storage.universityCandidates,
       gradeRecords: storage.gradeRecords,

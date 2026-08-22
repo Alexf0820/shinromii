@@ -203,6 +203,16 @@ export type OcTrialLesson = {
   noticed?: string;
 };
 
+export type CampusEvaluatorRole = "self" | "guardian" | "family" | "other" | "legacy";
+
+export type CampusEvaluator = {
+  id: string;
+  name: string;
+  role: CampusEvaluatorRole;
+  createdAt: string;
+  updatedAt: string;
+};
+
 export type CampusEvaluation = {
   overall: number | null;
   goodPoint: string;
@@ -220,6 +230,16 @@ export type CampusEvaluation = {
   wantToKnow?: string;
   trialLesson?: OcTrialLesson;
 } & DataRecordMeta;
+
+export type CampusEvaluationEntry = CampusEvaluation & {
+  id: string;
+  evaluatorId: string;
+  evaluatorName: string;
+  evaluatorRole: CampusEvaluatorRole;
+  createdAt: string;
+  updatedAt: string;
+  legacyLabel?: string;
+};
 
 export type CampusVisit = {
   id: string;
