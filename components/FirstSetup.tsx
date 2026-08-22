@@ -64,6 +64,9 @@ export function FirstSetup({ onFinished, preview = false, resume = false }: Firs
   const [events, setEvents] = useState(
     () => existing?.openCampusEvents ?? createBlankShinromiiStorage().openCampusEvents,
   );
+  const [campusEvaluators, setCampusEvaluators] = useState(
+    () => existing?.campusEvaluators ?? createBlankShinromiiStorage().campusEvaluators,
+  );
   const [evaluations, setEvaluations] = useState(
     () => existing?.campusEvaluations ?? createBlankShinromiiStorage().campusEvaluations,
   );
@@ -83,6 +86,7 @@ export function FirstSetup({ onFinished, preview = false, resume = false }: Firs
     setQualifications(storage.qualifications);
     setCandidates(storage.universityCandidates);
     setEvents(storage.openCampusEvents);
+    setCampusEvaluators(storage.campusEvaluators);
     setEvaluations(storage.campusEvaluations);
   }, [preview, resume]);
 
@@ -130,6 +134,7 @@ export function FirstSetup({ onFinished, preview = false, resume = false }: Firs
           qualifications,
           universityCandidates: candidates,
           openCampusEvents: events,
+          campusEvaluators,
           campusEvaluations: evaluations,
         });
       } else {
@@ -140,6 +145,7 @@ export function FirstSetup({ onFinished, preview = false, resume = false }: Firs
           qualifications,
           universityCandidates: candidates,
           openCampusEvents: events,
+          campusEvaluators,
           campusEvaluations: evaluations,
           setupCompleted: true,
         });

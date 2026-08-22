@@ -4,8 +4,11 @@ import { normalizeExamScores } from "@/lib/grading-rule";
 import { ensureAugust22OpenCampusPlans, migrateLegacyDummyOpenCampus } from "@/lib/oc-dummy-migration";
 import {
   normalizeCampusEvaluation,
+  normalizeCampusEvaluationEntries,
+  normalizeCampusEvaluators,
   normalizeCampusEvaluations,
   normalizeOpenCampusEvent,
+  createDefaultCampusEvaluators,
 } from "@/lib/oc-record";
 import { migrateLegacyDummyQualifications } from "@/lib/qualification-dummy-migration";
 import { migrateLegacyDummyUniversities } from "@/lib/university-dummy-migration";
@@ -14,6 +17,7 @@ import {
   createDefaultIdentity,
   normalizeAiNoteMeta,
   normalizeCampusEvaluationMeta,
+  normalizeCampusEvaluationEntryMeta,
   normalizeGradeRecordMeta,
   normalizeIdentity,
   normalizeOpenCampusEventMeta,
@@ -29,6 +33,8 @@ import { recordAutosaveSnapshot } from "@/lib/shinromii-autosave";
 import type {
   AiNote,
   CampusEvaluation,
+  CampusEvaluationEntry,
+  CampusEvaluator,
   GradeRecord,
   OpenCampusEvent,
   QualificationRecord,
@@ -37,14 +43,15 @@ import type {
 import { createEmptyProfile, normalizeUserProfile, type UserProfile } from "@/lib/user-profile";
 
 export const STORAGE_KEY = "SHINROMII::storage::v1";
-export const STORAGE_VERSION = 7;
+export const STORAGE_VERSION = 8;
 const AI_NOTES_SORT_KEY = "SHINROMII::ai-notes-sort::v1";
 const UNIVERSITY_SORT_KEY = "SHINROMII::university-sort::v1";
 
 export type ShinromiiStorage = {
   version: number;
   aiNotes: AiNote[];
-  campusEvaluations: Record<string, CampusEvaluation>;
+  campusEvaluators: CampusEvaluator[];
+  campusEvaluations: Record<string, CampusEvaluationEntry[]>;
   universityCandidates: UniversityCandidate[];
   gradeRecords: GradeRecord[];
   qualifications: QualificationRecord[];
@@ -88,6 +95,11 @@ type ShinromiiStorageV6 = Omit<ShinromiiStorage, "version" | "identity"> & {
   version: 6;
 };
 
+type ShinromiiStorageV7 = Omit<ShinromiiStorage, "version" | "campusEvaluators" | "campusEvaluations"> & {
+  version: 7;
+  campusEvaluations: Record<string, CampusEvaluation>;
+};
+
 /** v4までサンプルとして配布していた評定。実データへ置き換えるための目印。 */
 const legacyDummyGradeIds = new Set([
   "grade-h2-1-japanese",
@@ -114,9 +126,9 @@ function replaceLegacyDummyGrades(storage: ShinromiiStorage, fallback: Shinromii
 }
 
 function buildDefaultEvaluations() {
-  return campusDone.reduce<Record<string, CampusEvaluation>>((acc, item) => {
+  return campusDone.reduce<Record<string, CampusEvaluationEntry[]>>((acc, item) => {
     if (item.evaluation) {
-      acc[item.id] = item.evaluation;
+      acc[item.id] = normalizeCampusEvaluationEntries(item.id, item.evaluation);
     }
 
     return acc;
@@ -127,14 +139,16 @@ export function buildDefaultStorage(): ShinromiiStorage {
   const profile = createEmptyProfile();
   const identity = createDefaultIdentity(profile);
   const currentStudentProfileId = identity.session.currentStudentProfileId;
+  const campusEvaluators = createDefaultCampusEvaluators();
 
   return {
     version: STORAGE_VERSION,
     aiNotes: aiNotes.map((note) => normalizeAiNoteMeta(note, currentStudentProfileId)),
+    campusEvaluators,
     campusEvaluations: Object.fromEntries(
       Object.entries(buildDefaultEvaluations()).map(([key, value]) => [
         key,
-        normalizeCampusEvaluationMeta(value, currentStudentProfileId),
+        value.map((entry) => normalizeCampusEvaluationEntryMeta(entry, currentStudentProfileId)),
       ]),
     ),
     universityCandidates: attachUniversityMasterIds(universities).records.map((record) =>
@@ -159,6 +173,7 @@ export function createBlankShinromiiStorage(): ShinromiiStorage {
   return {
     version: STORAGE_VERSION,
     aiNotes: [],
+    campusEvaluators: createDefaultCampusEvaluators(),
     campusEvaluations: {},
     universityCandidates: [],
     gradeRecords: [],
@@ -229,13 +244,13 @@ function normalizeAiNotes(records: AiNote[]): AiNote[] {
 }
 
 function normalizeCampusEvaluationsForStudent(
-  evaluations: Record<string, CampusEvaluation>,
+  evaluations: Record<string, CampusEvaluation | CampusEvaluationEntry[]>,
   studentProfileId: string,
-): Record<string, CampusEvaluation> {
+): Record<string, CampusEvaluationEntry[]> {
   return Object.fromEntries(
     Object.entries(normalizeCampusEvaluations(evaluations)).map(([key, value]) => [
       key,
-      normalizeCampusEvaluationMeta(value, studentProfileId),
+      value.map((entry) => normalizeCampusEvaluationEntryMeta(entry, studentProfileId)),
     ]),
   );
 }
@@ -244,6 +259,7 @@ function storageSnapshotPayload(storage: ShinromiiStorage) {
   return {
     version: STORAGE_VERSION,
     aiNotes: storage.aiNotes,
+    campusEvaluators: storage.campusEvaluators,
     campusEvaluations: storage.campusEvaluations,
     universityCandidates: storage.universityCandidates,
     gradeRecords: storage.gradeRecords,
@@ -262,8 +278,16 @@ type CoerceOptions = {
   fromBackup?: boolean;
 };
 
+type PartialShinromiiStorageLike = Omit<
+  Partial<ShinromiiStorage>,
+  "campusEvaluators" | "campusEvaluations"
+> & {
+  campusEvaluators?: CampusEvaluator[];
+  campusEvaluations?: Record<string, CampusEvaluation | CampusEvaluationEntry[]>;
+};
+
 function coerceStorageValues(
-  parsed: Partial<ShinromiiStorage>,
+  parsed: PartialShinromiiStorageLike,
   fallback: ShinromiiStorage,
   options: CoerceOptions = {},
 ): ShinromiiStorage {
@@ -281,10 +305,13 @@ function coerceStorageValues(
     aiNotes: Array.isArray(parsed.aiNotes)
       ? normalizeAiNotes(parsed.aiNotes).map((record) => normalizeAiNoteMeta(record, currentStudentProfileId))
       : fallback.aiNotes,
+    campusEvaluators: Array.isArray(parsed.campusEvaluators)
+      ? normalizeCampusEvaluators(parsed.campusEvaluators as CampusEvaluator[])
+      : fallback.campusEvaluators,
     campusEvaluations:
       parsed.campusEvaluations && typeof parsed.campusEvaluations === "object"
         ? normalizeCampusEvaluationsForStudent(
-            parsed.campusEvaluations as Record<string, CampusEvaluation>,
+            parsed.campusEvaluations as Record<string, CampusEvaluation | CampusEvaluationEntry[]>,
             currentStudentProfileId,
           )
         : fallback.campusEvaluations,
@@ -381,6 +408,7 @@ function applyStorageMaintenanceMigrations(storage: ShinromiiStorage): {
     changed: true,
     storage: {
       ...storage,
+      campusEvaluators: normalizeCampusEvaluators(storage.campusEvaluators),
       qualifications: migratedQualifications.records,
       universityCandidates: linkedUniversities.records.map((record) => normalizeUniversityCandidate(record)),
       openCampusEvents: plannedOpenCampus.events.map((event) => normalizeOpenCampusEvent(event)),
@@ -425,6 +453,7 @@ function readShinromiiStorageInternal(options: { persistMaintenanceMigrations: b
       | ShinromiiStorageV4
       | ShinromiiStorageV5
       | ShinromiiStorageV6
+      | ShinromiiStorageV7
     >;
 
     if (parsed.version === 1) {
@@ -487,6 +516,17 @@ function readShinromiiStorageInternal(options: { persistMaintenanceMigrations: b
     if (parsed.version === 6) {
       const changedBeforeMaintenance = true;
       const next = coerceStorageValues(parsed as Partial<ShinromiiStorageV6>, fallback, {
+        existingInstallation: true,
+      });
+
+      return options.persistMaintenanceMigrations
+        ? persistStorageMaintenanceMigrations(next, changedBeforeMaintenance)
+        : next;
+    }
+
+    if (parsed.version === 7) {
+      const changedBeforeMaintenance = true;
+      const next = coerceStorageValues(parsed as Partial<ShinromiiStorageV7>, fallback, {
         existingInstallation: true,
       });
 
@@ -617,7 +657,13 @@ export function saveFirstSetupNotebook(storage: ShinromiiStorage) {
 /** 再セットアップ完了。既存の相談・添付などを残し、セットアップで触った項目だけ更新する。 */
 export function saveResumedSetupNotebook(storage: Pick<
   ShinromiiStorage,
-  "profile" | "gradeRecords" | "qualifications" | "universityCandidates" | "openCampusEvents" | "campusEvaluations"
+  | "profile"
+  | "gradeRecords"
+  | "qualifications"
+  | "universityCandidates"
+  | "openCampusEvents"
+  | "campusEvaluations"
+  | "campusEvaluators"
 >) {
   const current = loadShinromiiStorage();
   saveShinromiiStorage({
@@ -627,6 +673,7 @@ export function saveResumedSetupNotebook(storage: Pick<
     qualifications: storage.qualifications,
     universityCandidates: storage.universityCandidates.map((record) => normalizeUniversityCandidate(record)),
     openCampusEvents: storage.openCampusEvents.map((event) => normalizeOpenCampusEvent(event)),
+    campusEvaluators: normalizeCampusEvaluators(storage.campusEvaluators),
     campusEvaluations: normalizeCampusEvaluationsForStudent(
       storage.campusEvaluations,
       current.identity.session.currentStudentProfileId,
@@ -652,18 +699,35 @@ export function saveCampusEvaluation(campusId: string, evaluation: CampusEvaluat
     ...current,
     campusEvaluations: {
       ...current.campusEvaluations,
-      [campusId]: normalizeCampusEvaluationMeta(
-        normalizeCampusEvaluation(evaluation),
+      [campusId]: normalizeCampusEvaluationsForStudent(
+        {
+          [campusId]: normalizeCampusEvaluationEntries(campusId, evaluation),
+        },
         current.identity.session.currentStudentProfileId,
-      ),
+      )[campusId],
     },
   });
 }
 
-export function saveCampusEvaluations(nextEvaluations: Record<string, CampusEvaluation>) {
+export function saveCampusEvaluations(nextEvaluations: Record<string, CampusEvaluationEntry[]>) {
   const current = loadStorageForMutation();
   saveShinromiiStorage({
     ...current,
+    campusEvaluations: normalizeCampusEvaluationsForStudent(
+      nextEvaluations,
+      current.identity.session.currentStudentProfileId,
+    ),
+  });
+}
+
+export function saveCampusEvaluationState(
+  nextEvaluations: Record<string, CampusEvaluationEntry[]>,
+  nextEvaluators: CampusEvaluator[],
+) {
+  const current = loadStorageForMutation();
+  saveShinromiiStorage({
+    ...current,
+    campusEvaluators: normalizeCampusEvaluators(nextEvaluators),
     campusEvaluations: normalizeCampusEvaluationsForStudent(
       nextEvaluations,
       current.identity.session.currentStudentProfileId,

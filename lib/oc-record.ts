@@ -1,5 +1,8 @@
 import type {
   CampusEvaluation,
+  CampusEvaluationEntry,
+  CampusEvaluator,
+  CampusEvaluatorRole,
   OcAspiration,
   OcLookForId,
   OcPointTagId,
@@ -9,6 +12,7 @@ import type {
   OcTrialMatch,
   OpenCampusEvent,
 } from "@/data/mockData";
+import { createShinromiiId } from "@/lib/shinromii-id";
 
 export const OC_LOOK_FOR_OPTIONS: { id: OcLookForId; label: string }[] = [
   { id: "class", label: "授業・学び" },
@@ -83,6 +87,11 @@ const POINT_TAG_IDS = new Set(OC_POINT_TAG_OPTIONS.map((item) => item.id));
 const SIMPLE_MARKS = new Set(OC_SIMPLE_MARKS);
 const ASPIRATIONS = new Set(OC_ASPIRATION_OPTIONS.map((item) => item.id));
 const TRIAL_MATCHES = new Set(OC_TRIAL_MATCH_OPTIONS.map((item) => item.id));
+const CAMPUS_EVALUATOR_ROLES = new Set<CampusEvaluatorRole>(["self", "guardian", "family", "other", "legacy"]);
+
+function todayString() {
+  return new Date().toISOString().slice(0, 10);
+}
 
 export function lookForLabel(id: string) {
   return OC_LOOK_FOR_OPTIONS.find((item) => item.id === id)?.label ?? id;
@@ -94,6 +103,97 @@ export function pointTagLabel(id: string) {
 
 export function aspirationLabel(id: OcAspiration) {
   return OC_ASPIRATION_OPTIONS.find((item) => item.id === id)?.label ?? id;
+}
+
+export function campusEvaluatorRoleLabel(role: CampusEvaluatorRole) {
+  if (role === "self") {
+    return "本人";
+  }
+
+  if (role === "guardian") {
+    return "保護者";
+  }
+
+  if (role === "family") {
+    return "家族";
+  }
+
+  if (role === "legacy") {
+    return "以前の評価";
+  }
+
+  return "その他";
+}
+
+function fallbackEvaluatorName(role: CampusEvaluatorRole) {
+  return campusEvaluatorRoleLabel(role);
+}
+
+function isCampusEvaluatorRole(value: unknown): value is CampusEvaluatorRole {
+  return typeof value === "string" && CAMPUS_EVALUATOR_ROLES.has(value as CampusEvaluatorRole);
+}
+
+export function createDefaultCampusEvaluators(createdAt = todayString()): CampusEvaluator[] {
+  return [
+    {
+      id: createShinromiiId("oc-evaluator"),
+      name: "本人",
+      role: "self",
+      createdAt,
+      updatedAt: createdAt,
+    },
+    {
+      id: createShinromiiId("oc-evaluator"),
+      name: "保護者",
+      role: "guardian",
+      createdAt,
+      updatedAt: createdAt,
+    },
+  ];
+}
+
+export function normalizeCampusEvaluator(evaluator: CampusEvaluator): CampusEvaluator {
+  const role = isCampusEvaluatorRole(evaluator.role) ? evaluator.role : "other";
+  const name = typeof evaluator.name === "string" && evaluator.name.trim() ? evaluator.name.trim() : fallbackEvaluatorName(role);
+  const createdAt = typeof evaluator.createdAt === "string" && evaluator.createdAt ? evaluator.createdAt : todayString();
+  const updatedAt = typeof evaluator.updatedAt === "string" && evaluator.updatedAt ? evaluator.updatedAt : createdAt;
+
+  return {
+    id: typeof evaluator.id === "string" && evaluator.id ? evaluator.id : createShinromiiId("oc-evaluator"),
+    name,
+    role,
+    createdAt,
+    updatedAt,
+  };
+}
+
+export function normalizeCampusEvaluators(evaluators: CampusEvaluator[] | undefined) {
+  const next = Array.isArray(evaluators) ? evaluators.map((evaluator) => normalizeCampusEvaluator(evaluator)) : [];
+
+  if (!next.some((evaluator) => evaluator.role === "self")) {
+    next.push(createDefaultCampusEvaluators()[0]);
+  }
+
+  if (!next.some((evaluator) => evaluator.role === "guardian")) {
+    next.push(createDefaultCampusEvaluators()[1]);
+  }
+
+  return next;
+}
+
+export function createLegacyCampusEvaluationEntry(eventId: string, evaluation: CampusEvaluation): CampusEvaluationEntry {
+  const now = todayString();
+
+  return normalizeCampusEvaluationEntry({
+    ...evaluation,
+    id: createShinromiiId("oc-eval"),
+    evaluatorId: `legacy-${eventId}`,
+    evaluatorName: "以前の評価",
+    evaluatorRole: "legacy",
+    createdAt: now,
+    updatedAt: now,
+    legacyLabel: "以前の評価",
+  });
 }
 
 export function toggleIdList<T extends string>(current: T[], id: T) {
@@ -308,9 +408,49 @@ export function normalizeCampusEvaluation(evaluation: CampusEvaluation): CampusE
   return next;
 }
 
-export function normalizeCampusEvaluations(evaluations: Record<string, CampusEvaluation>) {
+export function normalizeCampusEvaluationEntry(entry: CampusEvaluationEntry): CampusEvaluationEntry {
+  const normalized = normalizeCampusEvaluation(entry);
+  const evaluatorRole = isCampusEvaluatorRole(entry.evaluatorRole) ? entry.evaluatorRole : "other";
+  const evaluatorName =
+    typeof entry.evaluatorName === "string" && entry.evaluatorName.trim()
+      ? entry.evaluatorName.trim()
+      : fallbackEvaluatorName(evaluatorRole);
+  const createdAt = typeof entry.createdAt === "string" && entry.createdAt ? entry.createdAt : todayString();
+  const updatedAt = typeof entry.updatedAt === "string" && entry.updatedAt ? entry.updatedAt : createdAt;
+  const legacyLabel = typeof entry.legacyLabel === "string" && entry.legacyLabel.trim() ? entry.legacyLabel.trim() : undefined;
+
+  return {
+    ...normalized,
+    id: typeof entry.id === "string" && entry.id ? entry.id : createShinromiiId("oc-eval"),
+    evaluatorId: typeof entry.evaluatorId === "string" && entry.evaluatorId ? entry.evaluatorId : createShinromiiId("oc-evaluator"),
+    evaluatorName,
+    evaluatorRole,
+    createdAt,
+    updatedAt,
+    ...(legacyLabel ? { legacyLabel } : {}),
+  };
+}
+
+export function normalizeCampusEvaluationEntries(
+  eventId: string,
+  value: CampusEvaluation | CampusEvaluationEntry[] | undefined,
+): CampusEvaluationEntry[] {
+  if (Array.isArray(value)) {
+    return value.map((entry) => normalizeCampusEvaluationEntry(entry));
+  }
+
+  if (value && typeof value === "object") {
+    return [createLegacyCampusEvaluationEntry(eventId, value)];
+  }
+
+  return [];
+}
+
+export function normalizeCampusEvaluations(
+  evaluations: Record<string, CampusEvaluation | CampusEvaluationEntry[]>,
+) {
   return Object.fromEntries(
-    Object.entries(evaluations).map(([id, evaluation]) => [id, normalizeCampusEvaluation(evaluation)]),
+    Object.entries(evaluations).map(([id, evaluation]) => [id, normalizeCampusEvaluationEntries(id, evaluation)]),
   );
 }
 
@@ -400,7 +540,7 @@ export function shouldAskOpenCampusAttendance(
 /** 大学候補名 → OC → 評価。大学候補ページからの参照用。 */
 export function openCampusRecordsForUniversity(
   events: OpenCampusEvent[],
-  evaluations: Record<string, CampusEvaluation>,
+  evaluations: Record<string, CampusEvaluationEntry[]>,
   university: string,
 ) {
   const name = university.trim();
@@ -409,7 +549,7 @@ export function openCampusRecordsForUniversity(
     .filter((event) => event.university === name)
     .map((event) => ({
       event,
-      evaluation: evaluations[event.id],
-      overall: evaluations[event.id]?.overall ?? null,
+      evaluations: evaluations[event.id] ?? [],
+      overall: evaluations[event.id]?.[0]?.overall ?? null,
     }));
 }

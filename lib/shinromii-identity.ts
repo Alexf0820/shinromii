@@ -1,6 +1,7 @@
 import type {
   AiNote,
   CampusEvaluation,
+  CampusEvaluationEntry,
   DataSourceType,
   GradeRecord,
   OpenCampusEvent,
@@ -429,6 +430,13 @@ export function normalizeCampusEvaluationMeta(
   record: CampusEvaluation,
   defaultStudentProfileId: string,
 ): CampusEvaluation {
+  return normalizeRecordMeta(record, defaultStudentProfileId);
+}
+
+export function normalizeCampusEvaluationEntryMeta(
+  record: CampusEvaluationEntry,
+  defaultStudentProfileId: string,
+): CampusEvaluationEntry {
   return normalizeRecordMeta(record, defaultStudentProfileId);
 }
 

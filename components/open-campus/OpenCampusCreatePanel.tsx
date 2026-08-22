@@ -3,20 +3,28 @@
 import { useState } from "react";
 import { CampusEvaluationForm } from "@/components/open-campus/CampusEvaluationForm";
 import { SectionHeader } from "@/components/SectionHeader";
-import type { CampusEvaluation, OpenCampusEvent } from "@/data/mockData";
+import type { CampusEvaluation, CampusEvaluationEntry, OpenCampusEvent } from "@/data/mockData";
 import {
   applyCreateIntent,
   buildOpenCampusEventFromForm,
   createEmptyEventForm,
   type OpenCampusCreateIntent,
 } from "@/lib/oc-form";
-import { createEmptyEvaluation, normalizeCampusEvaluation, OC_LOOK_FOR_OPTIONS, toggleIdList } from "@/lib/oc-record";
+import {
+  createDefaultCampusEvaluators,
+  createEmptyEvaluation,
+  normalizeCampusEvaluation,
+  normalizeCampusEvaluationEntry,
+  OC_LOOK_FOR_OPTIONS,
+  toggleIdList,
+} from "@/lib/oc-record";
+import { createShinromiiId } from "@/lib/shinromii-id";
 
 type OpenCampusCreatePanelProps = {
   events: OpenCampusEvent[];
-  evaluations: Record<string, CampusEvaluation>;
+  evaluations: Record<string, CampusEvaluationEntry[]>;
   onEventsChange: (next: OpenCampusEvent[]) => void;
-  onEvaluationsChange: (next: Record<string, CampusEvaluation>) => void;
+  onEvaluationsChange: (next: Record<string, CampusEvaluationEntry[]>) => void;
 };
 
 export function OpenCampusCreatePanel({
@@ -71,9 +79,21 @@ export function OpenCampusCreatePanel({
       return;
     }
 
+    const evaluator = createDefaultCampusEvaluators()[0];
+    const today = new Date().toISOString().slice(0, 10);
+    const nextEntry = normalizeCampusEvaluationEntry({
+      ...normalizeCampusEvaluation(evaluationForm),
+      id: createShinromiiId("oc-eval"),
+      evaluatorId: evaluator.id,
+      evaluatorName: evaluator.name,
+      evaluatorRole: evaluator.role,
+      createdAt: today,
+      updatedAt: today,
+    });
+
     onEvaluationsChange({
       ...evaluations,
-      [pendingEvalId]: normalizeCampusEvaluation(evaluationForm),
+      [pendingEvalId]: [...(evaluations[pendingEvalId] ?? []), nextEntry],
     });
     setPendingEvalId(null);
     setEvalOpen(false);

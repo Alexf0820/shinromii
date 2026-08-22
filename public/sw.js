@@ -1,4 +1,4 @@
-const CACHE_NAME = "shinromii-v09918-static";
+const CACHE_NAME = "shinromii-v09919-static";
 const APP_SHELL_ROUTES = [
   "/",
   "/grades",
