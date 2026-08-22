@@ -719,9 +719,14 @@ export function OpenCampusClient() {
     setNewEvaluatorName("");
   }
 
-  function openEvaluationEditor(event: OpenCampusEvent, evaluatorId: string) {
+  function openEvaluationEditor(
+    event: OpenCampusEvent,
+    evaluatorId: string,
+    providedEvaluator?: CampusEvaluator,
+  ) {
     const existingEntry = findEvaluationEntry(event.id, evaluatorId);
     const evaluator =
+      providedEvaluator ??
       findCampusEvaluator(evaluatorId) ??
       (existingEntry
         ? {
@@ -2455,9 +2460,16 @@ export function OpenCampusClient() {
       },
     ]);
 
+    const nextEvaluatorEntry = nextEvaluator.find((item) => item.id === newEvaluatorId);
+
+    if (!nextEvaluatorEntry) {
+      window.alert("評価する人を確認できませんでした。もう一度お試しください。");
+      return;
+    }
+
     setCampusEvaluators(nextEvaluator);
     saveCampusEvaluationState(evaluations, nextEvaluator);
-    openEvaluationEditor(event, newEvaluatorId);
+    openEvaluationEditor(event, newEvaluatorId, nextEvaluatorEntry);
   }
 
   async function handleSaveEvent() {
