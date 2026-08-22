@@ -401,6 +401,7 @@ export function OpenCampusClient() {
   const [attachmentPreviews, setAttachmentPreviews] = useState<Record<string, AttachmentPreview>>({});
   const [expandedImageId, setExpandedImageId] = useState<string | null>(null);
   const [pendingScrollId, setPendingScrollId] = useState<string | null>(null);
+  const [pendingEvaluationSectionScrollId, setPendingEvaluationSectionScrollId] = useState<string | null>(null);
   const [pendingEditScrollId, setPendingEditScrollId] = useState<string | null>(null);
   const [pendingEvalScrollId, setPendingEvalScrollId] = useState<string | null>(null);
   const [deferredAttendanceIds, setDeferredAttendanceIds] = useState<string[]>([]);
@@ -409,6 +410,7 @@ export function OpenCampusClient() {
   const directAttachmentEventIdRef = useRef<string | null>(null);
   const objectUrlsRef = useRef<string[]>([]);
   const detailRefs = useRef<Record<string, HTMLElement | null>>({});
+  const evaluationSectionRefs = useRef<Record<string, HTMLElement | null>>({});
   const editRefs = useRef<Record<string, HTMLElement | null>>({});
   const evalEditorRef = useRef<HTMLElement | null>(null);
   const attachmentsAvailable = isAttachmentStorageAvailable();
@@ -560,6 +562,28 @@ export function OpenCampusClient() {
   }, [pendingScrollId, selectedId]);
 
   useEffect(() => {
+    if (!pendingEvaluationSectionScrollId || pendingEvaluationSectionScrollId !== selectedId) {
+      return;
+    }
+
+    const element = evaluationSectionRefs.current[pendingEvaluationSectionScrollId];
+
+    if (!element) {
+      return;
+    }
+
+    const frame = window.requestAnimationFrame(() => {
+      element.scrollIntoView({
+        behavior: "smooth",
+        block: "start",
+      });
+      setPendingEvaluationSectionScrollId(null);
+    });
+
+    return () => window.cancelAnimationFrame(frame);
+  }, [events, pendingEvaluationSectionScrollId, selectedId]);
+
+  useEffect(() => {
     if (!pendingEditScrollId || pendingEditScrollId !== editingEventId) {
       return;
     }
@@ -669,6 +693,7 @@ export function OpenCampusClient() {
     setNewEvaluatorName("");
     setSelectedId(null);
     setPendingScrollId(null);
+    setPendingEvaluationSectionScrollId(null);
     setPendingEditScrollId(null);
     setPendingEvalScrollId(null);
     setEventForm(createEmptyEventForm());
@@ -686,6 +711,7 @@ export function OpenCampusClient() {
     setNewEvaluatorName("");
     setSelectedId(null);
     setPendingScrollId(null);
+    setPendingEvaluationSectionScrollId(null);
     setPendingEditScrollId(event.id);
     setPendingEvalScrollId(null);
     setEventForm(formFromEvent(event));
@@ -706,13 +732,14 @@ export function OpenCampusClient() {
     setAttachmentWarning(null);
   }
 
-  function openEvaluationChooser(eventId: string) {
+  function openEvaluationChooser(eventId: string, options?: { scrollToEvaluation?: boolean }) {
     setIsCreatingEvent(false);
     setEditingEventId(null);
     setPendingEditScrollId(null);
     setPendingEvalInviteId(null);
     setSelectedId(eventId);
-    setPendingScrollId(eventId);
+    setPendingScrollId(options?.scrollToEvaluation ? null : eventId);
+    setPendingEvaluationSectionScrollId(options?.scrollToEvaluation ? eventId : null);
     setEvaluationChooserEventId(eventId);
     setEditingEvaluationTarget(null);
     setPendingEvalScrollId(null);
@@ -747,6 +774,7 @@ export function OpenCampusClient() {
     setEditingEventId(null);
     setPendingEditScrollId(null);
     setPendingScrollId(null);
+    setPendingEvaluationSectionScrollId(null);
     setSelectedId(null);
     setPendingEvalInviteId(null);
     setEvaluationChooserEventId(null);
@@ -762,6 +790,7 @@ export function OpenCampusClient() {
   function closeEvaluationEditor() {
     setEditingEvaluationTarget(null);
     setEvaluationChooserEventId(null);
+    setPendingEvaluationSectionScrollId(null);
     setPendingEvalScrollId(null);
     setNewEvaluatorName("");
     setEvaluationForm(createEmptyEvaluation());
@@ -782,7 +811,7 @@ export function OpenCampusClient() {
   function handleAttended(event: OpenCampusEvent) {
     setDirectAttachmentMessage(null);
     persistEventStatus(event, "参加済み");
-    openEvaluationChooser(event.id);
+    openEvaluationChooser(event.id, { scrollToEvaluation: true });
   }
 
   function handleSkipped(event: OpenCampusEvent) {
@@ -1794,7 +1823,13 @@ export function OpenCampusClient() {
           </section>
 
           {event.status === "参加済み" ? (
-            <section className="detail-group">
+            <section
+              ref={(node) => {
+                evaluationSectionRefs.current[event.id] = node;
+              }}
+              className="detail-group"
+              style={{ scrollMarginTop: "5.5rem" }}
+            >
               <div className="row-between gap-sm align-start">
                 <div>
                   <p className="detail-group-title">みんなの評価</p>
