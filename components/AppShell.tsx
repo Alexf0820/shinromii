@@ -58,8 +58,8 @@ const pageMeta: Record<string, PageMeta> = {
     tone: "campus",
   },
   "/ai-notes": {
-    title: "AI相談メモ",
-    subtitle: "相談履歴をあとから見返しやすく",
+    title: "相談メモ",
+    subtitle: "家族や先生、AIなどと相談した内容をあとから見返せます",
     icon: "ai-fill",
     tone: "ai",
   },

@@ -245,7 +245,35 @@ function normalizeQualifications(records: QualificationRecord[]): QualificationR
 }
 
 function normalizeAiNotes(records: AiNote[]): AiNote[] {
-  return records.map((record) => ({ ...record }));
+  return records.flatMap((record) => {
+    if (!record || typeof record !== "object" || typeof record.id !== "string") {
+      return [];
+    }
+
+    const sourceKind =
+      record.sourceKind === "family" ||
+      record.sourceKind === "school" ||
+      record.sourceKind === "cram" ||
+      record.sourceKind === "ai" ||
+      record.sourceKind === "other"
+        ? record.sourceKind
+        : "ai";
+
+    const sourceName =
+      typeof record.sourceName === "string" && record.sourceName.trim().length > 0
+        ? record.sourceName.trim()
+        : sourceKind === "ai"
+          ? record.provider
+          : "";
+
+    return [
+      {
+        ...record,
+        sourceKind,
+        sourceName,
+      },
+    ];
+  });
 }
 
 function normalizeCampusEvaluationsForStudent(
