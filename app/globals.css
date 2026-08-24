@@ -3648,6 +3648,34 @@ a {
   padding: 10px var(--shell-pad-x) 8px;
 }
 
+.welcome-data-guide {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.welcome-data-guide-head {
+  display: flex;
+  justify-content: flex-end;
+}
+
+.welcome-data-guide-image-frame {
+  width: 100%;
+  max-width: 720px;
+  margin: 0 auto;
+  border-radius: 22px;
+  overflow: hidden;
+  border: 1px solid rgba(221, 227, 236, 0.92);
+  background: #ffffff;
+  box-shadow: var(--card-shadow);
+}
+
+.welcome-data-guide-image {
+  display: block;
+  width: 100%;
+  height: auto;
+}
+
 .welcome-copy {
   display: flex;
   flex-direction: column;

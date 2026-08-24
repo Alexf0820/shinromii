@@ -7,7 +7,6 @@ import { BrandAccountLink } from "@/components/BrandAccountLink";
 import { BrandMark } from "@/components/BrandMark";
 import { SettingsLink } from "@/components/SettingsLink";
 import { UiIcon } from "@/components/UiIcon";
-import { DataProtectionGuide } from "@/components/settings/DataProtectionGuide";
 import { APP_VERSION_LABEL } from "@/lib/app-version";
 import { parseShinromiiBackupJson } from "@/lib/shinromii-backup";
 import { saveShinromiiStorage } from "@/lib/shinromii-storage";
@@ -16,6 +15,9 @@ const HERO_IMAGE = "/images/shinromii-home-hero.png";
 const HERO_IMAGE_WIDTH = 1024;
 const HERO_IMAGE_HEIGHT = 661;
 const HERO_IMAGE_SIZES = "(max-width: 639px) 100vw, 920px";
+const DATA_PROTECTION_GUIDE_IMAGE = "/images/data-protection-guide-confirmed.jpg";
+const DATA_PROTECTION_GUIDE_WIDTH = 1280;
+const DATA_PROTECTION_GUIDE_HEIGHT = 798;
 
 type WelcomeStartProps = {
   onStartFresh: () => void;
@@ -121,7 +123,27 @@ export function WelcomeStart({ onStartFresh, onRestored, preview = false }: Welc
           </p>
         </div>
 
-        <DataProtectionGuide showLink />
+        <section
+          className="welcome-data-guide"
+          aria-label="データの守り方。くわしく見るから詳細ページへ進めます。"
+        >
+          <div className="welcome-data-guide-head">
+            <Link href="/settings/data-protection" className="data-guide-link">
+              くわしく見る
+            </Link>
+          </div>
+          <div className="welcome-data-guide-image-frame">
+            <Image
+              className="welcome-data-guide-image"
+              src={DATA_PROTECTION_GUIDE_IMAGE}
+              alt="SHINROMiiのデータの守り方。この端末への保存、暗号化したCloud保存、家族との共有について説明"
+              width={DATA_PROTECTION_GUIDE_WIDTH}
+              height={DATA_PROTECTION_GUIDE_HEIGHT}
+              sizes="(max-width: 639px) calc(100vw - 32px), 720px"
+              priority
+            />
+          </div>
+        </section>
 
         <div className="welcome-actions">
           <button type="button" className="welcome-choice primary" onClick={onStartFresh}>
