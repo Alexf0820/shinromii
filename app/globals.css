@@ -1,6 +1,16 @@
 :root {
-  --bg: #f7fafe;
-  --bg-secondary: #eef5ff;
+  --stage-primary: #2563eb;
+  --stage-primary-strong: #1d4ed8;
+  --stage-accent: #2f67d8;
+  --stage-accent-strong: #1d4fb7;
+  --stage-background: #f7fafe;
+  --stage-soft-background: #eef5ff;
+  --stage-border: rgba(104, 131, 164, 0.22);
+  --stage-header-start: #eaf4fc;
+  --stage-header-end: #f7fafe;
+
+  --bg: var(--stage-background);
+  --bg-secondary: var(--stage-soft-background);
   --surface: rgba(255, 255, 255, 0.94);
   --surface-strong: #ffffff;
   --surface-soft: #f8fbff;
@@ -9,9 +19,9 @@
   --text: #15263f;
   --muted: #697991;
   --muted-strong: #55657e;
-  --accent: #2f67d8;
-  --accent-soft: #edf4ff;
-  --accent-strong: #1d4fb7;
+  --accent: var(--stage-accent);
+  --accent-soft: var(--stage-soft-background);
+  --accent-strong: var(--stage-accent-strong);
   --grades-soft: #edf4ff;
   --university-soft: #f4efff;
   --campus-soft: #edf8f1;
@@ -27,8 +37,8 @@
   --radius-sm: 12px;
 
   /* UI Ver.2 tokens */
-  --primary: #2563eb;
-  --primary-strong: #1d4ed8;
+  --primary: var(--stage-primary);
+  --primary-strong: var(--stage-primary-strong);
   --ink: #16233c;
   --ink-sub: #5a6a83;
   --ink-faint: #98a3b5;
@@ -51,12 +61,13 @@
 }
 
 html {
-  background: #f4f6fa;
+  background: var(--bg);
 }
 
 body {
   margin: 0;
   min-height: 100vh;
+  background: var(--bg);
   color: var(--text);
   font-family: "SF Pro Display", "Hiragino Sans", "Yu Gothic UI", "Yu Gothic", sans-serif;
   -webkit-font-smoothing: antialiased;
@@ -79,12 +90,37 @@ a {
   min-height: 100vh;
   position: relative;
   padding: max(14px, env(safe-area-inset-top)) 12px 0;
+  background: var(--bg);
+}
+
+.app-shell[data-progression-stage="high-school"] {
+  --stage-primary: #2f8b76;
+  --stage-primary-strong: #256f60;
+  --stage-accent: #2c8471;
+  --stage-accent-strong: #236a5b;
+  --stage-background: #f5fbf8;
+  --stage-soft-background: #e8f5ef;
+  --stage-border: rgba(72, 127, 109, 0.22);
+  --stage-header-start: #e5f4ed;
+  --stage-header-end: #f5fbf8;
+}
+
+.app-shell[data-progression-stage="university"] {
+  --stage-primary: #2563eb;
+  --stage-primary-strong: #1d4ed8;
+  --stage-accent: #2f67d8;
+  --stage-accent-strong: #1d4fb7;
+  --stage-background: #f7fafe;
+  --stage-soft-background: #eef5ff;
+  --stage-border: rgba(104, 131, 164, 0.22);
+  --stage-header-start: #eaf4fc;
+  --stage-header-end: #f7fafe;
 }
 
 .app-backdrop {
   position: fixed;
   inset: 0;
-  background: #f4f6fa;
+  background: var(--bg);
   pointer-events: none;
 }
 
@@ -117,7 +153,7 @@ a {
   gap: 12px;
   margin-inline: -12px;
   padding: max(10px, env(safe-area-inset-top)) 12px 8px;
-  background: linear-gradient(180deg, #eaf4fc 0%, #f7fafe 100%);
+  background: linear-gradient(180deg, var(--stage-header-start) 0%, var(--stage-header-end) 100%);
 }
 
 .brand-header-copy {
@@ -175,6 +211,28 @@ a {
   line-height: 1.05;
   padding-left: 49px;
   font-size: 0.82rem;
+}
+
+.progression-stage-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 10px;
+  border-radius: 999px;
+  border: 1px solid var(--stage-border);
+  background: rgba(255, 255, 255, 0.82);
+  color: var(--primary);
+  font-size: 0.72rem;
+  font-weight: 800;
+  line-height: 1.2;
+  -webkit-backdrop-filter: blur(6px);
+  backdrop-filter: blur(6px);
+}
+
+.topbar-stage-badge,
+.home-stage-badge,
+.settings-stage-badge {
+  margin-top: 6px;
 }
 
 .app-shell:not(.home-shell) .mobile-frame {
@@ -763,7 +821,7 @@ a {
 
 .action-button.primary,
 .card-action.primary {
-  background: linear-gradient(180deg, #3877ed, #2f67d8);
+  background: linear-gradient(180deg, var(--primary), var(--accent));
   color: #ffffff;
   border-color: transparent;
 }
@@ -1716,6 +1774,28 @@ a {
   line-height: 1.5;
   letter-spacing: 0.01em;
   box-shadow: 0 1px 2px rgba(20, 38, 66, 0.06);
+}
+
+.settings-stage-card {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 15px 16px;
+  border: 1px solid var(--stage-border);
+  background: linear-gradient(180deg, var(--stage-soft-background) 0%, #ffffff 100%);
+}
+
+.settings-stage-icon {
+  background: rgba(255, 255, 255, 0.86);
+}
+
+.settings-stage-copy {
+  min-width: 0;
+  flex: 1;
+}
+
+.settings-stage-chips {
+  margin-top: 10px;
 }
 
 .home-bell {
@@ -3531,7 +3611,7 @@ a {
 .choice-chip.active {
   background: var(--accent-soft);
   color: var(--primary);
-  border-color: rgba(37, 99, 235, 0.22);
+  border-color: var(--stage-border);
 }
 
 .profile-add-row {
@@ -4000,7 +4080,7 @@ a {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  background: #eef4ff;
+  background: var(--stage-soft-background);
   color: var(--primary);
 }
 
@@ -4099,7 +4179,7 @@ a {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  background: #f2f6fd;
+  background: var(--stage-soft-background);
   color: var(--primary);
 }
 
@@ -4136,7 +4216,7 @@ a {
 }
 
 .settings-block-prominent {
-  background: linear-gradient(180deg, #f9fbff 0%, #ffffff 100%);
+  background: linear-gradient(180deg, var(--stage-soft-background) 0%, #ffffff 100%);
 }
 
 .settings-family-benefit-card {

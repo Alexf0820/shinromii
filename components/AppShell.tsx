@@ -9,12 +9,20 @@ import { BrandMark } from "@/components/BrandMark";
 import { FirstSetup } from "@/components/FirstSetup";
 import { MobileNav } from "@/components/MobileNav";
 import { PwaUpdateNotice } from "@/components/PwaUpdateNotice";
+import { ProgressionStageBadge } from "@/components/ProgressionStageBadge";
 import { SettingsLink } from "@/components/SettingsLink";
 import { SiteFooter } from "@/components/SiteFooter";
 import { UiIcon } from "@/components/UiIcon";
 import { WelcomeStart } from "@/components/WelcomeStart";
 import { APP_VERSION_LABEL } from "@/lib/app-version";
-import { shouldResumeSetup, shouldShowFirstSetup, clearResumeSetup } from "@/lib/shinromii-storage";
+import {
+  STORAGE_UPDATED_EVENT,
+  clearResumeSetup,
+  loadShinromiiStorage,
+  shouldResumeSetup,
+  shouldShowFirstSetup,
+} from "@/lib/shinromii-storage";
+import { type ProgressionStageId } from "@/lib/user-profile";
 
 type OnboardingStep = "none" | "welcome" | "profile";
 
@@ -135,6 +143,7 @@ export function AppShell({ children }: AppShellProps) {
   const router = useRouter();
   const [onboarding, setOnboarding] = useState<OnboardingStep>("none");
   const [resumeSetup, setResumeSetup] = useState(false);
+  const [progressionStage, setProgressionStage] = useState<ProgressionStageId | "">("university");
   const isAdminPath = pathname === "/admin" || pathname.startsWith("/admin/");
   const isAdminPreview = pathname.startsWith("/admin/preview");
   const isOnboarding = onboarding !== "none";
@@ -143,6 +152,23 @@ export function AppShell({ children }: AppShellProps) {
   const isHome = (pathname === "/" && !isOnboarding) || isWelcomeView;
   const isInfoPage = INFO_PATHS.has(pathname);
   const meta = pageMeta[pathname] ?? fallbackMeta;
+
+  useEffect(() => {
+    function syncProgressionStage() {
+      if (isAdminPath) {
+        return;
+      }
+
+      setProgressionStage(loadShinromiiStorage().profile.progressionStage || "university");
+    }
+
+    syncProgressionStage();
+    window.addEventListener(STORAGE_UPDATED_EVENT, syncProgressionStage);
+
+    return () => {
+      window.removeEventListener(STORAGE_UPDATED_EVENT, syncProgressionStage);
+    };
+  }, [isAdminPath]);
 
   useEffect(() => {
     if (isAdminPath) {
@@ -173,7 +199,10 @@ export function AppShell({ children }: AppShellProps) {
   }, [isAdminPath, pathname]);
 
   return (
-    <div className={`app-shell ${isHome ? "home-shell" : ""} ${hideUserChrome ? "setup-shell" : ""} ${isAdminPath ? "admin-shell" : ""} ${isInfoPage ? "info-shell" : ""}`}>
+    <div
+      className={`app-shell ${isHome ? "home-shell" : ""} ${hideUserChrome ? "setup-shell" : ""} ${isAdminPath ? "admin-shell" : ""} ${isInfoPage ? "info-shell" : ""}`}
+      data-progression-stage={progressionStage}
+    >
       <div className="app-backdrop" />
       <main className="mobile-frame">
         {isHome ? null : (
@@ -189,6 +218,9 @@ export function AppShell({ children }: AppShellProps) {
                   </span>
                 </Link>
                 <p className="home-brand-sub">わたしの進路ノート</p>
+                {hideUserChrome ? null : (
+                  <ProgressionStageBadge stage={progressionStage} className="topbar-stage-badge" />
+                )}
               </div>
               <div className="home-hero-meta">
                 <div className="home-hero-actions">

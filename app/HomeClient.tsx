@@ -6,6 +6,7 @@ import { APP_VERSION_LABEL } from "@/lib/app-version";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { BrandAccountLink } from "@/components/BrandAccountLink";
 import { BrandMark } from "@/components/BrandMark";
+import { ProgressionStageBadge } from "@/components/ProgressionStageBadge";
 import { SettingsLink } from "@/components/SettingsLink";
 import { UiIcon } from "@/components/UiIcon";
 import { recentItems } from "@/data/mockData";
@@ -354,6 +355,10 @@ export function HomeClient() {
                 <BrandAccountLink />
                 <SettingsLink />
               </div>
+              <ProgressionStageBadge
+                stage={storage?.profile.progressionStage ?? "university"}
+                className="home-stage-badge"
+              />
               <span className="home-version">{APP_VERSION_LABEL}</span>
             </div>
           </div>
