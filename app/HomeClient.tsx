@@ -6,6 +6,7 @@ import { APP_VERSION_LABEL } from "@/lib/app-version";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { BrandAccountLink } from "@/components/BrandAccountLink";
 import { BrandMark } from "@/components/BrandMark";
+import { ProgressionStageBadge } from "@/components/ProgressionStageBadge";
 import { SettingsLink } from "@/components/SettingsLink";
 import { UiIcon } from "@/components/UiIcon";
 import { recentItems } from "@/data/mockData";
@@ -87,8 +88,8 @@ const featureItems = [
   },
   {
     href: "/ai-notes",
-    title: "AI相談メモ",
-    description: ["AIとの相談内容を", "記録・管理する"],
+    title: "相談メモ",
+    description: ["進路について話したことを", "記録・整理する"],
     icon: "ai-fill" as const,
     tone: "ai",
   },
@@ -354,6 +355,10 @@ export function HomeClient() {
                 <BrandAccountLink />
                 <SettingsLink />
               </div>
+              <ProgressionStageBadge
+                stage={storage?.profile.progressionStage ?? "university"}
+                className="home-stage-badge"
+              />
               <span className="home-version">{APP_VERSION_LABEL}</span>
             </div>
           </div>
@@ -403,7 +408,7 @@ export function HomeClient() {
         <div className="home-memo-card">
           {recentNotes.length === 0 ? (
             <div className="home-memo-empty">
-              <p className="home-memo-title">まだAI相談メモはありません</p>
+              <p className="home-memo-title">まだ相談メモはありません</p>
               <p className="home-memo-summary">相談を追加すると、ここに最近のメモが表示されます。</p>
             </div>
           ) : (
@@ -423,7 +428,7 @@ export function HomeClient() {
             ))
           )}
           <Link href="/ai-notes" className="home-memo-more">
-            <span>すべてのAI相談メモをみる</span>
+            <span>すべての相談メモをみる</span>
             <UiIcon name="chevron-right" className="home-memo-more-icon" aria-hidden="true" />
           </Link>
         </div>

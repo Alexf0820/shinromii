@@ -135,10 +135,19 @@ export type AiProvider =
   | "NotebookLM"
   | "その他";
 
+export type ConsultationSourceKind =
+  | "family"
+  | "school"
+  | "cram"
+  | "ai"
+  | "other";
+
 export type AiNote = {
   id: string;
   consultedAt: string;
   provider: AiProvider;
+  sourceKind?: ConsultationSourceKind;
+  sourceName?: string;
   title: string;
   consultationBody: string;
   answerBody: string;
@@ -275,7 +284,7 @@ export const dashboardStats: DashboardStat[] = [
   { label: "現在の評定平均", value: "4.1", note: "高校2年 1学期時点", tone: "sky" },
   { label: "気になる大学", value: "6校", note: "うち比較中 3校", tone: "mint" },
   { label: "次の予定", value: "2件", note: "オープンキャンパス予約あり", tone: "peach" },
-  { label: "AI相談メモ", value: "4件", note: "最近1週間で追加", tone: "gold" },
+  { label: "相談メモ", value: "4件", note: "最近1週間で追加", tone: "gold" },
 ];
 
 export const recentItems: RecentItem[] = [

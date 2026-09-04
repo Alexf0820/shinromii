@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { ProgressionStageSettingsCard } from "@/components/settings/ProgressionStageSettingsCard";
 import { UiIcon } from "@/components/UiIcon";
 
 const menuItems = [
@@ -26,6 +27,8 @@ export default function SettingsPage() {
           </p>
         </div>
       </section>
+
+      <ProgressionStageSettingsCard />
 
       <section className="settings-menu-section">
         <p className="settings-section-label">設定メニュー</p>

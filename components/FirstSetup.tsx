@@ -22,8 +22,10 @@ import {
 import { isSameUniversityFaculty } from "@/lib/university-candidate";
 import {
   ACADEMIC_TRACKS,
+  PROGRESSION_STAGES,
   SCHOOL_YEARS,
   createEmptyProfile,
+  inferProgressionStageFromSchoolYear,
   normalizeUserProfile,
   type UserProfile,
 } from "@/lib/user-profile";
@@ -228,12 +230,36 @@ export function FirstSetup({ onFinished, preview = false, resume = false }: Firs
                   key={item.id}
                   type="button"
                   className={`choice-chip ${profile.schoolYear === item.id ? "active" : ""}`}
-                  onClick={() => setProfile((current) => ({ ...current, schoolYear: item.id }))}
+                  onClick={() =>
+                    setProfile((current) => ({
+                      ...current,
+                      schoolYear: item.id,
+                      progressionStage:
+                        current.progressionStage || inferProgressionStageFromSchoolYear(item.id),
+                    }))
+                  }
                 >
                   {item.label}
                 </button>
               ))}
             </div>
+          </div>
+
+          <div className="field-block">
+            <span className="field-label">いま考えている進路</span>
+            <div className="choice-chips">
+              {PROGRESSION_STAGES.map((item) => (
+                <button
+                  key={item.id}
+                  type="button"
+                  className={`choice-chip ${profile.progressionStage === item.id ? "active" : ""}`}
+                  onClick={() => setProfile((current) => ({ ...current, progressionStage: item.id }))}
+                >
+                  {item.emoji} {item.label}
+                </button>
+              ))}
+            </div>
+            <span className="field-help">あとから設定でいつでも変更できます。</span>
           </div>
 
           <div className="field-block">

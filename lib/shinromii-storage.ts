@@ -43,7 +43,8 @@ import type {
 import { createEmptyProfile, normalizeUserProfile, type UserProfile } from "@/lib/user-profile";
 
 export const STORAGE_KEY = "SHINROMII::storage::v1";
-export const STORAGE_VERSION = 8;
+export const STORAGE_VERSION = 9;
+export const STORAGE_UPDATED_EVENT = "shinromii:storage-updated";
 const AI_NOTES_SORT_KEY = "SHINROMII::ai-notes-sort::v1";
 const UNIVERSITY_SORT_KEY = "SHINROMII::university-sort::v1";
 
@@ -98,6 +99,10 @@ type ShinromiiStorageV6 = Omit<ShinromiiStorage, "version" | "identity"> & {
 type ShinromiiStorageV7 = Omit<ShinromiiStorage, "version" | "campusEvaluators" | "campusEvaluations"> & {
   version: 7;
   campusEvaluations: Record<string, CampusEvaluation>;
+};
+
+type ShinromiiStorageV8 = Omit<ShinromiiStorage, "version"> & {
+  version: 8;
 };
 
 /** v4までサンプルとして配布していた評定。実データへ置き換えるための目印。 */
@@ -240,7 +245,37 @@ function normalizeQualifications(records: QualificationRecord[]): QualificationR
 }
 
 function normalizeAiNotes(records: AiNote[]): AiNote[] {
-  return records.map((record) => ({ ...record }));
+  return records.flatMap((record) => {
+    if (!record || typeof record !== "object" || typeof record.id !== "string") {
+      return [];
+    }
+
+    const sourceKind =
+      record.sourceKind === "family" ||
+      record.sourceKind === "school" ||
+      record.sourceKind === "cram" ||
+      record.sourceKind === "ai" ||
+      record.sourceKind === "other"
+        ? record.sourceKind
+        : "ai";
+    const normalizedProvider =
+      typeof record.provider === "string" && record.provider.trim().length > 0 ? record.provider.trim() : "";
+
+    const sourceName =
+      typeof record.sourceName === "string" && record.sourceName.trim().length > 0
+        ? record.sourceName.trim()
+        : sourceKind === "ai"
+          ? normalizedProvider
+          : "";
+
+    return [
+      {
+        ...record,
+        sourceKind,
+        sourceName,
+      },
+    ];
+  });
 }
 
 function normalizeCampusEvaluationsForStudent(
@@ -454,6 +489,7 @@ function readShinromiiStorageInternal(options: { persistMaintenanceMigrations: b
       | ShinromiiStorageV5
       | ShinromiiStorageV6
       | ShinromiiStorageV7
+      | ShinromiiStorageV8
     >;
 
     if (parsed.version === 1) {
@@ -535,6 +571,17 @@ function readShinromiiStorageInternal(options: { persistMaintenanceMigrations: b
         : next;
     }
 
+    if (parsed.version === 8) {
+      const changedBeforeMaintenance = true;
+      const next = coerceStorageValues(parsed as Partial<ShinromiiStorageV8>, fallback, {
+        existingInstallation: true,
+      });
+
+      return options.persistMaintenanceMigrations
+        ? persistStorageMaintenanceMigrations(next, changedBeforeMaintenance)
+        : next;
+    }
+
     if (parsed.version !== STORAGE_VERSION) {
       return fallback;
     }
@@ -583,6 +630,7 @@ export function saveShinromiiStorage(next: ShinromiiStorage) {
   }
 
   window.localStorage.setItem(STORAGE_KEY, JSON.stringify(payload));
+  window.dispatchEvent(new CustomEvent(STORAGE_UPDATED_EVENT));
 }
 
 export function hasExistingShinromiiInstallation() {

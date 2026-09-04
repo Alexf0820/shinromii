@@ -9,7 +9,7 @@ const items = [
   { href: "/grades", label: "成績・資格", icon: "grades", activeIcon: "grades-fill" },
   { href: "/universities", label: "大学候補", icon: "university", activeIcon: "university-fill" },
   { href: "/open-campus", label: "OC", icon: "campus", activeIcon: "campus-fill" },
-  { href: "/ai-notes", label: "AI相談", icon: "ai", activeIcon: "ai-fill" },
+  { href: "/ai-notes", label: "相談メモ", icon: "ai", activeIcon: "ai-fill" },
 ] as const;
 
 export function MobileNav() {

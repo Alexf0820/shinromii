@@ -6,7 +6,7 @@ import { SectionHeader } from "@/components/SectionHeader";
 import { ScoreSelector } from "@/components/ScoreSelector";
 import { UiIcon } from "@/components/UiIcon";
 import { aiNotes as initialAiNotes } from "@/data/mockData";
-import type { AiNote, AiProvider } from "@/data/mockData";
+import type { AiNote, AiProvider, ConsultationSourceKind } from "@/data/mockData";
 import { createShinromiiId } from "@/lib/shinromii-id";
 import {
   loadAiNotesSortOrder,
@@ -24,8 +24,18 @@ const providerOptions: AiProvider[] = [
   "その他",
 ];
 
+const sourceKindOptions: Array<{ id: ConsultationSourceKind; label: string }> = [
+  { id: "family", label: "家族" },
+  { id: "school", label: "学校・先生" },
+  { id: "cram", label: "塾・予備校" },
+  { id: "ai", label: "AI" },
+  { id: "other", label: "その他" },
+];
+
 type FormState = {
   consultedAt: string;
+  sourceKind: ConsultationSourceKind;
+  sourceName: string;
   provider: AiProvider;
   title: string;
   consultationBody: string;
@@ -47,6 +57,8 @@ function todayString() {
 function createEmptyForm(): FormState {
   return {
     consultedAt: todayString(),
+    sourceKind: "ai",
+    sourceName: "ChatGPT",
     provider: "ChatGPT",
     title: "",
     consultationBody: "",
@@ -61,6 +73,8 @@ function createEmptyForm(): FormState {
 function formFromNote(note: AiNote): FormState {
   return {
     consultedAt: note.consultedAt,
+    sourceKind: getNoteSourceKind(note),
+    sourceName: getNoteSourceName(note),
     provider: note.provider,
     title: note.title,
     consultationBody: note.consultationBody,
@@ -86,6 +100,33 @@ function shorten(text: string, length: number) {
 
 function formatNoteDate(date: string) {
   return date.replaceAll("-", ".");
+}
+
+function getSourceKindLabel(sourceKind: ConsultationSourceKind) {
+  return sourceKindOptions.find((item) => item.id === sourceKind)?.label ?? "その他";
+}
+
+function getNoteSourceKind(note: AiNote): ConsultationSourceKind {
+  return note.sourceKind ?? "ai";
+}
+
+function getNoteSourceName(note: AiNote): string {
+  if (typeof note.sourceName === "string" && note.sourceName.trim().length > 0) {
+    return note.sourceName.trim();
+  }
+
+  return getNoteSourceKind(note) === "ai" ? note.provider : "";
+}
+
+function formatNoteSource(note: AiNote) {
+  const sourceKind = getNoteSourceKind(note);
+  const sourceName = getNoteSourceName(note);
+
+  if (sourceKind === "ai") {
+    return sourceName ? `AI・${sourceName}` : "AI";
+  }
+
+  return getSourceKindLabel(sourceKind);
 }
 
 export function AiNotesClient() {
@@ -136,7 +177,14 @@ export function AiNotesClient() {
     }
 
     return sortedNotes.filter((item) => {
-      const haystack = [item.title, item.summary, item.provider, item.relatedSchool]
+      const haystack = [
+        item.title,
+        item.summary,
+        item.consultationBody,
+        item.answerBody,
+        formatNoteSource(item),
+        item.relatedSchool,
+      ]
         .join(" ")
         .toLowerCase();
 
@@ -179,17 +227,33 @@ export function AiNotesClient() {
 
   function handleSave() {
     if (!form.title.trim() || !form.answerBody.trim() || !form.summary.trim()) {
-      window.alert("タイトル、AIの回答全文、要約メモは入力してください。");
+      window.alert("タイトル、相談して分かったこと、要約メモは入力してください。");
       return;
     }
+
+    const normalizedSourceName = form.sourceName.trim();
+    const nextProvider =
+      form.sourceKind === "ai"
+        ? normalizedSourceName === "ChatGPT" ||
+          normalizedSourceName === "Claude" ||
+          normalizedSourceName === "Gemini" ||
+          normalizedSourceName === "NotebookLM"
+          ? normalizedSourceName
+          : "その他"
+        : "その他";
 
     const nextNote: AiNote = {
       id: editingId ?? createId(),
       consultedAt: form.consultedAt,
-      provider: form.provider,
+      sourceKind: form.sourceKind,
+      sourceName:
+        form.sourceKind === "ai"
+          ? normalizedSourceName || nextProvider
+          : "",
+      provider: nextProvider,
       title: form.title.trim(),
       consultationBody: form.consultationBody.trim(),
-      answerBody: form.answerBody,
+      answerBody: form.answerBody.trim(),
       summary: form.summary.trim(),
       relatedSchool: form.relatedSchool.trim(),
       helpful: form.helpful ?? 3,
@@ -263,7 +327,7 @@ export function AiNotesClient() {
             <p className="ai-detail-eyebrow">相談詳細</p>
             <p className="ai-detail-title">{note.title}</p>
             <p className="ai-detail-meta">
-              {note.provider} / {formatNoteDate(note.consultedAt)}
+              {formatNoteSource(note)} / {formatNoteDate(note.consultedAt)}
             </p>
           </div>
           <span className="ai-card-helpful">参考度 {note.helpful}</span>
@@ -278,7 +342,7 @@ export function AiNotesClient() {
           </section>
 
           <section className="ai-detail-section">
-            <p className="ai-detail-section-title">AIの回答</p>
+            <p className="ai-detail-section-title">相談して分かったこと</p>
             <p className="ai-detail-answer preserve-lines">{note.answerBody}</p>
           </section>
 
@@ -299,7 +363,17 @@ export function AiNotesClient() {
           <section className="ai-detail-section">
             <p className="ai-detail-section-title">関連情報</p>
             <div className="uni-detail-entry">
-              <span className="uni-detail-entry-label">関連候補</span>
+              <span className="uni-detail-entry-label">相談相手</span>
+              <span className="uni-detail-entry-value">{getSourceKindLabel(getNoteSourceKind(note))}</span>
+            </div>
+            {getNoteSourceKind(note) === "ai" ? (
+              <div className="uni-detail-entry">
+                <span className="uni-detail-entry-label">AI</span>
+                <span className="uni-detail-entry-value">{getNoteSourceName(note) || "未入力"}</span>
+              </div>
+            ) : null}
+            <div className="uni-detail-entry">
+              <span className="uni-detail-entry-label">関連校</span>
               <span className="uni-detail-entry-value">
                 {note.relatedSchool || "未入力"}
               </span>
@@ -338,20 +412,68 @@ export function AiNotesClient() {
             </label>
 
             <label className="field-block">
-              <span className="field-label">相談先</span>
+              <span className="field-label">相談相手</span>
               <select
                 className="text-input"
-                value={form.provider}
-                onChange={(event) => updateForm("provider", event.target.value as AiProvider)}
+                value={form.sourceKind}
+                onChange={(event) => {
+                  const nextSourceKind = event.target.value as ConsultationSourceKind;
+                  updateForm("sourceKind", nextSourceKind);
+
+                  if (nextSourceKind === "ai") {
+                    updateForm("provider", "ChatGPT");
+                    updateForm("sourceName", "ChatGPT");
+                    return;
+                  }
+
+                  updateForm("provider", "その他");
+                  updateForm("sourceName", "");
+                }}
               >
-                {providerOptions.map((provider) => (
-                  <option key={provider} value={provider}>
-                    {provider}
+                {sourceKindOptions.map((sourceKind) => (
+                  <option key={sourceKind.id} value={sourceKind.id}>
+                    {sourceKind.label}
                   </option>
                 ))}
               </select>
             </label>
           </div>
+
+          {form.sourceKind === "ai" ? (
+            <div className="field-grid">
+              <label className="field-block">
+                <span className="field-label">AIサービス</span>
+                <select
+                  className="text-input"
+                  value={form.provider}
+                  onChange={(event) => {
+                    const nextProvider = event.target.value as AiProvider;
+                    updateForm("provider", nextProvider);
+                    updateForm("sourceName", nextProvider === "その他" ? "" : nextProvider);
+                  }}
+                >
+                  {providerOptions.map((provider) => (
+                    <option key={provider} value={provider}>
+                      {provider}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            </div>
+          ) : null}
+
+          {form.sourceKind === "ai" && form.provider === "その他" ? (
+            <label className="field-block">
+              <span className="field-label">AIサービス名（任意）</span>
+              <input
+                className="text-input"
+                type="text"
+                value={form.sourceName}
+                onChange={(event) => updateForm("sourceName", event.target.value)}
+                placeholder="例: その他のAIサービス名"
+              />
+            </label>
+          ) : null}
 
           <label className="field-block">
             <span className="field-label">タイトル / 相談テーマ</span>
@@ -365,24 +487,24 @@ export function AiNotesClient() {
           </label>
 
           <label className="field-block">
-            <span className="field-label">相談した内容</span>
+            <span className="field-label">話した内容・相談した内容</span>
             <textarea
               className="text-area"
               rows={6}
               value={form.consultationBody}
               onChange={(event) => updateForm("consultationBody", event.target.value)}
-              placeholder="AIに送った相談内容を貼り付け"
+              placeholder="家族や先生、AIなどに相談した内容を残す"
             />
           </label>
 
           <label className="field-block">
-            <span className="field-label">AIの回答全文</span>
+            <span className="field-label">相談して分かったこと</span>
             <textarea
               className="text-area text-area-large"
               rows={14}
               value={form.answerBody}
               onChange={(event) => updateForm("answerBody", event.target.value)}
-              placeholder="長文でもそのまま貼り付けて保存"
+              placeholder="返ってきた内容や、相談して分かったことをそのまま保存"
             />
             <span className="field-help">{form.answerBody.length.toLocaleString()} 文字</span>
           </label>
@@ -399,7 +521,7 @@ export function AiNotesClient() {
           </label>
 
           <label className="field-block">
-            <span className="field-label">関連する大学・学部（任意）</span>
+            <span className="field-label">関連する学校・学部（任意）</span>
             <input
               className="text-input"
               type="text"
@@ -488,12 +610,14 @@ export function AiNotesClient() {
       <section className="list-section">
         <div className="list-section-head">
           <div className="list-section-copy">
-            <h2 className="list-section-title">AI相談メモ</h2>
+            <h2 className="list-section-title">相談メモ</h2>
             <p className="list-section-note">
-              {notes.length > 0 ? `${notes.length}件を保存中` : "相談結果をあとから見返す"}
+              {notes.length > 0
+                ? `${notes.length}件を保存中`
+                : "進路について相談したことをまとめて残せます"}
             </p>
           </div>
-          <button type="button" className="list-add-button" onClick={openCreate} aria-label="相談を追加">
+          <button type="button" className="list-add-button" onClick={openCreate} aria-label="相談メモを追加">
             <UiIcon name="plus" className="list-add-icon" />
           </button>
         </div>
@@ -505,7 +629,7 @@ export function AiNotesClient() {
             type="search"
             value={searchQuery}
             onChange={(event) => setSearchQuery(event.target.value)}
-            placeholder="タイトル・要約・相談先・関連大学"
+            placeholder="タイトル・内容・相談相手・関連校"
           />
         </label>
 
@@ -522,7 +646,7 @@ export function AiNotesClient() {
           </select>
         </label>
 
-        {isCreating ? renderEditor(formTitle, "長文回答もそのまま貼り付けて保存できます") : null}
+        {isCreating ? renderEditor(formTitle, "進路について相談したことを、あとから見返しやすく残せます") : null}
 
         <div className="ai-list">
           {notes.length === 0 ? (
@@ -555,7 +679,7 @@ export function AiNotesClient() {
                       <div className="ai-card-copy">
                         <p className="ai-card-title">{item.title}</p>
                         <p className="ai-card-meta">
-                          {item.provider} / {formatNoteDate(item.consultedAt)}
+                          {formatNoteSource(item)} / {formatNoteDate(item.consultedAt)}
                         </p>
                       </div>
                       <span className="ai-card-helpful">参考度 {item.helpful}</span>
@@ -586,7 +710,11 @@ export function AiNotesClient() {
 
                 {selectedId === item.id ? renderNoteDetail(item) : null}
                 {editingId === item.id
-                  ? renderEditor(`${item.title}を編集`, "長文回答もそのまま貼り付けて保存できます", item.id)
+                  ? renderEditor(
+                      `${item.title}を編集`,
+                      "進路について相談したことを、あとから見返しやすく残せます",
+                      item.id,
+                    )
                   : null}
               </div>
             ))

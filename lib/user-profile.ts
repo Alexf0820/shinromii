@@ -8,6 +8,11 @@ export const SCHOOL_YEARS = [
   { id: "other", label: "その他" },
 ] as const;
 
+export const PROGRESSION_STAGES = [
+  { id: "high-school", label: "高校進学", shortLabel: "高校進学", emoji: "🏫" },
+  { id: "university", label: "大学進学", shortLabel: "大学進学", emoji: "🎓" },
+] as const;
+
 export const ACADEMIC_TRACKS = [
   { id: "humanities", label: "文系" },
   { id: "science", label: "理系" },
@@ -58,12 +63,14 @@ export const SUBJECT_SUGGESTIONS = [
 ] as const;
 
 export type SchoolYearId = (typeof SCHOOL_YEARS)[number]["id"];
+export type ProgressionStageId = (typeof PROGRESSION_STAGES)[number]["id"];
 export type AcademicTrackId = (typeof ACADEMIC_TRACKS)[number]["id"];
 export type AdmissionMethodId = (typeof ADMISSION_METHODS)[number]["id"];
 export type InterestFieldId = (typeof INTEREST_FIELDS)[number]["id"];
 
 export type UserProfile = {
   displayName: string;
+  progressionStage: ProgressionStageId | "";
   schoolYear: SchoolYearId | "";
   schoolName: string;
   course: string;
@@ -80,6 +87,7 @@ export type UserProfile = {
 export function createEmptyProfile(): UserProfile {
   return {
     displayName: "",
+    progressionStage: "",
     schoolYear: "",
     schoolName: "",
     course: "",
@@ -121,11 +129,22 @@ function pickIds<T extends string>(value: unknown, allowed: readonly T[]): T[] {
   return asStringList(value).filter((item): item is T => allowed.includes(item as T));
 }
 
+export function inferProgressionStageFromSchoolYear(schoolYear: SchoolYearId | ""): ProgressionStageId | "" {
+  if (schoolYear === "junior-1" || schoolYear === "junior-2" || schoolYear === "junior-3") {
+    return "high-school";
+  }
+
+  if (schoolYear === "high-1" || schoolYear === "high-2" || schoolYear === "high-3") {
+    return "university";
+  }
+
+  return "";
+}
+
 export function normalizeUserProfile(
   value: unknown,
   options?: { defaultSchoolYear?: SchoolYearId | "" },
 ): UserProfile {
-  const empty = createEmptyProfile();
   const raw = isRecord(value) ? value : {};
   const defaultSchoolYear = options?.defaultSchoolYear ?? "";
 
@@ -134,9 +153,15 @@ export function normalizeUserProfile(
       raw.schoolYear,
       SCHOOL_YEARS.map((item) => item.id),
     ) || defaultSchoolYear;
+  const progressionStage =
+    pickId(
+      raw.progressionStage,
+      PROGRESSION_STAGES.map((item) => item.id),
+    ) || inferProgressionStageFromSchoolYear(schoolYear);
 
   return {
     displayName: asTrimmedString(raw.displayName),
+    progressionStage,
     schoolYear,
     schoolName: asTrimmedString(raw.schoolName),
     course: asTrimmedString(raw.course),
@@ -163,6 +188,7 @@ export function normalizeUserProfile(
 export function isProfileRegistered(profile: UserProfile) {
   return Boolean(
     profile.displayName ||
+      profile.progressionStage ||
       profile.schoolYear ||
       profile.schoolName ||
       profile.course ||
@@ -175,6 +201,14 @@ export function isProfileRegistered(profile: UserProfile) {
       profile.admissionMethods.length ||
       profile.careerMemo,
   );
+}
+
+export function labelForProgressionStage(id: ProgressionStageId | "") {
+  return PROGRESSION_STAGES.find((item) => item.id === id)?.label ?? "";
+}
+
+export function emojiForProgressionStage(id: ProgressionStageId | "") {
+  return PROGRESSION_STAGES.find((item) => item.id === id)?.emoji ?? "";
 }
 
 export function labelForSchoolYear(id: SchoolYearId | "") {
