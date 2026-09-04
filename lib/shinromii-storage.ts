@@ -258,12 +258,14 @@ function normalizeAiNotes(records: AiNote[]): AiNote[] {
       record.sourceKind === "other"
         ? record.sourceKind
         : "ai";
+    const normalizedProvider =
+      typeof record.provider === "string" && record.provider.trim().length > 0 ? record.provider.trim() : "";
 
     const sourceName =
       typeof record.sourceName === "string" && record.sourceName.trim().length > 0
         ? record.sourceName.trim()
         : sourceKind === "ai"
-          ? record.provider
+          ? normalizedProvider
           : "";
 
     return [
