@@ -1,7 +1,10 @@
 "use client";
 
+import { isDemoMode } from "@/lib/shinromii-demo-mode";
+
 import { useEffect, useMemo, useRef, useState, type KeyboardEvent } from "react";
 import { CardActionBar } from "@/components/CardActionBar";
+import { SchoolTemplateButton } from "@/components/grades/SchoolTemplateButton";
 import { GradeRecordForm } from "@/components/grades/GradeRecordForm";
 import { QualificationRecordForm } from "@/components/grades/QualificationRecordForm";
 import { UiIcon } from "@/components/UiIcon";
@@ -148,9 +151,10 @@ function qualificationStatusClass(status: QualificationStatus) {
 type GradesTab = "grades" | "qualifications";
 
 export function GradesClient() {
+  const [subjectRevision, setSubjectRevision] = useState(0);
   const [activeTab, setActiveTab] = useState<GradesTab>("grades");
-  const [gradeRecords, setGradeRecords] = useState<GradeRecord[]>(initialGradeRecords);
-  const [qualifications, setQualifications] = useState<QualificationRecord[]>(initialQualifications);
+  const [gradeRecords, setGradeRecords] = useState<GradeRecord[]>(() => isDemoMode() ? [] : initialGradeRecords);
+  const [qualifications, setQualifications] = useState<QualificationRecord[]>(() => isDemoMode() ? [] : initialQualifications);
   const [selectedGradeId, setSelectedGradeId] = useState<string | null>(null);
   const [gradeEditingId, setGradeEditingId] = useState<string | null>(null);
   const [selectedQualificationId, setSelectedQualificationId] = useState<string | null>(null);
@@ -532,7 +536,7 @@ export function GradesClient() {
           }
         }}
       >
-        <GradeRecordForm
+        <GradeRecordForm key={subjectRevision}
           title={title}
           description={description}
           form={gradeForm}
@@ -755,6 +759,9 @@ export function GradesClient() {
 
   return (
     <div className="grades-page">
+      <div style={{ display: "flex", justifyContent: "flex-end" }}>
+        <SchoolTemplateButton onApplied={() => setSubjectRevision((value) => value + 1)} />
+      </div>
       <div className="grades-tabs" role="tablist" aria-label="成績・資格の表示切り替え">
         <button
           type="button"

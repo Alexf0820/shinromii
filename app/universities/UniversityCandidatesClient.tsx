@@ -1,5 +1,7 @@
 "use client";
 
+import { isDemoMode } from "@/lib/shinromii-demo-mode";
+
 import { useEffect, useMemo, useRef, useState, type KeyboardEvent } from "react";
 import { CardActionBar } from "@/components/CardActionBar";
 import { SectionHeader } from "@/components/SectionHeader";
@@ -119,7 +121,7 @@ function renderStars(score: number) {
 }
 
 export function UniversityCandidatesClient() {
-  const [candidates, setCandidates] = useState<UniversityCandidate[]>(initialCandidates);
+  const [candidates, setCandidates] = useState<UniversityCandidate[]>(() => isDemoMode() ? [] : initialCandidates);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [copyingId, setCopyingId] = useState<string | null>(null);

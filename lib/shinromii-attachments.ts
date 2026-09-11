@@ -1,3 +1,4 @@
+import { scopedStorageKey } from "@/lib/shinromii-demo-mode";
 const DB_NAME = "SHINROMII_ATTACHMENTS";
 const DB_VERSION = 1;
 const STORE_NAME = "attachments";
@@ -23,7 +24,7 @@ function openDatabase(): Promise<IDBDatabase> {
       return;
     }
 
-    const request = window.indexedDB.open(DB_NAME, DB_VERSION);
+    const request = window.indexedDB.open(scopedStorageKey(DB_NAME), DB_VERSION);
 
     request.onerror = () => {
       reject(new Error("添付ファイル保存用データベースを開けませんでした。"));

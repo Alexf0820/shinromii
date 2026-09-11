@@ -1,5 +1,8 @@
 "use client";
 
+import { useEffect, useState } from "react";
+import { readSchoolSubjectSettings } from "@/lib/shinromii-storage";
+import type { SchoolSubjectsTemplate } from "@/lib/school-subject-templates";
 import { SectionHeader } from "@/components/SectionHeader";
 import type { GradeSchoolYear, GradeTerm } from "@/data/mockData";
 import {
@@ -30,6 +33,9 @@ export function GradeRecordForm({
   onCancel,
   gradingMethod = "school-rule-a",
 }: GradeRecordFormProps) {
+  const [template, setTemplate] = useState<SchoolSubjectsTemplate>();
+  useEffect(() => { setTemplate(readSchoolSubjectSettings()); }, []);
+  const subjects = template && form.schoolYear === `高${template.grade}` ? template.subjects : [];
   const scoreNote = gradeFormScoreNote(form, gradingMethod);
 
   function update<K extends keyof GradeFormState>(key: K, value: GradeFormState[K]) {
@@ -75,6 +81,10 @@ export function GradeRecordForm({
         <div className="field-grid">
           <label className="field-block">
             <span className="field-label">科目名</span>
+            {subjects.length > 0 && <select className="text-input" aria-label="学校の科目設定から選択" value={subjects.includes(form.subject) ? form.subject : ""} onChange={(event) => update("subject", event.target.value)}>
+              <option value="">登録済みの{subjects.length}科目から選択</option>
+              {subjects.map((subject) => <option key={subject} value={subject}>{subject}</option>)}
+            </select>}
             <input
               className="text-input"
               type="text"

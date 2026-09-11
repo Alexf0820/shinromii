@@ -1,5 +1,7 @@
 "use client";
 
+import { isDemoMode } from "@/lib/shinromii-demo-mode";
+
 import { useEffect, useMemo, useRef, useState, type KeyboardEvent } from "react";
 import { CardActionBar } from "@/components/CardActionBar";
 import { SectionHeader } from "@/components/SectionHeader";
@@ -130,7 +132,7 @@ function formatNoteSource(note: AiNote) {
 }
 
 export function AiNotesClient() {
-  const [notes, setNotes] = useState<AiNote[]>(initialAiNotes);
+  const [notes, setNotes] = useState<AiNote[]>(() => isDemoMode() ? [] : initialAiNotes);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [isCreating, setIsCreating] = useState(false);

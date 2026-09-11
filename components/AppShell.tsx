@@ -14,6 +14,7 @@ import { SettingsLink } from "@/components/SettingsLink";
 import { SiteFooter } from "@/components/SiteFooter";
 import { UiIcon } from "@/components/UiIcon";
 import { WelcomeStart } from "@/components/WelcomeStart";
+import { isDemoMode, switchDemoMode } from "@/lib/shinromii-demo-mode";
 import { APP_VERSION_LABEL } from "@/lib/app-version";
 import {
   STORAGE_UPDATED_EVENT,
@@ -140,6 +141,37 @@ type AppShellProps = {
 
 export function AppShell({ children }: AppShellProps) {
   const pathname = usePathname();
+  const [modeReady, setModeReady] = useState(false);
+  const [demo, setDemo] = useState(false);
+  const [switching, setSwitching] = useState(false);
+  const [modeError, setModeError] = useState("");
+
+  useEffect(() => {
+    try {
+      setDemo(isDemoMode());
+      setModeReady(true);
+    } catch {
+      setModeError("保存領域にアクセスできません。ブラウザの設定を確認してください。");
+    }
+    // 戻る操作で切替前の個人データ画面が復活しないようにする。
+    const hide = () => { document.documentElement.style.visibility = "hidden"; };
+    const restore = (event: PageTransitionEvent) => { if (event.persisted) window.location.reload(); };
+    window.addEventListener("pagehide", hide);
+    window.addEventListener("pageshow", restore);
+    return () => {
+      window.removeEventListener("pagehide", hide);
+      window.removeEventListener("pageshow", restore);
+    };
+  }, []);
+
+  function toggleDemo() {
+    setSwitching(true);
+    setModeError("");
+    try { switchDemoMode(!demo); } catch {
+      setSwitching(false);
+      setModeError("切り替えできませんでした。端末の空き容量とブラウザの保存設定を確認してください。");
+    }
+  }
   const router = useRouter();
   const [onboarding, setOnboarding] = useState<OnboardingStep>("none");
   const [resumeSetup, setResumeSetup] = useState(false);
@@ -171,7 +203,7 @@ export function AppShell({ children }: AppShellProps) {
   }, [isAdminPath]);
 
   useEffect(() => {
-    if (isAdminPath) {
+    if (isAdminPath || pathname === "/school-template") {
       setOnboarding("none");
       setResumeSetup(false);
       return;
@@ -198,6 +230,10 @@ export function AppShell({ children }: AppShellProps) {
     setOnboarding("none");
   }, [isAdminPath, pathname]);
 
+  if (!modeReady || switching) {
+    return <main className="mobile-frame"><p role="status">{modeError || "読み込み中…"}</p></main>;
+  }
+
   return (
     <div
       className={`app-shell ${isHome ? "home-shell" : ""} ${hideUserChrome ? "setup-shell" : ""} ${isAdminPath ? "admin-shell" : ""} ${isInfoPage ? "info-shell" : ""}`}
@@ -205,6 +241,11 @@ export function AppShell({ children }: AppShellProps) {
     >
       <div className="app-backdrop" />
       <main className="mobile-frame">
+        <div className={`demo-mode-bar${demo ? " is-demo" : ""}`}>
+          <span>{demo ? "デモ表示中" : "通常モード"}</span>
+          <button type="button" onClick={toggleDemo}>{demo ? "通常モードに戻る" : "デモに切替"}</button>
+        </div>
+        {modeError ? <p role="alert">{modeError}</p> : null}
         {isHome ? null : (
           <header className="topbar">
             <div className="brand-header">
@@ -248,7 +289,9 @@ export function AppShell({ children }: AppShellProps) {
           </header>
         )}
         <div className="content-area">
-          {onboarding === "welcome" ? (
+          {demo && isAdminPath ? (
+            <p>デモ表示中は管理画面を利用できません。</p>
+          ) : onboarding === "welcome" ? (
             <WelcomeStart
               onStartFresh={() => setOnboarding("profile")}
               onRestored={() => setOnboarding("none")}

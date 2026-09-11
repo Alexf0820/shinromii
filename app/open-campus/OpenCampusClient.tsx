@@ -1,5 +1,7 @@
 "use client";
 
+import { isDemoMode } from "@/lib/shinromii-demo-mode";
+
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent } from "react";
 import { CardActionBar } from "@/components/CardActionBar";
 import { SectionHeader } from "@/components/SectionHeader";
@@ -377,7 +379,7 @@ function revokeObjectUrls(urls: string[]) {
 }
 
 export function OpenCampusClient() {
-  const [events, setEvents] = useState<OpenCampusEvent[]>(initialOpenCampusEvents);
+  const [events, setEvents] = useState<OpenCampusEvent[]>(() => isDemoMode() ? [] : initialOpenCampusEvents);
   const [campusEvaluators, setCampusEvaluators] = useState<CampusEvaluator[]>(createDefaultCampusEvaluators);
   const [evaluations, setEvaluations] = useState<Record<string, CampusEvaluationEntry[]>>({});
   const [selectedId, setSelectedId] = useState<string | null>(null);

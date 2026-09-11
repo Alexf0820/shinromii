@@ -1,3 +1,6 @@
+import { normalizeSchoolSubjectsTemplate, getSchoolSubjectsTemplate, type SchoolSubjectsTemplate } from "@/lib/school-subject-templates";
+import { isDemoMode, scopedStorageKey } from "@/lib/shinromii-demo-mode";
+import { createDemoSample } from "@/lib/shinromii-demo-sample";
 import { aiNotes, campusDone, gradeRecords, openCampusEvents, qualifications, universities } from "@/data/mockData";
 import { normalizeEikenScores } from "@/lib/eiken";
 import { normalizeExamScores } from "@/lib/grading-rule";
@@ -60,6 +63,9 @@ export type ShinromiiStorage = {
   profile: UserProfile;
   setupCompleted: boolean;
   identity: ShinromiiIdentity;
+  /** 明示されたデモ用ノートのみ、既定OCの自動追加を抑止する。 */
+  meta?: { isSample: true };
+  schoolSubjects?: SchoolSubjectsTemplate;
 };
 
 type ShinromiiStorageV1 = {
@@ -141,6 +147,7 @@ function buildDefaultEvaluations() {
 }
 
 export function buildDefaultStorage(): ShinromiiStorage {
+  if (isDemoMode()) return createDemoSample();
   const profile = createEmptyProfile();
   const identity = createDefaultIdentity(profile);
   const currentStudentProfileId = identity.session.currentStudentProfileId;
@@ -192,7 +199,7 @@ export function createBlankShinromiiStorage(): ShinromiiStorage {
 
 /** キーが無い端末への書き込みは空のノートから始める。既存キーは従来どおり読む。 */
 function loadStorageForMutation(): ShinromiiStorage {
-  if (!canUseStorage() || window.localStorage.getItem(STORAGE_KEY) === null) {
+  if (!canUseStorage() || window.localStorage.getItem(scopedStorageKey(STORAGE_KEY)) === null) {
     return createBlankShinromiiStorage();
   }
 
@@ -303,6 +310,8 @@ function storageSnapshotPayload(storage: ShinromiiStorage) {
     profile: storage.profile,
     setupCompleted: storage.setupCompleted,
     identity: storage.identity,
+    ...(normalizeSchoolSubjectsTemplate(storage.schoolSubjects) ? { schoolSubjects: normalizeSchoolSubjectsTemplate(storage.schoolSubjects) } : {}),
+    ...(storage.meta?.isSample === true ? { meta: { isSample: true as const } } : {}),
   };
 }
 
@@ -373,6 +382,8 @@ function coerceStorageValues(
     profile,
     setupCompleted: fromBackup || existingInstallation || parsed.setupCompleted === true,
     identity,
+    ...(normalizeSchoolSubjectsTemplate(parsed.schoolSubjects) ? { schoolSubjects: normalizeSchoolSubjectsTemplate(parsed.schoolSubjects) } : {}),
+    ...(parsed.meta?.isSample === true ? { meta: { isSample: true as const } } : {}),
   };
 }
 
@@ -420,6 +431,8 @@ function applyStorageMaintenanceMigrations(storage: ShinromiiStorage): {
   storage: ShinromiiStorage;
   changed: boolean;
 } {
+  if (isDemoMode()) return { storage, changed: false };
+
   const migratedQualifications = migrateLegacyDummyQualifications(storage.qualifications);
   const migratedUniversities = migrateLegacyDummyUniversities(storage.universityCandidates);
   const linkedUniversities = attachUniversityMasterIds(migratedUniversities.records);
@@ -427,7 +440,9 @@ function applyStorageMaintenanceMigrations(storage: ShinromiiStorage): {
     storage.openCampusEvents,
     storage.campusEvaluations,
   );
-  const plannedOpenCampus = ensureAugust22OpenCampusPlans(migratedOpenCampus.events);
+  const plannedOpenCampus = storage.meta?.isSample === true
+    ? { events: migratedOpenCampus.events, changed: false }
+    : ensureAugust22OpenCampusPlans(migratedOpenCampus.events);
 
   if (
     !migratedQualifications.changed &&
@@ -474,7 +489,7 @@ function readShinromiiStorageInternal(options: { persistMaintenanceMigrations: b
   }
 
   try {
-    const raw = window.localStorage.getItem(STORAGE_KEY);
+    const raw = window.localStorage.getItem(scopedStorageKey(STORAGE_KEY));
 
     if (!raw) {
       return fallback;
@@ -612,11 +627,12 @@ export function saveShinromiiStorage(next: ShinromiiStorage) {
 
   const payload = storageSnapshotPayload({
     ...next,
+    ...(isDemoMode() ? { meta: { isSample: true as const } } : {}),
     version: STORAGE_VERSION,
   });
 
   try {
-    const raw = window.localStorage.getItem(STORAGE_KEY);
+    const raw = window.localStorage.getItem(scopedStorageKey(STORAGE_KEY));
 
     if (raw) {
       const previous = parseBackupStorageData(JSON.parse(raw));
@@ -629,17 +645,23 @@ export function saveShinromiiStorage(next: ShinromiiStorage) {
     // 履歴の失敗で本体保存は止めない
   }
 
-  window.localStorage.setItem(STORAGE_KEY, JSON.stringify(payload));
+  window.localStorage.setItem(scopedStorageKey(STORAGE_KEY), JSON.stringify(payload));
   window.dispatchEvent(new CustomEvent(STORAGE_UPDATED_EVENT));
 }
 
 export function hasExistingShinromiiInstallation() {
-  return canUseStorage() && window.localStorage.getItem(STORAGE_KEY) !== null;
+  return canUseStorage() && window.localStorage.getItem(scopedStorageKey(STORAGE_KEY)) !== null;
 }
 
 /** ストレージキーがある端末は既存ユーザー。新規でキーが無いときだけ初回セットアップを案内する。 */
 export function shouldShowFirstSetup() {
-  return canUseStorage() && window.localStorage.getItem(STORAGE_KEY) === null;
+  if (!canUseStorage()) return false;
+  const raw = window.localStorage.getItem(scopedStorageKey(STORAGE_KEY));
+  if (raw === null) return true;
+  try {
+    const data = JSON.parse(raw);
+    return data.setupCompleted === false && !!normalizeSchoolSubjectsTemplate(data.schoolSubjects);
+  } catch { return false; }
 }
 
 const RESUME_SETUP_KEY = "SHINROMII::resume-setup";
@@ -649,7 +671,7 @@ export function markResumeSetup() {
     return;
   }
 
-  window.sessionStorage.setItem(RESUME_SETUP_KEY, "1");
+  window.sessionStorage.setItem(scopedStorageKey(RESUME_SETUP_KEY), "1");
 }
 
 export function clearResumeSetup() {
@@ -657,14 +679,14 @@ export function clearResumeSetup() {
     return;
   }
 
-  window.sessionStorage.removeItem(RESUME_SETUP_KEY);
+  window.sessionStorage.removeItem(scopedStorageKey(RESUME_SETUP_KEY));
 }
 
 export function shouldResumeSetup() {
   return (
     typeof window !== "undefined" &&
     typeof window.sessionStorage !== "undefined" &&
-    window.sessionStorage.getItem(RESUME_SETUP_KEY) === "1"
+    window.sessionStorage.getItem(scopedStorageKey(RESUME_SETUP_KEY)) === "1"
   );
 }
 
@@ -692,9 +714,11 @@ export function markSetupFinished(profile?: UserProfile) {
 }
 
 export function saveFirstSetupNotebook(storage: ShinromiiStorage) {
+  const schoolSubjects = readSchoolSubjectSettings();
   saveShinromiiStorage({
     ...createBlankShinromiiStorage(),
     ...storage,
+    ...(schoolSubjects ? { schoolSubjects } : {}),
     version: STORAGE_VERSION,
     profile: normalizeUserProfile(storage.profile),
     identity: normalizeIdentity(storage.identity, normalizeUserProfile(storage.profile)),
@@ -852,7 +876,7 @@ export function loadAiNotesSortOrder(): AiNotesSortOrder {
     return "newest";
   }
 
-  const stored = window.localStorage.getItem(AI_NOTES_SORT_KEY);
+  const stored = window.localStorage.getItem(scopedStorageKey(AI_NOTES_SORT_KEY));
 
   if (stored === "oldest" || stored === "helpful" || stored === "newest") {
     return stored;
@@ -866,7 +890,7 @@ export function saveAiNotesSortOrder(sortOrder: AiNotesSortOrder) {
     return;
   }
 
-  window.localStorage.setItem(AI_NOTES_SORT_KEY, sortOrder);
+  window.localStorage.setItem(scopedStorageKey(AI_NOTES_SORT_KEY), sortOrder);
 }
 
 export type UniversitySortOrder = "interest" | "newest" | "oldest" | "name";
@@ -876,7 +900,7 @@ export function loadUniversitySortOrder(): UniversitySortOrder {
     return "interest";
   }
 
-  const stored = window.localStorage.getItem(UNIVERSITY_SORT_KEY);
+  const stored = window.localStorage.getItem(scopedStorageKey(UNIVERSITY_SORT_KEY));
 
   if (stored === "newest" || stored === "oldest" || stored === "name" || stored === "interest") {
     return stored;
@@ -890,5 +914,37 @@ export function saveUniversitySortOrder(sortOrder: UniversitySortOrder) {
     return;
   }
 
-  window.localStorage.setItem(UNIVERSITY_SORT_KEY, sortOrder);
+  window.localStorage.setItem(scopedStorageKey(UNIVERSITY_SORT_KEY), sortOrder);
+}
+
+/** Read subject metadata without maintenance migrations or fallback seed data. */
+export function readSchoolSubjectSettings() {
+  if (!canUseStorage()) return undefined;
+  try {
+    const raw = window.localStorage.getItem(scopedStorageKey(STORAGE_KEY));
+    return raw ? normalizeSchoolSubjectsTemplate(JSON.parse(raw).schoolSubjects) : undefined;
+  } catch { return undefined; }
+}
+
+export function inspectSchoolTemplateTarget() {
+  if (isDemoMode()) throw new Error("デモモードでは適用できません。通常モードで開いてください。");
+  if (!canUseStorage()) throw new Error("この端末では保存できません。");
+  const raw = window.localStorage.getItem(STORAGE_KEY);
+  if (raw === null) return { hasGrades: false, replacing: false };
+  let data;
+  try { data = JSON.parse(raw); } catch { throw new Error("保存データを確認できないため、適用を中止しました。"); }
+  if (!data || data.version !== STORAGE_VERSION || !parseBackupStorageData(data)) {
+    throw new Error("保存データを確認できないため、適用を中止しました。");
+  }
+  return { hasGrades: data.gradeRecords.length > 0, replacing: !!data.schoolSubjects };
+}
+
+export function applySchoolSubjectsTemplate(key: string) {
+  const template = getSchoolSubjectsTemplate(key);
+  if (!template) throw new Error("科目テンプレートが見つかりません。");
+  // Recheck at save time: a different tab may have saved grades after confirmation opened.
+  const target = inspectSchoolTemplateTarget();
+  if (target.hasGrades) throw new Error("成績が登録されています。成績への影響を避けるため、このバージョンでは適用できません。");
+  const current = hasExistingShinromiiInstallation() ? readShinromiiStorageSnapshot() : createBlankShinromiiStorage();
+  saveShinromiiStorage({ ...current, schoolSubjects: template });
 }

@@ -1,5 +1,7 @@
 "use client";
 
+import { isDemoMode } from "@/lib/shinromii-demo-mode";
+
 import Image from "next/image";
 import Link from "next/link";
 import { APP_VERSION_LABEL } from "@/lib/app-version";
@@ -441,7 +443,7 @@ export function HomeClient() {
             <UiIcon name="chevron-right" className="home-fold-icon" aria-hidden="true" />
           </summary>
           <div className="home-fold-body">
-            {recentItems.map((item) => (
+            {(isDemoMode() ? [] : recentItems).map((item) => (
               <article key={item.title} className="home-update-row">
                 <p className="home-update-date">{item.date}</p>
                 <p className="home-update-title">{item.title}</p>

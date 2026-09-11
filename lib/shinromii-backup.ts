@@ -1,3 +1,5 @@
+import { normalizeSchoolSubjectsTemplate } from "@/lib/school-subject-templates";
+import { isDemoMode } from "@/lib/shinromii-demo-mode";
 import type { ShinromiiStorage } from "@/lib/shinromii-storage";
 import { parseBackupStorageData, STORAGE_VERSION } from "@/lib/shinromii-storage";
 
@@ -63,6 +65,8 @@ export function buildShinromiiBackup(
       profile: storage.profile,
       setupCompleted: storage.setupCompleted,
       identity: storage.identity,
+      ...(normalizeSchoolSubjectsTemplate(storage.schoolSubjects) ? { schoolSubjects: normalizeSchoolSubjectsTemplate(storage.schoolSubjects) } : {}),
+      ...(storage.meta?.isSample === true ? { meta: { isSample: true as const } } : {}),
     },
   };
 }
@@ -119,6 +123,10 @@ export function parseShinromiiBackupJson(raw: string): ParseBackupResult {
       ok: false,
       error: "バックアップファイルの内容を読み込めませんでした。",
     };
+  }
+
+  if (isDemoMode() && storage.meta?.isSample !== true) {
+    return { ok: false, error: "デモモードではサンプルのバックアップのみ読み込めます。通常のバックアップは通常モードで読み込んでください。" };
   }
 
   return {

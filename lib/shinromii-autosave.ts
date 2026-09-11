@@ -1,3 +1,4 @@
+import { scopedStorageKey } from "@/lib/shinromii-demo-mode";
 import { createShinromiiId } from "@/lib/shinromii-id";
 
 export const AUTOSAVE_HISTORY_KEY = "SHINROMII::autosave-history::v1";
@@ -108,7 +109,7 @@ export function loadAutosaveHistory(): AutosaveHistoryEntry[] {
   }
 
   try {
-    const raw = window.localStorage.getItem(AUTOSAVE_HISTORY_KEY);
+    const raw = window.localStorage.getItem(scopedStorageKey(AUTOSAVE_HISTORY_KEY));
 
     if (!raw) {
       return [];
@@ -130,7 +131,7 @@ function persistAutosaveHistory(entries: AutosaveHistoryEntry[]) {
     entries: entries.slice(0, AUTOSAVE_HISTORY_LIMIT),
   };
 
-  window.localStorage.setItem(AUTOSAVE_HISTORY_KEY, JSON.stringify(file));
+  window.localStorage.setItem(scopedStorageKey(AUTOSAVE_HISTORY_KEY), JSON.stringify(file));
 }
 
 export function recordAutosaveSnapshot(data: unknown, savedAt = new Date().toISOString()) {
