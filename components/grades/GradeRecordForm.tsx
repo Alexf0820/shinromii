@@ -1,14 +1,14 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { readSchoolSubjectSettings } from "@/lib/shinromii-storage";
+import { readSchoolSubjectSettings, readShinromiiStorageSnapshot } from "@/lib/shinromii-storage";
 import type { SchoolSubjectsTemplate } from "@/lib/school-subject-templates";
+import { activePeriodIds, gradePeriodLabel, normalizePeriodSystem, type GradePeriodId, type GradePeriodSystem } from "@/lib/grade-periods";
 import { SectionHeader } from "@/components/SectionHeader";
-import type { GradeSchoolYear, GradeTerm } from "@/data/mockData";
+import type { GradeSchoolYear } from "@/data/mockData";
 import {
   applyGradeScoreInput,
   GRADE_SCHOOL_YEAR_OPTIONS,
-  GRADE_TERM_OPTIONS,
   gradeFormScoreNote,
   type GradeFormState,
 } from "@/lib/grade-form";
@@ -22,6 +22,7 @@ type GradeRecordFormProps = {
   onSave: () => void;
   onCancel: () => void;
   gradingMethod?: GradingMethod;
+  periodSystem?: GradePeriodSystem;
 };
 
 export function GradeRecordForm({
@@ -32,9 +33,14 @@ export function GradeRecordForm({
   onSave,
   onCancel,
   gradingMethod = "manual",
+  periodSystem,
 }: GradeRecordFormProps) {
+  const [storedSystem, setStoredSystem] = useState<GradePeriodSystem>("three-term");
+  const system = periodSystem ?? storedSystem;
+  const periods = activePeriodIds(system);
+  const inactive = !periods.includes(form.term);
   const [template, setTemplate] = useState<SchoolSubjectsTemplate>();
-  useEffect(() => { setTemplate(readSchoolSubjectSettings()); }, []);
+  useEffect(() => { setTemplate(readSchoolSubjectSettings()); setStoredSystem(normalizePeriodSystem(readShinromiiStorageSnapshot().gradePeriodSystem)); }, []);
   const subjects = template && form.schoolYear === `高${template.grade}` ? template.subjects : [];
   const scoreNote = gradeFormScoreNote(form, gradingMethod);
 
@@ -63,15 +69,16 @@ export function GradeRecordForm({
           </label>
 
           <label className="field-block">
-            <span className="field-label">学期</span>
+            <span className="field-label">成績期間</span>
             <select
               className="text-input"
               value={form.term}
-              onChange={(event) => update("term", event.target.value as GradeTerm)}
+              onChange={(event) => update("term", event.target.value as GradePeriodId)}
             >
-              {GRADE_TERM_OPTIONS.map((option) => (
+              {inactive && <option value={form.term} disabled>{gradePeriodLabel(form.term, system)}</option>}
+              {periods.map((option) => (
                 <option key={option} value={option}>
-                  {option}
+                  {gradePeriodLabel(option, system)}
                 </option>
               ))}
             </select>
@@ -139,6 +146,7 @@ export function GradeRecordForm({
         </div>
 
         <p className="field-help">{scoreNote}</p>
+        {inactive && <p className="grade-reference-notice">この期間は現在の制度では未使用です。保存するには対象期間を選んでください。既存の記録は保持されています。</p>}
 
         <label className="field-block">
           <span className="field-label">メモ（任意）</span>
@@ -151,7 +159,7 @@ export function GradeRecordForm({
         </label>
 
         <div className="action-row">
-          <button type="button" className="action-button primary" onClick={onSave}>
+          <button type="button" className="action-button primary" disabled={inactive} onClick={onSave}>
             保存する
           </button>
           <button type="button" className="action-button" onClick={onCancel}>

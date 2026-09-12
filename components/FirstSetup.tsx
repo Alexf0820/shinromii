@@ -1,4 +1,5 @@
 "use client";
+import { gradePeriodLabel, resolveGradePeriod, normalizePeriodSystem } from "@/lib/grade-periods";
 import { sameGradeSubject } from "@/lib/reference-grades";
 
 import { useEffect, useState } from "react";
@@ -303,7 +304,7 @@ export function FirstSetup({ onFinished, preview = false, resume = false }: Firs
                     {record.subject} {record.grade}
                   </strong>
                   <span>
-                    {record.schoolYear} {record.term}
+                    {record.schoolYear} {gradePeriodLabel(resolveGradePeriod(record), normalizePeriodSystem(existing?.gradePeriodSystem))}
                   </span>
                 </li>
               ))}

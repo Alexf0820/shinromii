@@ -7,7 +7,7 @@ import { BrandAccountLink } from "@/components/BrandAccountLink";
 import { BrandMark } from "@/components/BrandMark";
 import { SettingsLink } from "@/components/SettingsLink";
 import { UiIcon } from "@/components/UiIcon";
-import { APP_VERSION_LABEL } from "@/lib/app-version";
+import { APP_VERSION_LABEL, IS_BETA } from "@/lib/app-version";
 import { parseShinromiiBackupJson } from "@/lib/shinromii-backup";
 import { saveShinromiiStorage } from "@/lib/shinromii-storage";
 
@@ -109,7 +109,7 @@ export function WelcomeStart({ onStartFresh, onRestored, preview = false }: Welc
                 {preview ? null : <BrandAccountLink />}
                 {preview ? null : <SettingsLink />}
               </div>
-              <span className="home-version">{APP_VERSION_LABEL}</span>
+              <span className="home-version app-version"><span>{APP_VERSION_LABEL}</span>{IS_BETA && <span className="app-version-beta">ベータ版</span>}</span>
             </div>
           </div>
         </div>

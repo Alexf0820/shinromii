@@ -1,4 +1,5 @@
 "use client";
+import { BetaFeedback } from "@/components/BetaFeedback";
 import { summarizeReferenceGrades, formatReferenceAverage as formatAverage } from "@/lib/reference-grades";
 import { GradeReferenceInfo, GradeReferenceNotice } from "@/components/GradeReferenceNotice";
 
@@ -6,7 +7,7 @@ import { isDemoMode } from "@/lib/shinromii-demo-mode";
 
 import Image from "next/image";
 import Link from "next/link";
-import { APP_VERSION_LABEL } from "@/lib/app-version";
+import { APP_VERSION_LABEL, IS_BETA } from "@/lib/app-version";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { BrandAccountLink } from "@/components/BrandAccountLink";
 import { BrandMark } from "@/components/BrandMark";
@@ -115,9 +116,9 @@ export function HomeClient() {
     };
   }, []);
 
-  const reference = useMemo(() => summarizeReferenceGrades(storage?.gradeRecords ?? []), [storage]);
+  const reference = useMemo(() => summarizeReferenceGrades(storage?.gradeRecords ?? [], storage?.gradePeriodSystem), [storage]);
   const latestGrade = { value: reference.latest?.average ?? null,
-    termLabel: reference.latest ? `${reference.latest.schoolYear}・${reference.latest.term}／有効${reference.latest.count}科目` : null };
+    termLabel: reference.latest ? `${reference.latest.schoolYear}・${reference.latest.label}／有効${reference.latest.count}科目` : null };
 
   const latestQualification = useMemo(() => {
     if (!storage || storage.qualifications.length === 0) {
@@ -318,7 +319,7 @@ export function HomeClient() {
                 stage={storage?.profile.progressionStage ?? "university"}
                 className="home-stage-badge"
               />
-              <span className="home-version app-version"><span>{APP_VERSION_LABEL}</span><span className="app-version-beta">ベータ版</span></span>
+              <span className="home-version app-version"><span>{APP_VERSION_LABEL}</span>{IS_BETA && <span className="app-version-beta">ベータ版</span>}</span>
             </div>
           </div>
         </div>
@@ -512,6 +513,7 @@ export function HomeClient() {
           </div>
         </details>
       </section>
+      <BetaFeedback />
     </div>
   );
 }

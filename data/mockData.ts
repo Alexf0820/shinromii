@@ -62,6 +62,8 @@ export type GradeRecord = {
   id: string;
   schoolYear: GradeSchoolYear;
   term: GradeTerm;
+  /** 共通期間ID。termは旧バックアップ互換用として保持。 */
+  periodId?: import("@/lib/grade-periods").GradePeriodId;
   subject: string;
   grade: number;
   memo: string;

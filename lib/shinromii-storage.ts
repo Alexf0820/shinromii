@@ -1,6 +1,7 @@
+import { normalizePeriodSystem, type GradePeriodSystem } from "@/lib/grade-periods";
 import { normalizeSchoolSubjectsTemplate, getSchoolSubjectsTemplate, type SchoolSubjectsTemplate } from "@/lib/school-subject-templates";
 import { isDemoMode, scopedStorageKey } from "@/lib/shinromii-demo-mode";
-import { createDemoSample } from "@/lib/shinromii-demo-sample";
+import { createDemoSample, upgradeDemoPeriods } from "@/lib/shinromii-demo-sample";
 import { aiNotes, campusDone, gradeRecords, openCampusEvents, qualifications, universities } from "@/data/mockData";
 import { normalizeEikenScores } from "@/lib/eiken";
 import { normalizeExamScores } from "@/lib/grading-rule";
@@ -64,7 +65,8 @@ export type ShinromiiStorage = {
   setupCompleted: boolean;
   identity: ShinromiiIdentity;
   /** 明示されたデモ用ノートのみ、既定OCの自動追加を抑止する。 */
-  meta?: { isSample: true };
+  meta?: { isSample: true; demoPeriodsVersion?: 2 };
+  gradePeriodSystem?: GradePeriodSystem;
   schoolSubjects?: SchoolSubjectsTemplate;
 };
 
@@ -310,8 +312,9 @@ function storageSnapshotPayload(storage: ShinromiiStorage) {
     profile: storage.profile,
     setupCompleted: storage.setupCompleted,
     identity: storage.identity,
+    ...(storage.gradePeriodSystem !== undefined ? { gradePeriodSystem: normalizePeriodSystem(storage.gradePeriodSystem) } : {}),
     ...(normalizeSchoolSubjectsTemplate(storage.schoolSubjects) ? { schoolSubjects: normalizeSchoolSubjectsTemplate(storage.schoolSubjects) } : {}),
-    ...(storage.meta?.isSample === true ? { meta: { isSample: true as const } } : {}),
+    ...(storage.meta?.isSample === true ? { meta: { isSample: true as const, ...(storage.meta?.demoPeriodsVersion === 2 ? { demoPeriodsVersion: 2 as const } : {}) } } : {}),
   };
 }
 
@@ -382,8 +385,9 @@ function coerceStorageValues(
     profile,
     setupCompleted: fromBackup || existingInstallation || parsed.setupCompleted === true,
     identity,
+    ...(parsed.gradePeriodSystem !== undefined ? { gradePeriodSystem: normalizePeriodSystem(parsed.gradePeriodSystem) } : {}),
     ...(normalizeSchoolSubjectsTemplate(parsed.schoolSubjects) ? { schoolSubjects: normalizeSchoolSubjectsTemplate(parsed.schoolSubjects) } : {}),
-    ...(parsed.meta?.isSample === true ? { meta: { isSample: true as const } } : {}),
+    ...(parsed.meta?.isSample === true ? { meta: { isSample: true as const, ...(parsed.meta?.demoPeriodsVersion === 2 ? { demoPeriodsVersion: 2 as const } : {}) } } : {}),
   };
 }
 
@@ -471,7 +475,9 @@ function persistStorageMaintenanceMigrations(
   storage: ShinromiiStorage,
   changedBeforeMaintenance = false,
 ): ShinromiiStorage {
-  const result = applyStorageMaintenanceMigrations(storage);
+  const upgraded = isDemoMode() ? upgradeDemoPeriods(storage) : storage;
+  changedBeforeMaintenance ||= upgraded !== storage;
+  const result = applyStorageMaintenanceMigrations(upgraded);
 
   if (!result.changed && !changedBeforeMaintenance) {
     return storage;
@@ -627,7 +633,7 @@ export function saveShinromiiStorage(next: ShinromiiStorage) {
 
   const payload = storageSnapshotPayload({
     ...next,
-    ...(isDemoMode() ? { meta: { isSample: true as const } } : {}),
+    ...(isDemoMode() ? { meta: { ...next.meta, isSample: true as const } } : {}),
     version: STORAGE_VERSION,
   });
 
@@ -947,4 +953,9 @@ export function applySchoolSubjectsTemplate(key: string) {
   if (target.hasGrades) throw new Error("成績が登録されています。成績への影響を避けるため、このバージョンでは適用できません。");
   const current = hasExistingShinromiiInstallation() ? readShinromiiStorageSnapshot() : createBlankShinromiiStorage();
   saveShinromiiStorage({ ...current, schoolSubjects: template });
+}
+
+/** 学校制度だけを保存し、成績レコードは変更しない。 */
+export function saveGradePeriodSystem(system: GradePeriodSystem) {
+  saveShinromiiStorage({ ...loadStorageForMutation(), gradePeriodSystem: normalizePeriodSystem(system) });
 }

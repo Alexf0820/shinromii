@@ -9,6 +9,9 @@ export default function PrivacyPage() {
           成績・大学候補・オープンキャンパス・プロフィールなどの進路情報を、SHINROMiiのサーバーへ保存する仕組みではありません。
         </p>
       </InfoCallout>
+      <InfoCallout title="ベータ版へのご意見・ご要望">
+        <p>送信ボタンを押すと、記入した本文・アプリのバージョン・送信日時・ページ・大まかな端末とブラウザの種別を、メール配信サービスを通じて運営者へ送信します。端末に保存された成績やプロフィール等は送信しません。本文には個人情報を記入しないでください。</p>
+      </InfoCallout>
       <InfoPointList
         items={[
           {

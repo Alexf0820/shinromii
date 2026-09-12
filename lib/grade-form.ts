@@ -1,5 +1,6 @@
+import { resolveGradePeriod, legacyGradeTerm, PERIOD_IDS, type GradePeriodId } from "@/lib/grade-periods";
 import { isValidGrade } from "@/lib/reference-grades";
-import type { GradeRecord, GradeSchoolYear, GradeTerm } from "@/data/mockData";
+import type { GradeRecord, GradeSchoolYear } from "@/data/mockData";
 import { createShinromiiId } from "@/lib/shinromii-id";
 import {
   hasAnyExamScore,
@@ -10,7 +11,7 @@ import {
 
 export type GradeFormState = {
   schoolYear: GradeSchoolYear;
-  term: GradeTerm;
+  term: GradePeriodId;
   subject: string;
   grade: number | "";
   memo: string;
@@ -19,12 +20,12 @@ export type GradeFormState = {
 };
 
 export const GRADE_SCHOOL_YEAR_OPTIONS: GradeSchoolYear[] = ["高1", "高2", "高3"];
-export const GRADE_TERM_OPTIONS: GradeTerm[] = ["1学期", "2学期", "3学期", "学年末"];
+export const GRADE_TERM_OPTIONS = PERIOD_IDS;
 
 export function createEmptyGradeForm(): GradeFormState {
   return {
     schoolYear: "高1",
-    term: "1学期",
+    term: "period1",
     subject: "",
     grade: "",
     memo: "",
@@ -57,7 +58,7 @@ export function formFromGradeRecord(record: GradeRecord): GradeFormState {
 
   return {
     schoolYear: record.schoolYear,
-    term: record.term,
+    term: resolveGradePeriod(record) ?? "period1",
     subject: record.subject,
     grade: isValidGrade(record.grade) ? record.grade : "",
     memo: record.memo,
@@ -97,7 +98,8 @@ export function buildGradeRecord(options: {
   return {
     id: options.existing?.id ?? createGradeId(),
     schoolYear: options.form.schoolYear,
-    term: options.form.term,
+    term: legacyGradeTerm(options.form.term),
+    periodId: options.form.term,
     subject: options.form.subject.trim(),
     grade: options.form.grade,
     memo: options.form.memo.trim(),

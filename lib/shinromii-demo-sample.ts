@@ -1,7 +1,7 @@
 import type { ShinromiiStorage } from "@/lib/shinromii-storage";
 import { createEmptyProfile, SUBJECT_SUGGESTIONS } from "@/lib/user-profile";
 import { createDefaultCampusEvaluators, normalizeCampusEvaluations } from "@/lib/oc-record";
-import { gradeFromExamScores } from "@/lib/grading-rule";
+import { resolveGradePeriod } from "@/lib/grade-periods";
 
 /** 実データや既存シードを参照しない、デモ専用の架空ノート。 */
 export function createDemoSample(): ShinromiiStorage {
@@ -29,7 +29,8 @@ export function createDemoSample(): ShinromiiStorage {
   return {
     version: 9,
     campusEvaluators: createDefaultCampusEvaluators(),
-    meta: { isSample: true },
+    meta: { isSample: true, demoPeriodsVersion: 2 },
+    gradePeriodSystem: "three-term",
     setupCompleted: true,
     profile: { ...profile, interestFields: [...profile.interestFields], admissionMethods: [...profile.admissionMethods] },
     identity: {
@@ -40,10 +41,11 @@ export function createDemoSample(): ShinromiiStorage {
       entitlements: [],
       session: { status: "signed_out", method: null, currentUserId: "sample-user", currentFamilyId: "sample-family", currentStudentProfileId: "sample-student", lastAuthenticatedAt: null },
     },
-    gradeRecords: SUBJECT_SUGGESTIONS.map((subject, index) => {
-      const examScores = { midterm: index >= 8 && index <= 9 ? null : scores[index] - 3, final: scores[index] + 2 };
-      return { id: `sample-grade-${index}`, schoolYear: "高1", term: "1学期", subject, scores: examScores, grade: gradeFromExamScores(examScores) ?? 3, memo: "【架空デモ】実在校の成績ではありません。", createdAt: "2026-07-24", updatedAt: date, ...meta };
-    }),
+    gradeRecords: (["period1", "period2"] as const).flatMap((periodId, periodIndex) => SUBJECT_SUGGESTIONS.map((subject, index) => {
+      const ratings = periodIndex === 0 ? [3,3,3,4,3,3,3,3,4,3,4,4,4,4] : [3,3,3,4,4,3,3,4,4,3,4,4,4,4];
+      const examScores = { midterm: index >= 8 && index <= 9 ? null : scores[index] - 3 + periodIndex, final: scores[index] + 2 + periodIndex };
+      return { id: periodIndex === 0 ? `sample-grade-${index}` : `sample-grade-period2-${index}`, schoolYear: "高1" as const, term: periodIndex === 0 ? "1学期" as const : "2学期" as const, periodId, subject, scores: examScores, grade: ratings[index], memo: "【架空デモ】実在校の成績ではありません。2期間を比較するための架空の日付・評定です。", createdAt: periodIndex === 0 ? "2026-07-24" : "2026-12-20", updatedAt: periodIndex === 0 ? date : "2026-12-20", ...meta };
+    })),
     qualifications: [{ id: "sample-eiken", name: "英検", kind: "eiken", scoreOrLevel: "準2級", status: "取得済み", examDate: "2026-06-20", memo: "【架空デモ】日付は公式試験日を表しません。", createdAt: date, updatedAt: date, ...meta }],
     universityCandidates: schools.map((school) => ({ id: `sample-university-${school.id}`, university: school.name, faculty: school.faculty, department: "", url: "", interest: 3, studentScore: "検討中", familyScore: "検討中", studentView: "【架空デモ】学部選びをもう少し調べたい。", familyView: "本人の興味と通い方を一緒に考えたい。", reason: "学ぶ内容を比べたい。", futureNote: "入試条件は公式情報で確認する。", createdAt: date, ...meta })),
     openCampusEvents: schools.map((school) => ({ id: `sample-oc-${school.id}`, university: school.name, facultyDepartment: school.faculty, eventName: "オープンキャンパス（架空デモ）", eventType: "オープンキャンパス", eventDate: school.date, startTime: "10:00", endTime: "12:00", status: school.status, companionMemo: "保護者と参加する架空設定", meetingPlace: "", accessMemo: "", dayMemo: "【架空デモ】日時・予約・参加は架空の設定で、公式開催情報ではありません。", links: [], attachments: [], createdAt: date, updatedAt: date, ...meta })),
@@ -55,4 +57,14 @@ export function createDemoSample(): ShinromiiStorage {
       { id: "sample-note-2", consultedAt: "2026-09-08", provider: "その他", title: "【架空デモ】次のOCで見ること", consultationBody: "学部の学びと雰囲気を知りたい。", answerBody: "【架空の回答例】質問を準備し、家族と感想を比べる。", summary: "次回は入試説明も聞きたい。", relatedSchool: "専修大学", helpful: 3, freeNote: "実際の相談記録ではありません。", ...meta },
     ],
   };
+}
+
+/** Built-in old demo only: append missing second-period subjects once; keep all edits. */
+export function upgradeDemoPeriods(storage: ShinromiiStorage): ShinromiiStorage {
+  if (storage.meta?.isSample !== true || storage.meta.demoPeriodsVersion === 2 ||
+      !SUBJECT_SUGGESTIONS.every((_, index) => storage.gradeRecords.some(r => r.id === `sample-grade-${index}`))) return storage;
+  const additions = createDemoSample().gradeRecords.filter(r => r.periodId === "period2" && !storage.gradeRecords.some(old =>
+    old.id === r.id || (old.schoolYear === r.schoolYear && resolveGradePeriod(old) === "period2" && old.subject.trim() === r.subject.trim())
+  ));
+  return { ...storage, meta: { ...storage.meta, demoPeriodsVersion: 2 }, gradeRecords: [...storage.gradeRecords, ...additions] };
 }

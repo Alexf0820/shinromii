@@ -2,9 +2,10 @@
 import { summarizeReferenceGrades, formatReferenceAverage as formatAverage, sameGradeSubject } from "@/lib/reference-grades";
 import { GradeReferenceInfo, GradeReferenceNotice } from "@/components/GradeReferenceNotice";
 
+import { normalizePeriodSystem, resolveGradePeriod, gradePeriodLabel, activePeriodIds, PERIOD_IDS, type GradePeriodSystem } from "@/lib/grade-periods";
 import { isDemoMode } from "@/lib/shinromii-demo-mode";
 
-import { useEffect, useMemo, useRef, useState, type KeyboardEvent } from "react";
+import { useEffect, useId, useMemo, useRef, useState, type KeyboardEvent } from "react";
 import { CardActionBar } from "@/components/CardActionBar";
 import { SchoolTemplateButton } from "@/components/grades/SchoolTemplateButton";
 import { GradeRecordForm } from "@/components/grades/GradeRecordForm";
@@ -14,7 +15,6 @@ import { gradeRecords as initialGradeRecords, qualifications as initialQualifica
 import type {
   GradeRecord,
   GradeSchoolYear,
-  GradeTerm,
   QualificationRecord,
   QualificationStatus,
 } from "@/data/mockData";
@@ -41,6 +41,7 @@ import {
 import {
   loadShinromiiStorage,
   saveGradeRecords,
+  saveGradePeriodSystem,
   saveQualifications,
 } from "@/lib/shinromii-storage";
 
@@ -55,13 +56,6 @@ const schoolYearRank: Record<GradeSchoolYear, number> = {
   高1: 1,
   高2: 2,
   高3: 3,
-};
-
-const termRank: Record<GradeTerm, number> = {
-  "1学期": 1,
-  "2学期": 2,
-  "3学期": 3,
-  学年末: 4,
 };
 
 function recordScores(record: GradeRecord) {
@@ -94,7 +88,7 @@ function sortGradeRecords(records: GradeRecord[]) {
       return yearDiff;
     }
 
-    const termDiff = termRank[b.term] - termRank[a.term];
+    const termDiff = PERIOD_IDS.indexOf(resolveGradePeriod(b)!) - PERIOD_IDS.indexOf(resolveGradePeriod(a)!);
 
     if (termDiff !== 0) {
       return termDiff;
@@ -139,6 +133,9 @@ function qualificationStatusClass(status: QualificationStatus) {
 type GradesTab = "grades" | "qualifications";
 
 export function GradesClient() {
+  const periodPanelId = useId();
+  const [expandedPeriod, setExpandedPeriod] = useState<string | null | undefined>(undefined);
+  const [periodSystem, setPeriodSystem] = useState<GradePeriodSystem>("three-term");
   const [subjectRevision, setSubjectRevision] = useState(0);
   const [activeTab, setActiveTab] = useState<GradesTab>("grades");
   const [gradeRecords, setGradeRecords] = useState<GradeRecord[]>(() => isDemoMode() ? [] : initialGradeRecords);
@@ -165,6 +162,7 @@ export function GradesClient() {
 
   useEffect(() => {
     const storage = loadShinromiiStorage();
+    setPeriodSystem(normalizePeriodSystem(storage.gradePeriodSystem));
     setGradeRecords(storage.gradeRecords);
     setQualifications(storage.qualifications);
   }, []);
@@ -193,12 +191,13 @@ export function GradesClient() {
   const sortedGradeRecords = useMemo(() => sortGradeRecords(gradeRecords), [gradeRecords]);
   const sortedQualifications = useMemo(() => sortQualifications(qualifications), [qualifications]);
 
-  const reference = useMemo(() => summarizeReferenceGrades(sortedGradeRecords), [sortedGradeRecords]);
+  const reference = useMemo(() => summarizeReferenceGrades(sortedGradeRecords, periodSystem), [sortedGradeRecords, periodSystem]);
   const gradeGroups = reference.periods;
   const latestGroup = reference.latest;
+  const openPeriodKey = expandedPeriod === undefined ? latestGroup?.key : expandedPeriod;
   const summaryStats = reference.annual.map(year => ({
     label: `${year.schoolYear} 年間参考平均`, value: formatAverage(year.average),
-    note: `有効${year.count}科目／学年末優先${year.supplemented ? "／学期平均による補完あり" : ""}`,
+    note: `有効${year.count}科目／年間評定優先${year.supplemented ? "／期間平均による補完あり" : ""}`,
     excluded: year.excluded,
   }));
 
@@ -235,7 +234,7 @@ export function GradesClient() {
       gradingMethod: "manual",
     });
 
-    if (!nextRecord) {
+    if (!nextRecord || !activePeriodIds(periodSystem).includes(gradeForm.term)) {
       window.alert("科目名と評定（1〜5）を選択してください。");
       return;
     }
@@ -256,7 +255,7 @@ export function GradesClient() {
 
   function handleDeleteGrade(record: GradeRecord) {
     const confirmed = window.confirm(
-      `「${record.schoolYear} ${record.term} ${record.subject}」を削除しますか？`,
+      `「${record.schoolYear} ${gradePeriodLabel(resolveGradePeriod(record), periodSystem)} ${record.subject}」を削除しますか？`,
     );
 
     if (!confirmed) {
@@ -311,7 +310,7 @@ export function GradesClient() {
       existing: currentRecord,
     });
 
-    if (!nextRecord) {
+    if (!nextRecord || !activePeriodIds(periodSystem).includes(gradeForm.term)) {
       window.alert("資格名と級・スコアを入力してください。");
       return;
     }
@@ -429,7 +428,7 @@ export function GradesClient() {
             <p className="eyebrow">評定詳細</p>
             <p className="item-title">{record.subject}</p>
             <p className="item-subtitle">
-              {record.schoolYear} / {record.term}
+              {record.schoolYear} / {gradePeriodLabel(resolveGradePeriod(record), periodSystem)}
             </p>
           </div>
           <div className="grade-detail-aside">
@@ -473,7 +472,7 @@ export function GradesClient() {
           }
         }}
       >
-        <GradeRecordForm key={subjectRevision}
+        <GradeRecordForm key={subjectRevision} periodSystem={periodSystem}
           title={title}
           description={description}
           form={gradeForm}
@@ -722,6 +721,19 @@ export function GradesClient() {
 
       {activeTab === "grades" ? (
         <>
+          <section className="panel grade-period-settings">
+            <label className="field-block"><span className="field-label">成績の区切り</span>
+              <select className="text-input" value={periodSystem} onChange={event => {
+                if (!window.confirm("成績期間の表示と集計対象を変更します。保存済みの評定は書き換えません。2学期制では3学期の記録を保持したまま集計から除外します。変更しますか？")) return;
+                const next = normalizePeriodSystem(event.target.value);
+                saveGradePeriodSystem(next); setPeriodSystem(next); closeGradeEditor();
+              }}>
+                <option value="three-term">3学期制（1学期 / 2学期 / 3学期）</option>
+                <option value="two-term">2学期制（前期 / 後期）</option>
+              </select>
+            </label>
+            <p className="field-help">年間評定はどちらの制度でも登録できます。設定はこのノート全学年に適用されます。旧1学期は前期、旧2学期は後期として表示します。</p>
+          </section>
           <section className="grade-summary-card">
             <p className="grade-summary-label">参考評定平均 <GradeReferenceInfo /></p>
             <p className="grade-summary-value">
@@ -729,7 +741,7 @@ export function GradesClient() {
             </p>
             <p className="grade-summary-note">
               {latestGroup
-                ? `${latestGroup.schoolYear}・${latestGroup.term}／有効${latestGroup.count}科目`
+                ? `${latestGroup.schoolYear}・${latestGroup.label}／有効${latestGroup.count}科目`
                 : "まだ評定データはありません"}
             </p>
             <GradeReferenceNotice />
@@ -779,17 +791,29 @@ export function GradesClient() {
               ) : (
                 gradeGroups.map((group, index) => (
                   <article key={group.key} className="term-card">
-                    <div className="term-card-head">
-                      <div className="term-card-heading">
-                        <p className="term-card-name">
-                          {group.schoolYear} {group.term}
-                          {index === 0 ? <span className="term-latest-badge">最新</span> : null}
-                        </p>
-                        <p className="term-card-count">有効{group.count}科目</p>
-                      </div>
-                      <p className="term-card-average"><small>入力済み評定の参考平均 </small>{formatAverage(group.average)} <GradeReferenceInfo /></p>
+                    <div className="term-card-head term-accordion-head">
+                      <button
+                        type="button"
+                        className="term-accordion-toggle"
+                        aria-expanded={openPeriodKey === group.key}
+                        aria-controls={`${periodPanelId}-${index}`}
+                        onClick={() => setExpandedPeriod(openPeriodKey === group.key ? null : group.key)}
+                      >
+                        <span className="term-card-heading">
+                          <span className="term-card-name">
+                            {group.schoolYear} {group.label}
+                            {group.key === latestGroup?.key ? <span className="term-latest-badge">最新</span> : null}
+                          </span>
+                          <span className="term-card-count">有効{group.count}科目</span>
+                          <span className="term-accordion-hint">{openPeriodKey === group.key ? "科目の詳細を閉じる" : "科目の詳細を展開表示"}</span>
+                        </span>
+                        <span className="term-card-average"><small>参考評定平均</small>{formatAverage(group.average)}</span>
+                        <span className="term-accordion-arrow" aria-hidden="true">{openPeriodKey === group.key ? "▲" : "▼"}</span>
+                      </button>
+                      <GradeReferenceInfo />
                     </div>
 
+                    <div id={`${periodPanelId}-${index}`} hidden={openPeriodKey !== group.key}>
                     <GradeReferenceNotice />
                     {group.excluded > 0 && <p className="grade-reference-notice">重複などにより{group.excluded}科目を集計から除外しています。</p>}
                     <div className="subject-list">
@@ -836,6 +860,7 @@ export function GradesClient() {
                             : null}
                         </div>
                       ))}
+                    </div>
                     </div>
                   </article>
                 ))

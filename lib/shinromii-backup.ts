@@ -1,3 +1,4 @@
+import { normalizePeriodSystem } from "@/lib/grade-periods";
 import { normalizeSchoolSubjectsTemplate } from "@/lib/school-subject-templates";
 import { isDemoMode } from "@/lib/shinromii-demo-mode";
 import type { ShinromiiStorage } from "@/lib/shinromii-storage";
@@ -65,8 +66,9 @@ export function buildShinromiiBackup(
       profile: storage.profile,
       setupCompleted: storage.setupCompleted,
       identity: storage.identity,
+      ...(storage.gradePeriodSystem !== undefined ? { gradePeriodSystem: normalizePeriodSystem(storage.gradePeriodSystem) } : {}),
       ...(normalizeSchoolSubjectsTemplate(storage.schoolSubjects) ? { schoolSubjects: normalizeSchoolSubjectsTemplate(storage.schoolSubjects) } : {}),
-      ...(storage.meta?.isSample === true ? { meta: { isSample: true as const } } : {}),
+      ...(storage.meta?.isSample === true ? { meta: { isSample: true as const, ...(storage.meta?.demoPeriodsVersion === 2 ? { demoPeriodsVersion: 2 as const } : {}) } } : {}),
     },
   };
 }
