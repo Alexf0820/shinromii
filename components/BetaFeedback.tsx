@@ -21,21 +21,22 @@ export function BetaFeedback() {
     fetch("/api/feedback", { cache: "no-store", credentials: "omit", signal: controller.signal })
       .then(response => response.ok ? response.json() : null)
       .then(result => { if (!controller.signal.aborted) setAvailable(result?.available === true); })
-      .catch(() => { /* Unavailable or offline: keep the entry hidden. */ });
+      .catch(() => { /* Unavailable or offline: keep the entry in preparation mode. */ });
     return () => controller.abort();
   }, []);
-  if (!IS_BETA || !available) return null;
+  if (!IS_BETA) return null;
   return <>
     <section className="beta-feedback-card">
       <h2>💬 ベータ版へのご意見を募集中！</h2>
       <p>「ここが分かりにくい」「こんな機能が欲しい」など、ちょっとしたことでもぜひ教えてください。</p>
-      <button type="button" className="action-button" onClick={() => { setOpen(true); if (state === "success") { setMessage(""); setState("idle"); attempt.current = null; } }}>ご意見・ご要望を送る</button>
+      <button type="button" className="action-button" disabled={!available} onClick={() => { if (!available) return; setOpen(true); if (state === "success") { setMessage(""); setState("idle"); attempt.current = null; } }}>{available ? "ご意見・ご要望を送る" : "ご意見・ご要望を送る（準備中）"}</button>
+      {!available && <p style={{ fontSize: ".8rem" }}>近日中にご利用いただけます</p>}
     </section>
-    {open && createPortal(<dialog ref={dialog} className="grade-reference-dialog beta-feedback-dialog" aria-labelledby={titleId} onClose={() => setOpen(false)} onCancel={event => { if (sending.current) event.preventDefault(); }}>
+    {available && open && createPortal(<dialog ref={dialog} className="grade-reference-dialog beta-feedback-dialog" aria-labelledby={titleId} onClose={() => setOpen(false)} onCancel={event => { if (sending.current) event.preventDefault(); }}>
       <h2 id={titleId}>ご意見・ご要望</h2>
       {state === "success" ? <p role="status">ありがとうございます！<br />ご意見は今後のSHINROMii改善の参考にします。</p> : <form onSubmit={async event => {
         event.preventDefault();
-        if (sending.current || !message.trim() || message.length > 2000) return;
+        if (!available || sending.current || !message.trim() || message.length > 2000) return;
         sending.current = true;
         setState("sending");
         if (attempt.current?.message !== message) attempt.current = { message, id: crypto.randomUUID(), createdAt: new Date().toISOString() };
