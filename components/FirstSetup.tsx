@@ -1,4 +1,5 @@
 "use client";
+import { sameGradeSubject } from "@/lib/reference-grades";
 
 import { useEffect, useState } from "react";
 import { GradeRecordForm } from "@/components/grades/GradeRecordForm";
@@ -161,10 +162,14 @@ export function FirstSetup({ onFinished, preview = false, resume = false }: Firs
     const nextRecord = buildGradeRecord({ form: gradeForm, gradingMethod: "manual" });
 
     if (!nextRecord) {
-      window.alert("科目名を入力してください。");
+      window.alert("科目名と評定（1〜5）を選択してください。");
       return;
     }
 
+    if (gradeRecords.some(record => sameGradeSubject(record, nextRecord))) {
+      window.alert("同じ学年・学期・科目は登録済みです。セットアップ完了後、成績画面で既存レコードを編集してください。");
+      return;
+    }
     setGradeRecords((current) => [nextRecord, ...current]);
     setGradeForm(createEmptyGradeForm());
     setShowGradeForm(false);

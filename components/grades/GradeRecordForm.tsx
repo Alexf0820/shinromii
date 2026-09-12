@@ -31,7 +31,7 @@ export function GradeRecordForm({
   onChange,
   onSave,
   onCancel,
-  gradingMethod = "school-rule-a",
+  gradingMethod = "manual",
 }: GradeRecordFormProps) {
   const [template, setTemplate] = useState<SchoolSubjectsTemplate>();
   useEffect(() => { setTemplate(readSchoolSubjectSettings()); }, []);
@@ -98,8 +98,9 @@ export function GradeRecordForm({
             <select
               className="text-input"
               value={form.grade}
-              onChange={(event) => update("grade", Number(event.target.value))}
+              onChange={(event) => update("grade", event.target.value === "" ? "" : Number(event.target.value))}
             >
+              <option value="">未選択</option>
               {[1, 2, 3, 4, 5].map((score) => (
                 <option key={score} value={score}>
                   {score}

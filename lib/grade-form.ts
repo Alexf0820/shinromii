@@ -1,10 +1,7 @@
+import { isValidGrade } from "@/lib/reference-grades";
 import type { GradeRecord, GradeSchoolYear, GradeTerm } from "@/data/mockData";
 import { createShinromiiId } from "@/lib/shinromii-id";
 import {
-  examCount,
-  examTotal,
-  gradeFromExamScores,
-  gradingProfiles,
   hasAnyExamScore,
   normalizeExamScores,
   type ExamScores,
@@ -15,7 +12,7 @@ export type GradeFormState = {
   schoolYear: GradeSchoolYear;
   term: GradeTerm;
   subject: string;
-  grade: number;
+  grade: number | "";
   memo: string;
   midtermScore: string;
   finalScore: string;
@@ -29,7 +26,7 @@ export function createEmptyGradeForm(): GradeFormState {
     schoolYear: "高1",
     term: "1学期",
     subject: "",
-    grade: 3,
+    grade: "",
     memo: "",
     midtermScore: "",
     finalScore: "",
@@ -62,50 +59,19 @@ export function formFromGradeRecord(record: GradeRecord): GradeFormState {
     schoolYear: record.schoolYear,
     term: record.term,
     subject: record.subject,
-    grade: record.grade,
+    grade: isValidGrade(record.grade) ? record.grade : "",
     memo: record.memo,
     midtermScore: scores?.midterm === null || scores?.midterm === undefined ? "" : String(scores.midterm),
     finalScore: scores?.final === null || scores?.final === undefined ? "" : String(scores.final),
   };
 }
 
-export function gradeFormScoreNote(form: GradeFormState, gradingMethod: GradingMethod) {
-  if (gradingMethod === "manual") {
-    return "評定は自分で選べます。得点の入力は任意です。";
-  }
-
-  const scores = formScores(form);
-  const autoGrade = gradeFromExamScores(scores);
-
-  if (autoGrade === null) {
-    return "得点を入力すると評定を自動計算します。中間が実施されていない科目は空欄のままにしてください。";
-  }
-
-  const total = examTotal(scores);
-
-  if (examCount(scores) >= 2) {
-    return `中間 ${scores.midterm} ＋ 期末 ${scores.final} = 合計 ${total}点 → 評定 ${autoGrade}`;
-  }
-
-  const label = scores.midterm === null ? "期末のみ" : "中間のみ";
-
-  return `${label} ${total}点 → 評定 ${autoGrade}`;
+export function gradeFormScoreNote(_form: GradeFormState, _gradingMethod: GradingMethod) {
+  return "学校から示された評定を選んでください。得点は記録用で、評定は自動変更しません。";
 }
 
-export function applyGradeScoreInput(
-  form: GradeFormState,
-  key: "midtermScore" | "finalScore",
-  value: string,
-  gradingMethod: GradingMethod,
-): GradeFormState {
-  const next = { ...form, [key]: value };
-
-  if (gradingMethod === "manual") {
-    return next;
-  }
-
-  const autoGrade = gradeFromExamScores(formScores(next));
-  return autoGrade === null ? next : { ...next, grade: autoGrade };
+export function applyGradeScoreInput(form: GradeFormState, key: "midtermScore" | "finalScore", value: string, _gradingMethod: GradingMethod): GradeFormState {
+  return { ...form, [key]: value };
 }
 
 function createGradeId() {
@@ -121,23 +87,19 @@ export function buildGradeRecord(options: {
   existing?: GradeRecord | null;
   gradingMethod: GradingMethod;
 }): GradeRecord | null {
-  if (!options.form.subject.trim()) {
+  if (!options.form.subject.trim() || !isValidGrade(options.form.grade)) {
     return null;
   }
 
   const now = todayString();
   const scores = formScores(options.form);
-  const autoGrade =
-    options.gradingMethod === "manual"
-      ? null
-      : gradeFromExamScores(scores, gradingProfiles[options.gradingMethod]);
 
   return {
     id: options.existing?.id ?? createGradeId(),
     schoolYear: options.form.schoolYear,
     term: options.form.term,
     subject: options.form.subject.trim(),
-    grade: autoGrade ?? options.form.grade,
+    grade: options.form.grade,
     memo: options.form.memo.trim(),
     createdAt: options.existing?.createdAt ?? now,
     updatedAt: now,

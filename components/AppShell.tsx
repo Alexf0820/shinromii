@@ -42,7 +42,7 @@ const pageMeta: Record<string, PageMeta> = {
   },
   "/grades": {
     title: "成績・評定",
-    subtitle: "評定平均と資格を整えて記録",
+    subtitle: "参考評定平均と資格を整えて記録",
     icon: "grades-fill",
     tone: "grades",
   },
@@ -268,7 +268,7 @@ export function AppShell({ children }: AppShellProps) {
                   {hideUserChrome ? null : <BrandAccountLink />}
                   {hideUserChrome ? null : <SettingsLink />}
                 </div>
-                <span className="home-version">{APP_VERSION_LABEL}</span>
+                <span className="home-version app-version"><span>{APP_VERSION_LABEL}</span><span className="app-version-beta">ベータ版</span></span>
               </div>
             </div>
             {hideUserChrome ? null : (

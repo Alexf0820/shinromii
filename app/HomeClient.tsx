@@ -1,4 +1,6 @@
 "use client";
+import { summarizeReferenceGrades, formatReferenceAverage as formatAverage } from "@/lib/reference-grades";
+import { GradeReferenceInfo, GradeReferenceNotice } from "@/components/GradeReferenceNotice";
 
 import { isDemoMode } from "@/lib/shinromii-demo-mode";
 
@@ -29,31 +31,6 @@ const HERO_IMAGE = "/images/shinromii-home-hero.png";
 const HERO_IMAGE_WIDTH = 1024;
 const HERO_IMAGE_HEIGHT = 661;
 const HERO_IMAGE_SIZES = "(max-width: 639px) 100vw, 920px";
-
-const schoolYearRank = {
-  高1: 1,
-  高2: 2,
-  高3: 3,
-} as const;
-
-const termRank = {
-  "1学期": 1,
-  "2学期": 2,
-  "3学期": 3,
-  学年末: 4,
-} as const;
-
-function average(values: number[]) {
-  if (values.length === 0) {
-    return null;
-  }
-
-  return values.reduce((sum, value) => sum + value, 0) / values.length;
-}
-
-function formatAverage(value: number | null) {
-  return value === null ? "-" : value.toFixed(1);
-}
 
 function formatMonthDay(isoDate: string) {
   const [, month, day] = isoDate.split("-");
@@ -138,29 +115,9 @@ export function HomeClient() {
     };
   }, []);
 
-  const latestGrade = useMemo(() => {
-    if (!storage || storage.gradeRecords.length === 0) {
-      return { value: null as number | null, termLabel: null as string | null };
-    }
-
-    const sorted = [...storage.gradeRecords].sort((a, b) => {
-      if (a.schoolYear !== b.schoolYear) {
-        return schoolYearRank[b.schoolYear] - schoolYearRank[a.schoolYear];
-      }
-
-      return termRank[b.term] - termRank[a.term];
-    });
-
-    const latest = sorted[0];
-    const target = storage.gradeRecords
-      .filter((item) => item.schoolYear === latest.schoolYear && item.term === latest.term)
-      .map((item) => item.grade);
-
-    return {
-      value: average(target),
-      termLabel: `${latest.schoolYear} ${latest.term}`,
-    };
-  }, [storage]);
+  const reference = useMemo(() => summarizeReferenceGrades(storage?.gradeRecords ?? []), [storage]);
+  const latestGrade = { value: reference.latest?.average ?? null,
+    termLabel: reference.latest ? `${reference.latest.schoolYear}・${reference.latest.term}／有効${reference.latest.count}科目` : null };
 
   const latestQualification = useMemo(() => {
     if (!storage || storage.qualifications.length === 0) {
@@ -193,7 +150,7 @@ export function HomeClient() {
   const summaryItems = [
     {
       href: "/grades#grades",
-      label: "評定平均",
+      label: "参考評定平均",
       value: formatAverage(latestGrade.value),
       unit: "",
       note: latestGrade.termLabel ? `最新 ${latestGrade.termLabel}` : "未登録",
@@ -361,7 +318,7 @@ export function HomeClient() {
                 stage={storage?.profile.progressionStage ?? "university"}
                 className="home-stage-badge"
               />
-              <span className="home-version">{APP_VERSION_LABEL}</span>
+              <span className="home-version app-version"><span>{APP_VERSION_LABEL}</span><span className="app-version-beta">ベータ版</span></span>
             </div>
           </div>
         </div>
@@ -373,7 +330,14 @@ export function HomeClient() {
           {todayLabel ? <span className="home-now-date">（{todayLabel} 現在）</span> : null}
         </div>
         <div className="home-now-grid">
-          {summaryItems.map((item) => (
+          {summaryItems.map((item) => item.label === "参考評定平均" ? (
+            <div key={item.label} className="home-stat-tile home-grade-tile">
+              <Link href={item.href} className="home-grade-navigation" aria-label="参考評定平均：成績・資格画面へ" />
+              <span className="home-stat-label">{item.label}</span>
+              <span className="home-grade-value"><span className="home-stat-value">{item.value}</span><GradeReferenceInfo isolateClicks /></span>
+              <span className="home-stat-note">{item.note}</span>
+            </div>
+          ) : (
             <Link key={item.label} href={item.href} className="home-stat-tile">
               <span className="home-stat-label">{item.label}</span>
               <span className={`home-stat-value ${item.compactValue ? "compact" : ""}`}>
@@ -384,6 +348,9 @@ export function HomeClient() {
             </Link>
           ))}
         </div>
+        <GradeReferenceNotice />
+        {reference.invalidRecords > 0 && <p className="grade-reference-notice">無効な評定{reference.invalidRecords}件は平均に含めていません。</p>}
+        {reference.excluded > 0 && <p className="grade-reference-notice">重複などにより{reference.excluded}科目を集計から除外しています。</p>}
       </section>
 
       <section className="home-feature-grid">

@@ -5514,3 +5514,28 @@ a {
   color: inherit;
   font: inherit;
 }
+
+.grade-reference-notice { color: #ad2638; font-size: 0.78rem; line-height: 1.65; margin: 8px 0; font-weight: 500; }
+.grade-summary-stat { min-width: 0; }
+.grade-summary-stat > span { overflow-wrap: anywhere; }
+.term-card-average small { display: block; font-size: 0.7rem; font-weight: 500; }
+
+.app-version { display: inline-flex; flex-direction: column; align-items: center; gap: 2px; }
+.app-version-beta { font-size: 0.65rem; font-weight: 500; }
+
+.home-grade-value { display: flex; align-items: center; justify-content: center; }
+.grade-reference-info { display: inline-flex; align-items: center; justify-content: center; vertical-align: middle; width: 28px; height: 28px; padding: 0; border: 0; border-radius: 50%; background: transparent; color: var(--primary); font-size: 1rem; font-weight: 500; cursor: pointer; }
+.grade-reference-info:focus-visible { outline: 2px solid var(--primary); outline-offset: 2px; }
+.grade-reference-dialog { width: min(440px, calc(100vw - 32px)); max-height: 80dvh; overflow-y: auto; border: 0; border-radius: 18px; padding: 24px; color: var(--ink); background: white; box-shadow: 0 12px 48px #0003; margin: auto; font-size: .9rem; line-height: 1.7; }
+.grade-reference-dialog::backdrop { background: #14233880; }
+.grade-reference-dialog h2 { font-size: 1.1rem; margin: 0 0 16px; }
+.grade-reference-dialog p { margin: 12px 0; }
+.grade-reference-dialog ul { padding-left: 1.3em; margin: 16px 0; }
+.grade-reference-dialog form { text-align: right; margin-top: 20px; }
+.grade-reference-dialog button { border: 1px solid var(--primary); border-radius: 8px; padding: 8px 20px; background: white; color: var(--primary); cursor: pointer; }
+
+/* Separate sibling hit targets: the card link never contains the info button. */
+.home-grade-tile { position: relative; }
+.home-grade-navigation { position: absolute; inset: 0; z-index: 1; border-radius: inherit; }
+.home-grade-navigation:focus-visible { outline: 2px solid var(--primary); outline-offset: 2px; }
+.home-grade-tile .grade-reference-info { position: relative; z-index: 2; }

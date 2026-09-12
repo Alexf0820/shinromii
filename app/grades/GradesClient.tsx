@@ -1,4 +1,6 @@
 "use client";
+import { summarizeReferenceGrades, formatReferenceAverage as formatAverage, sameGradeSubject } from "@/lib/reference-grades";
+import { GradeReferenceInfo, GradeReferenceNotice } from "@/components/GradeReferenceNotice";
 
 import { isDemoMode } from "@/lib/shinromii-demo-mode";
 
@@ -23,7 +25,7 @@ import {
   parseEikenExamNote,
   qualificationEikenScores,
 } from "@/lib/eiken";
-import { examCount, examTotal, gradeFromExamScores, normalizeExamScores } from "@/lib/grading-rule";
+import { examCount, examTotal, normalizeExamScores } from "@/lib/grading-rule";
 import {
   buildGradeRecord,
   createEmptyGradeForm,
@@ -49,8 +51,6 @@ function handleCardKeyActivate(event: KeyboardEvent, action: () => void) {
   }
 }
 
-const schoolYearOptions: GradeSchoolYear[] = ["高1", "高2", "高3"];
-
 const schoolYearRank: Record<GradeSchoolYear, number> = {
   高1: 1,
   高2: 2,
@@ -70,18 +70,6 @@ function recordScores(record: GradeRecord) {
 
 function formatScore(score: number | null) {
   return score === null ? "未実施" : `${score}点`;
-}
-
-function average(values: number[]) {
-  if (values.length === 0) {
-    return null;
-  }
-
-  return values.reduce((sum, value) => sum + value, 0) / values.length;
-}
-
-function formatAverage(value: number | null) {
-  return value === null ? "-" : value.toFixed(1);
 }
 
 function formatDate(date: string) {
@@ -205,68 +193,14 @@ export function GradesClient() {
   const sortedGradeRecords = useMemo(() => sortGradeRecords(gradeRecords), [gradeRecords]);
   const sortedQualifications = useMemo(() => sortQualifications(qualifications), [qualifications]);
 
-  const gradeGroups = useMemo(() => {
-    const groups = new Map<
-      string,
-      {
-        key: string;
-        schoolYear: GradeSchoolYear;
-        term: GradeTerm;
-        average: number;
-        records: GradeRecord[];
-      }
-    >();
-
-    sortedGradeRecords.forEach((record) => {
-      const key = `${record.schoolYear}-${record.term}`;
-      const existing = groups.get(key);
-
-      if (existing) {
-        existing.records.push(record);
-        existing.average = average(existing.records.map((item) => item.grade)) ?? 0;
-        return;
-      }
-
-      groups.set(key, {
-        key,
-        schoolYear: record.schoolYear,
-        term: record.term,
-        average: record.grade,
-        records: [record],
-      });
-    });
-
-    return Array.from(groups.values());
-  }, [sortedGradeRecords]);
-
-  const latestGroup = gradeGroups[0] ?? null;
-
-  const summaryStats = useMemo(() => {
-    const stats: { label: string; value: string }[] = [];
-    const overallAverage = average(gradeRecords.map((item) => item.grade));
-
-    schoolYearOptions.forEach((schoolYear) => {
-      const yearAverage = average(
-        gradeRecords.filter((item) => item.schoolYear === schoolYear).map((item) => item.grade),
-      );
-
-      if (yearAverage !== null) {
-        stats.push({
-          label: `${schoolYear}平均`,
-          value: formatAverage(yearAverage),
-        });
-      }
-    });
-
-    if (overallAverage !== null) {
-      stats.push({
-        label: "全期間",
-        value: formatAverage(overallAverage),
-      });
-    }
-
-    return stats;
-  }, [gradeRecords]);
+  const reference = useMemo(() => summarizeReferenceGrades(sortedGradeRecords), [sortedGradeRecords]);
+  const gradeGroups = reference.periods;
+  const latestGroup = reference.latest;
+  const summaryStats = reference.annual.map(year => ({
+    label: `${year.schoolYear} 年間参考平均`, value: formatAverage(year.average),
+    note: `有効${year.count}科目／学年末優先${year.supplemented ? "／学期平均による補完あり" : ""}`,
+    excluded: year.excluded,
+  }));
 
   function openCreateGrade() {
     setIsCreatingGrade(true);
@@ -298,14 +232,19 @@ export function GradesClient() {
     const nextRecord = buildGradeRecord({
       form: gradeForm,
       existing: currentRecord,
-      gradingMethod: "school-rule-a",
+      gradingMethod: "manual",
     });
 
     if (!nextRecord) {
-      window.alert("科目名を入力してください。");
+      window.alert("科目名と評定（1〜5）を選択してください。");
       return;
     }
 
+    if (gradeRecords.some(item => item.id !== gradeEditingId && sameGradeSubject(item, nextRecord)) &&
+        (!currentRecord || !sameGradeSubject(currentRecord, nextRecord))) {
+      window.alert("同じ学年・学期・科目は登録済みです。既存レコードの「編集」から変更してください。");
+      return;
+    }
     const nextRecords = gradeEditingId
       ? gradeRecords.map((item) => (item.id === gradeEditingId ? nextRecord : item))
       : [nextRecord, ...gradeRecords];
@@ -476,7 +415,7 @@ export function GradesClient() {
   }
 
   function renderGradeDetail(record: GradeRecord) {
-    const autoGrade = gradeFromExamScores(recordScores(record));
+
 
     return (
       <section
@@ -498,9 +437,7 @@ export function GradesClient() {
               <span className="record-grade-badge-label">評定</span>
               <span className="record-grade-badge-value">{record.grade}</span>
             </span>
-            {autoGrade === null ? null : (
-              <span className="grade-auto-label">自動評定 {autoGrade}</span>
-            )}
+
           </div>
         </div>
 
@@ -543,7 +480,7 @@ export function GradesClient() {
           onChange={setGradeForm}
           onSave={handleSaveGrade}
           onCancel={closeGradeEditor}
-          gradingMethod="school-rule-a"
+          gradingMethod="manual"
         />
       </div>
     );
@@ -786,21 +723,27 @@ export function GradesClient() {
       {activeTab === "grades" ? (
         <>
           <section className="grade-summary-card">
-            <p className="grade-summary-label">最新の評定平均</p>
+            <p className="grade-summary-label">参考評定平均 <GradeReferenceInfo /></p>
             <p className="grade-summary-value">
-              {latestGroup ? formatAverage(latestGroup.average) : "-"}
+              {latestGroup ? formatAverage(latestGroup.average) : "—"}
             </p>
             <p className="grade-summary-note">
               {latestGroup
-                ? `${latestGroup.schoolYear} ${latestGroup.term}`
+                ? `${latestGroup.schoolYear}・${latestGroup.term}／有効${latestGroup.count}科目`
                 : "まだ評定データはありません"}
             </p>
+            <GradeReferenceNotice />
+            {reference.excluded > 0 && <p role="status" className="grade-reference-notice">重複などにより{reference.excluded}科目を集計から除外しています。異なる評定の重複や未入力値をご確認ください。</p>}
+            {reference.invalidRecords > 0 && <p className="grade-reference-notice">無効な評定{reference.invalidRecords}件は平均に含めていません。</p>}
             {summaryStats.length > 0 ? (
               <div className="grade-summary-row">
                 {summaryStats.map((item) => (
                   <div key={item.label} className="grade-summary-stat">
                     <span className="grade-summary-stat-label">{item.label}</span>
-                    <span className="grade-summary-stat-value">{item.value}</span>
+                    <span className="grade-summary-stat-value">{item.value} <GradeReferenceInfo /></span>
+                    <span>{item.note}</span>
+                    {item.excluded > 0 && <span className="grade-reference-notice">{item.excluded}科目を年間集計から除外</span>}
+                    <GradeReferenceNotice />
                   </div>
                 ))}
               </div>
@@ -842,11 +785,13 @@ export function GradesClient() {
                           {group.schoolYear} {group.term}
                           {index === 0 ? <span className="term-latest-badge">最新</span> : null}
                         </p>
-                        <p className="term-card-count">{group.records.length}科目</p>
+                        <p className="term-card-count">有効{group.count}科目</p>
                       </div>
-                      <p className="term-card-average">{formatAverage(group.average)}</p>
+                      <p className="term-card-average"><small>入力済み評定の参考平均 </small>{formatAverage(group.average)} <GradeReferenceInfo /></p>
                     </div>
 
+                    <GradeReferenceNotice />
+                    {group.excluded > 0 && <p className="grade-reference-notice">重複などにより{group.excluded}科目を集計から除外しています。</p>}
                     <div className="subject-list">
                       {group.records.map((record) => (
                         <div key={record.id} className="detail-stack subject-stack">
