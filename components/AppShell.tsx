@@ -13,6 +13,7 @@ import { ProgressionStageBadge } from "@/components/ProgressionStageBadge";
 import { SettingsLink } from "@/components/SettingsLink";
 import { SiteFooter } from "@/components/SiteFooter";
 import { UiIcon } from "@/components/UiIcon";
+import { WelcomeGuide } from "@/components/WelcomeGuide";
 import { WelcomeStart } from "@/components/WelcomeStart";
 import { isDemoMode, switchDemoMode } from "@/lib/shinromii-demo-mode";
 import { APP_VERSION_LABEL } from "@/lib/app-version";
@@ -317,6 +318,7 @@ export function AppShell({ children }: AppShellProps) {
           )}
         </div>
         {isOnboarding || isAdminPath ? null : <MobileNav />}
+        <WelcomeGuide allowAutomatic={!demo && pathname === "/"} />
       </main>
     </div>
   );

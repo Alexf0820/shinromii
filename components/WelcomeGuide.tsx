@@ -1,7 +1,6 @@
 "use client";
 
-import { useEffect, useId, useRef, useState } from "react";
-import { createPortal } from "react-dom";
+import { useEffect, useLayoutEffect, useId, useRef, useState } from "react";
 import { usePathname, useRouter } from "next/navigation";
 import { switchDemoMode } from "@/lib/shinromii-demo-mode";
 
@@ -14,7 +13,7 @@ export function ReopenWelcome({ label = "はじめての方へ" }: { label?: str
   return <button type="button" className="action-button" onClick={() => window.dispatchEvent(new Event(OPEN_EVENT))}>{label}</button>;
 }
 
-export function WelcomeGuide() {
+export function WelcomeGuide({ allowAutomatic = false }: { allowAutomatic?: boolean }) {
   const pathname = usePathname();
   const router = useRouter();
   const [open, setOpen] = useState(false);
@@ -29,13 +28,16 @@ export function WelcomeGuide() {
     window.addEventListener(OPEN_EVENT, show);
     return () => window.removeEventListener(OPEN_EVENT, show);
   }, []);
-  useEffect(() => {
-    if (pathname !== "/" || dismissed.current) return;
+  useLayoutEffect(() => {
+    if (!allowAutomatic || pathname !== "/" || dismissed.current) return;
     let seen = 0;
     try { seen = Number(window.localStorage.getItem(WELCOME_KEY) || 0); } catch { /* Keep welcome usable without storage. */ }
-    if (seen < WELCOME_VERSION) { manual.current = false; setOpen(true); }
-  }, [pathname]);
-  useEffect(() => { if (open) dialog.current?.showModal(); }, [open]);
+    if (!Number.isFinite(seen) || seen < WELCOME_VERSION) { manual.current = false; setOpen(true); }
+  }, [allowAutomatic, pathname]);
+  useLayoutEffect(() => {
+    const element = dialog.current;
+    if (open && element?.isConnected && !element.open) element.showModal();
+  }, [open]);
 
   function dismiss() {
     dismissed.current = true;
@@ -46,7 +48,7 @@ export function WelcomeGuide() {
   }
 
   if (!open) return null;
-  return createPortal(<dialog ref={dialog} className="grade-reference-dialog welcome-guide" aria-labelledby={titleId} onCancel={event => { event.preventDefault(); dismiss(); }} onClose={dismiss}>
+  return <dialog ref={dialog} className="grade-reference-dialog welcome-guide" aria-labelledby={titleId} onCancel={event => { event.preventDefault(); dismiss(); }} onClose={dismiss}>
     <h2 id={titleId}>SHINROMii ベータ版へようこそ！</h2>
     <p>SHINROMiiは、高校・大学選びの情報や、成績・資格、オープンキャンパス、相談したことなどをひとつにまとめておける進路ノートです。</p>
     <p>もしよかったら、ちょっといじってみてください。<br />自分にとって便利そうだったら、ぜひ試してみてくださいね 😊</p>
@@ -68,5 +70,5 @@ export function WelcomeGuide() {
     </aside>
     {error && <p role="alert">{error}</p>}
     <p className="welcome-guide-note">使ってみて気づいたことがあれば、ぜひ教えてください。</p>
-  </dialog>, document.body);
+  </dialog>;
 }
