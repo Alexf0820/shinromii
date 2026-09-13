@@ -18,7 +18,7 @@ export function BetaFeedback() {
   useEffect(() => {
     if (!IS_BETA) return;
     const controller = new AbortController();
-    fetch("/api/feedback", { cache: "no-store", credentials: "omit", signal: controller.signal })
+    fetch("/api/feedback", { cache: "no-store", signal: controller.signal })
       .then(response => response.ok ? response.json() : null)
       .then(result => { if (!controller.signal.aborted) setAvailable(result?.available === true); })
       .catch(() => { /* Unavailable or offline: keep the entry in preparation mode. */ });
@@ -41,7 +41,7 @@ export function BetaFeedback() {
         setState("sending");
         if (attempt.current?.message !== message) attempt.current = { message, id: crypto.randomUUID(), createdAt: new Date().toISOString() };
         try {
-          const response = await fetch("/api/feedback", { method: "POST", headers: { "Content-Type": "application/json" }, credentials: "omit", body: JSON.stringify(attempt.current), signal: AbortSignal.timeout(20000) });
+          const response = await fetch("/api/feedback", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(attempt.current), signal: AbortSignal.timeout(20000) });
           if (!response.ok) throw new Error("send failed");
           setState("success");
         } catch { setState("error"); } finally { sending.current = false; }
