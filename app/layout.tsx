@@ -1,6 +1,7 @@
 import type { Metadata, Viewport } from "next";
 import type { ReactNode } from "react";
 import "./globals.css";
+import { WelcomeGuide } from "@/components/WelcomeGuide";
 import { AppShell } from "@/components/AppShell";
 import { PwaRegistration } from "@/components/PwaRegistration";
 import { APP_VERSION_LABEL } from "@/lib/app-version";
@@ -40,6 +41,7 @@ export default function RootLayout({ children }: RootLayoutProps) {
       <body>
         <PwaRegistration>
           <AppShell>{children}</AppShell>
+          <WelcomeGuide />
         </PwaRegistration>
       </body>
     </html>

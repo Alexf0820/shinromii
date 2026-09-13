@@ -1,9 +1,11 @@
+import { ReopenWelcome } from "@/components/WelcomeGuide";
 import { InfoArticle } from "@/components/InfoArticle";
 import { InfoCallout, InfoStepList } from "@/components/InfoBlocks";
 
 export default function GuidePage() {
   return (
     <InfoArticle>
+      <ReopenWelcome />
       <p>SHINROMiiは、次のような流れで使えます。</p>
       <InfoStepList
         items={[
@@ -39,6 +41,20 @@ export default function GuidePage() {
           },
         ]}
       />
+      <section id="home-screen" className="home-screen-guide" aria-labelledby="home-screen-title">
+        <h2 id="home-screen-title">ホーム画面に追加する</h2>
+        <p>SHINROMiiをホーム画面に追加すると、SHINROMiiアイコンからアプリのように起動できます。</p>
+        <h3>iPhone（Safari）</h3>
+        <ol>
+          <li>SafariでSHINROMiiを開く</li>
+          <li>共有ボタン「□↑」をタップ</li>
+          <li>「ホーム画面に追加」を選ぶ</li>
+          <li>「追加」をタップ</li>
+        </ol>
+        <p>「Webアプリとして開く」が表示された場合はオンにします。共有ボタンが見つからない場合は、Safariの「その他」メニューも確認してください。</p>
+        <h3>Android</h3>
+        <p>ブラウザのメニューに「ホーム画面に追加」や「アプリをインストール」が表示される場合は、画面の案内に従って追加できます。表示や操作は端末・ブラウザによって異なります。</p>
+      </section>
       <InfoCallout icon="bulb" title="少しずつで大丈夫です">
         <p>
           全部を一度にやらなくても大丈夫です。できるところから、少しずつ進めていきましょう。

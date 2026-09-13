@@ -1,4 +1,6 @@
 "use client";
+import { ReopenWelcome } from "@/components/WelcomeGuide";
+import { ShareShinromii } from "@/components/ShareShinromii";
 import { BetaFeedback } from "@/components/BetaFeedback";
 import { summarizeReferenceGrades, formatReferenceAverage as formatAverage } from "@/lib/reference-grades";
 import { GradeReferenceInfo, GradeReferenceNotice } from "@/components/GradeReferenceNotice";
@@ -325,6 +327,11 @@ export function HomeClient() {
         </div>
       </section>
 
+      <section className="home-welcome-card" aria-label="はじめての方へ">
+        <ReopenWelcome label="📘 はじめての方へ" />
+        <p>SHINROMiiって何？ まずここから</p>
+      </section>
+
       <section className="home-now-card">
         <div className="home-now-head">
           <h2>現在のわたし</h2>
@@ -514,6 +521,7 @@ export function HomeClient() {
         </details>
       </section>
       <BetaFeedback />
+      <ShareShinromii />
     </div>
   );
 }

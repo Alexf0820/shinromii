@@ -7,7 +7,7 @@ let providerOk = true;
 const env = {};
 const route = {};
 const compiled = ts.transpileModule(fs.readFileSync('app/api/feedback/route.ts', 'utf8'), {compilerOptions:{module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022}}).outputText;
-vm.runInNewContext(compiled, {exports: route, require: name => name === '@/lib/app-version' ? {APP_VERSION:'1.0', IS_BETA:true} : require(name), process: {env}, Response, URL, Buffer, AbortSignal, fetch: async (url, options) => {calls.push({url, options}); return {ok:providerOk};}});
+vm.runInNewContext(compiled, {exports: route, require: name => name === '@/lib/app-version' ? {APP_VERSION:'1.01', IS_BETA:true} : require(name), process: {env}, Response, URL, Buffer, AbortSignal, fetch: async (url, options) => {calls.push({url, options}); return {ok:providerOk};}});
 const payload = {message:'架空の動作確認です。',id:'11111111-1111-4111-8111-111111111111',createdAt:'2026-09-12T00:00:00.000Z'};
 function request(data=payload, ip='test1', origin='https://example.test') {return new Request('https://example.test/api/feedback',{method:'POST',headers:{origin,host:'example.test','content-type':'application/json','x-forwarded-for':ip,'user-agent':'iPhone Safari'},body:JSON.stringify(data)});}
 (async()=>{
@@ -24,7 +24,7 @@ function request(data=payload, ip='test1', origin='https://example.test') {retur
  assert.equal(response.status,200); assert.deepEqual(await response.json(),{ok:true});
  assert.equal((await route.POST(request())).status,429); assert.equal(calls.length,1);
  const mail=JSON.parse(calls[0].options.body);
- assert.match(mail.text,/Ver.1.0/); assert.match(mail.text,/送信日時:/); assert.match(mail.text,/現在ページ: \/\n/); assert.match(mail.text,/端末種別: iPhone/); assert.match(mail.text,/ブラウザ種別: Safari/);
+ assert.match(mail.text,/Ver\.1\.01/); assert.match(mail.text,/送信日時:/); assert.match(mail.text,/現在ページ: \/\n/); assert.match(mail.text,/端末種別: iPhone/); assert.match(mail.text,/ブラウザ種別: Safari/);
  assert.deepEqual(Object.keys(mail).sort(),['from','subject','text','to']);
  providerOk=false; assert.equal((await route.POST(request(payload,'test2'))).status,502);
  const component=fs.readFileSync('components/BetaFeedback.tsx','utf8');

@@ -5559,3 +5559,26 @@ a {
 .term-accordion-hint { display: block; margin-top: 6px; color: var(--ink-faint); font-size: .72rem; }
 .term-accordion-head > .grade-reference-info { position: absolute; right: 32px; z-index: 1; }
 .term-accordion-arrow { grid-column: 4; color: var(--primary); font-size: .85rem; text-align: center; }
+
+.welcome-guide { box-sizing: border-box; max-height: calc(100dvh - 32px); width: min(480px, calc(100vw - 24px)); padding: 24px; }
+.welcome-guide-actions { display: grid; gap: 10px; margin-top: 22px; }
+.welcome-guide-actions button { width: 100%; min-height: 44px; }
+.welcome-guide-actions .welcome-guide-primary { background: var(--primary); color: white; font-weight: 700; }
+.welcome-guide .welcome-guide-note { font-size: .8rem; color: var(--ink-faint); margin-bottom: 0; }
+
+.welcome-install { margin-top: 18px; padding-top: 14px; border-top: 1px solid var(--line); font-size: .875rem; }
+.welcome-install p { margin: 6px 0 10px; }
+.welcome-install button { min-height: 44px; }
+.home-screen-guide { scroll-margin-top: 24px; }
+.home-screen-guide li { margin-bottom: 8px; }
+
+.share-shinromii-card { padding: 16px; text-align: center; }
+.share-shinromii-card > button { width: 100%; min-height: 44px; }
+.share-shinromii-card p { font-size: .85rem; margin: 8px 0 0; }
+.share-shinromii-card p:empty { display: none; }
+.share-shinromii-copy { display: grid; gap: 10px; margin-top: 12px; }
+.share-shinromii-copy input { width: 100%; min-width: 0; box-sizing: border-box; padding: 10px; font-size: 16px; }
+
+.home-welcome-card { padding: 16px; border-radius: 16px; background: #eef4ff; text-align: center; }
+.home-welcome-card button { width: 100%; min-height: 44px; }
+.home-welcome-card p { margin: 8px 0 0; font-size: .85rem; }
