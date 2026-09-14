@@ -40,9 +40,8 @@ export function formatBackupFileName(date = new Date()) {
   const day = pad(date.getDate());
   const hours = pad(date.getHours());
   const minutes = pad(date.getMinutes());
-  const seconds = pad(date.getSeconds());
 
-  return `shinromii-backup-${year}-${month}-${day}-${hours}${minutes}${seconds}.json`;
+  return `SHINROMii_Backup_${year}-${month}-${day}_${hours}${minutes}.json`;
 }
 
 export function buildShinromiiBackup(

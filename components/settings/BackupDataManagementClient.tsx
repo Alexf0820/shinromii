@@ -1,12 +1,8 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import { UiIcon } from "@/components/UiIcon";
-import {
-  formatBackupFileName,
-  parseShinromiiBackupJson,
-  stringifyShinromiiBackup,
-} from "@/lib/shinromii-backup";
+import { BackupFileActions } from "@/components/BackupFileActions";
 import {
   formatAutosaveDateTime,
   type AutosaveHistoryEntry,
@@ -19,7 +15,6 @@ const storageRepository = getLocalShinromiiStorageRepository();
 export function BackupDataManagementClient() {
   const [autosaveHistory, setAutosaveHistory] = useState<AutosaveHistoryEntry[]>([]);
   const [message, setMessage] = useState<string | null>(null);
-  const restoreInputRef = useRef<HTMLInputElement | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -41,28 +36,6 @@ export function BackupDataManagementClient() {
 
   async function refreshHistory() {
     setAutosaveHistory(await storageRepository.loadAutosaveHistory());
-  }
-
-  async function handleBackupExport() {
-    const current = await storageRepository.loadStorage({
-      mode: "readonly",
-    });
-    const backupJson = stringifyShinromiiBackup(current);
-    const blob = new Blob([backupJson], { type: "application/json" });
-    const objectUrl = URL.createObjectURL(blob);
-    const link = document.createElement("a");
-
-    link.href = objectUrl;
-    link.download = formatBackupFileName(new Date());
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-
-    window.setTimeout(() => {
-      URL.revokeObjectURL(objectUrl);
-    }, 1000);
-
-    setMessage("バックアップを保存しました。");
   }
 
   async function handleAutosaveRestore(entry: AutosaveHistoryEntry) {
@@ -90,50 +63,6 @@ export function BackupDataManagementClient() {
     setMessage("自動保存の履歴から復元しました。");
   }
 
-  async function handleBackupImport(fileList: FileList | null) {
-    const file = fileList?.[0];
-    const fileReadErrorMessage =
-      "バックアップファイルを読み込めませんでした。ファイルを確認して、もう一度お試しください。";
-    const restoreErrorMessage =
-      "データを復元できませんでした。バックアップ内容を確認して、もう一度お試しください。";
-
-    if (!file) {
-      return;
-    }
-
-    try {
-      const raw = await file.text();
-      const parsed = parseShinromiiBackupJson(raw);
-
-      if (!parsed.ok) {
-        window.alert(parsed.error);
-        setMessage(parsed.error);
-        return;
-      }
-
-      const confirmed = window.confirm(
-        "今のSHINROMiiのデータは、選んだバックアップの内容に置き換わります。よろしいですか？",
-      );
-
-      if (!confirmed) {
-        setMessage("バックアップからの復元をキャンセルしました。");
-        return;
-      }
-
-      try {
-        await storageRepository.saveStorage(parsed.storage);
-        await refreshHistory();
-        setMessage("バックアップから復元しました。");
-        window.alert("バックアップから復元しました。");
-      } catch {
-        window.alert(restoreErrorMessage);
-        setMessage(restoreErrorMessage);
-      }
-    } catch {
-      window.alert(fileReadErrorMessage);
-      setMessage(fileReadErrorMessage);
-    }
-  }
 
   return (
     <div className="page-stack compact settings-stack">
@@ -182,43 +111,9 @@ export function BackupDataManagementClient() {
       </section>
 
       <section className="panel settings-card-block">
-        <p className="settings-mini-label">手動バックアップ</p>
-        <p className="settings-card-title">手動バックアップ（無料版）</p>
-        <p className="settings-copy">
-          データをファイルにして保存したり、家族に渡したりできます。
-        </p>
-        <div className="action-row">
-          <button type="button" className="action-button primary" onClick={handleBackupExport}>
-            <UiIcon name="download" className="action-icon" />
-            バックアップを作成する
-          </button>
-        </div>
-      </section>
-
-      <section className="panel settings-card-block">
-        <p className="settings-mini-label">データの復元</p>
-        <p className="settings-card-title">保存したバックアップから戻す</p>
-        <p className="settings-copy">以前に作成したバックアップから、今の内容を戻せます。</p>
-        <div className="action-row">
-          <button
-            type="button"
-            className="action-button"
-            onClick={() => restoreInputRef.current?.click()}
-          >
-            <UiIcon name="upload" className="action-icon" />
-            復元する
-          </button>
-        </div>
-        <input
-          ref={restoreInputRef}
-          type="file"
-          accept="application/json,.json"
-          hidden
-          onChange={(event) => {
-            void handleBackupImport(event.target.files);
-            event.target.value = "";
-          }}
-        />
+        <p className="settings-card-title">バックアップと復元</p>
+        <p className="settings-copy">進路データの控えをファイルに保存できます。復元前に内容を確認します。添付ファイル本体は含まれません。</p>
+        <BackupFileActions onRestored={refreshHistory} />
       </section>
 
       <div className="settings-soft-note">

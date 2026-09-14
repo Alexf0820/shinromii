@@ -5582,3 +5582,11 @@ a {
 .home-welcome-card { padding: 16px; border-radius: 16px; background: #eef4ff; text-align: center; }
 .home-welcome-card button { width: 100%; min-height: 44px; }
 .home-welcome-card p { margin: 8px 0 0; font-size: .85rem; }
+
+/* Backup file handoff and explicit restore confirmation. */
+.backup-dialog { width: min(92vw, 540px); max-height: 85dvh; overflow-y: auto; }
+.backup-dialog p, .backup-dialog ul { margin-block: 1rem; line-height: 1.65; }
+.backup-dialog .action-button { margin: .35rem .4rem .35rem 0; }
+.backup-small { font-size: .8rem; line-height: 1.6; color: #596575; margin-top: .75rem; }
+.backup-filename { overflow-wrap: anywhere; font-size: .85rem; }
+.backup-warning { color: #a3373b; background: #fff4f2; padding: .8rem; border-radius: 12px; }

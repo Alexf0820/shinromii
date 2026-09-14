@@ -2,14 +2,12 @@
 
 import Image from "next/image";
 import Link from "next/link";
-import { useRef, useState } from "react";
 import { BrandAccountLink } from "@/components/BrandAccountLink";
 import { BrandMark } from "@/components/BrandMark";
 import { SettingsLink } from "@/components/SettingsLink";
 import { UiIcon } from "@/components/UiIcon";
 import { APP_VERSION_LABEL, IS_BETA } from "@/lib/app-version";
-import { parseShinromiiBackupJson } from "@/lib/shinromii-backup";
-import { saveShinromiiStorage } from "@/lib/shinromii-storage";
+import { BackupFileActions } from "@/components/BackupFileActions";
 
 const HERO_IMAGE = "/images/shinromii-home-hero.png";
 const HERO_IMAGE_WIDTH = 1024;
@@ -27,47 +25,6 @@ type WelcomeStartProps = {
 };
 
 export function WelcomeStart({ onStartFresh, onRestored, preview = false }: WelcomeStartProps) {
-  const restoreInputRef = useRef<HTMLInputElement | null>(null);
-  const [message, setMessage] = useState<string | null>(null);
-
-  async function handleRestore(fileList: FileList | null) {
-    const file = fileList?.[0];
-
-    if (!file) {
-      return;
-    }
-
-    try {
-      const raw = await file.text();
-      const parsed = parseShinromiiBackupJson(raw);
-
-      if (!parsed.ok) {
-        window.alert(parsed.error);
-        setMessage(parsed.error);
-        return;
-      }
-
-      if (preview) {
-        setMessage("プレビューでは保存データを変更しません。");
-        return;
-      }
-
-      const confirmed = window.confirm("このバックアップの内容でSHINROMiiを開始しますか？");
-
-      if (!confirmed) {
-        setMessage("バックアップからの復元をキャンセルしました。");
-        return;
-      }
-
-      saveShinromiiStorage(parsed.storage);
-      onRestored();
-    } catch {
-      const error =
-        "バックアップファイルを読み込めませんでした。SHINROMiiで作成したバックアップファイルか確認してください。";
-      window.alert(error);
-      setMessage(error);
-    }
-  }
 
   return (
     <section className="welcome-start">
@@ -185,14 +142,7 @@ export function WelcomeStart({ onStartFresh, onRestored, preview = false }: Welc
         </div>
 
         <div className="welcome-secondary-actions">
-          <button
-            type="button"
-            className="action-button"
-            onClick={() => restoreInputRef.current?.click()}
-          >
-            <UiIcon name="upload" className="action-icon" />
-            バックアップから復元
-          </button>
+          <BackupFileActions restoreOnly preview={preview} onRestored={onRestored} />
         </div>
 
         <p className="welcome-legal">
@@ -202,18 +152,7 @@ export function WelcomeStart({ onStartFresh, onRestored, preview = false }: Welc
         </p>
       </div>
 
-      <input
-        ref={restoreInputRef}
-        type="file"
-        accept="application/json,.json"
-        hidden
-        onChange={(event) => {
-          void handleRestore(event.target.files);
-          event.target.value = "";
-        }}
-      />
 
-      {message ? <p className="welcome-message">{message}</p> : null}
     </section>
   );
 }

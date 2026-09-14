@@ -10,18 +10,14 @@ import { isDemoMode } from "@/lib/shinromii-demo-mode";
 import Image from "next/image";
 import Link from "next/link";
 import { APP_VERSION_LABEL, IS_BETA } from "@/lib/app-version";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { BrandAccountLink } from "@/components/BrandAccountLink";
 import { BrandMark } from "@/components/BrandMark";
 import { ProgressionStageBadge } from "@/components/ProgressionStageBadge";
 import { SettingsLink } from "@/components/SettingsLink";
 import { UiIcon } from "@/components/UiIcon";
 import { recentItems } from "@/data/mockData";
-import {
-  formatBackupFileName,
-  parseShinromiiBackupJson,
-  stringifyShinromiiBackup,
-} from "@/lib/shinromii-backup";
+import { BackupFileActions } from "@/components/BackupFileActions";
 import {
   formatAutosaveDateTime,
   type AutosaveHistoryEntry,
@@ -91,7 +87,6 @@ export function HomeClient() {
   const [todayLabel, setTodayLabel] = useState<string | null>(null);
   const [dataManagementMessage, setDataManagementMessage] = useState<string | null>(null);
   const [autosaveHistory, setAutosaveHistory] = useState<AutosaveHistoryEntry[]>([]);
-  const restoreInputRef = useRef<HTMLInputElement | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -186,28 +181,6 @@ export function HomeClient() {
     },
   ];
 
-  async function handleBackupExport() {
-    const current = await storageRepository.loadStorage({
-      mode: "readonly",
-    });
-    const backupJson = stringifyShinromiiBackup(current);
-    const blob = new Blob([backupJson], { type: "application/json" });
-    const objectUrl = URL.createObjectURL(blob);
-    const link = document.createElement("a");
-
-    link.href = objectUrl;
-    link.download = formatBackupFileName(new Date());
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-
-    window.setTimeout(() => {
-      URL.revokeObjectURL(objectUrl);
-    }, 1000);
-
-    setDataManagementMessage("バックアップを保存しました。");
-  }
-
   async function refreshAutosaveHistory() {
     setAutosaveHistory(await storageRepository.loadAutosaveHistory());
   }
@@ -238,44 +211,6 @@ export function HomeClient() {
     setDataManagementMessage("自動保存の履歴から復元しました。");
   }
 
-  async function handleBackupImport(fileList: FileList | null) {
-    const file = fileList?.[0];
-
-    if (!file) {
-      return;
-    }
-
-    try {
-      const raw = await file.text();
-      const parsed = parseShinromiiBackupJson(raw);
-
-      if (!parsed.ok) {
-        window.alert(parsed.error);
-        setDataManagementMessage(parsed.error);
-        return;
-      }
-
-      const confirmed = window.confirm(
-        "今のSHINROMiiのデータは、選んだバックアップの内容に置き換わります。よろしいですか？",
-      );
-
-      if (!confirmed) {
-        setDataManagementMessage("バックアップからの復元をキャンセルしました。");
-        return;
-      }
-
-      await storageRepository.saveStorage(parsed.storage);
-      setStorage(parsed.storage);
-      setAutosaveHistory(await storageRepository.loadAutosaveHistory());
-      setDataManagementMessage("バックアップから復元し、保存データを置き換えました。");
-      window.alert("バックアップから復元しました。");
-    } catch {
-      const message =
-        "バックアップファイルを読み込めませんでした。SHINROMiiで作成したバックアップファイルか確認してください。";
-      window.alert(message);
-      setDataManagementMessage(message);
-    }
-  }
 
   return (
     <div className="home-page">
@@ -478,34 +413,13 @@ export function HomeClient() {
               機種変更、別の端末、家族への受け渡しには、ファイルとして保存するバックアップを使います。
             </p>
             <p className="home-fold-text">
-              バックアップは自分の端末にファイルとして残ります。SHINROMiiのサーバーには保存されません。
+              バックアップは選んだ保存先に保管します。SHINROMiiのサーバーには保存されません。
             </p>
 
-            <div className="action-row">
-              <button type="button" className="action-button primary" onClick={handleBackupExport}>
-                <UiIcon name="download" className="action-icon" />
-                バックアップを保存
-              </button>
-              <button
-                type="button"
-                className="action-button"
-                onClick={() => restoreInputRef.current?.click()}
-              >
-                <UiIcon name="upload" className="action-icon" />
-                バックアップから復元
-              </button>
-            </div>
-
-            <input
-              ref={restoreInputRef}
-              type="file"
-              accept="application/json,.json"
-              hidden
-              onChange={(event) => {
-                void handleBackupImport(event.target.files);
-                event.target.value = "";
-              }}
-            />
+            <BackupFileActions onRestored={async restored => {
+              setStorage(restored);
+              await refreshAutosaveHistory();
+            }} />
 
             <p className="home-fold-text">
               復元すると、今の内容はバックアップの内容に置き換わります。今のデータを残したい場合は、先にバックアップを保存してください。添付ファイル本体はバックアップに含まれません。
