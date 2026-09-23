@@ -1,0 +1,20 @@
+
+.shell { --contact-accent: #2563eb; color:#243447; width:min(100%, 720px); margin:0 auto; padding:32px 20px 64px; text-align:left; font-family:inherit; }
+.shell h1 { font-size:clamp(1.7rem,5vw,2.3rem); line-height:1.3; margin:20px 0; }
+.shell a { color:var(--contact-accent); text-decoration:underline; }
+.form { background:#fff; border:1px solid #dbe2e8; border-radius:20px; padding:clamp(18px,4vw,32px); text-align:left; }
+.field { display:grid; gap:8px; margin-bottom:20px; }
+.field label { font-weight:600; font-size:15px; }
+.field label span { font-size:12px; opacity:.7; margin-left:8px; }
+.field input,.field textarea { box-sizing:border-box; width:100%; min-width:0; padding:12px; border:1px solid #b8c6d0; border-radius:8px; background:#fff; color:inherit; font:inherit; font-size:16px; }
+.field textarea { resize:vertical; }
+.field input:focus-visible,.field textarea:focus-visible,.submit:focus-visible { outline:3px solid var(--contact-accent); outline-offset:3px; }
+.note { background:#f7fafe; border-radius:12px; padding:16px; font-size:13px; line-height:1.8; margin:16px 0; }
+.note p { margin:8px 0 0; }
+.honeypot { position:absolute; width:1px; height:1px; overflow:hidden; clip-path:inset(50%); }
+.feedback { padding:14px; margin:16px 0; border:1px solid var(--contact-accent); border-radius:10px; line-height:1.7; }
+.feedback p { margin:0; }
+.error { border-color:#bd3636; }
+.submit { display:block; width:100%; padding:14px 18px; border:0; border-radius:10px; background:var(--contact-accent); color:white; font:inherit; font-weight:700; cursor:pointer; }
+.submit:disabled { opacity:.6; cursor:wait; }
+.viewport { height:100dvh; overflow:auto; background:#f7fafe; }
