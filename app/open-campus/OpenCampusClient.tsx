@@ -377,6 +377,7 @@ export function OpenCampusClient() {
   const [eventForm, setEventForm] = useState<EventFormState>(createEmptyEventForm());
   const [evaluationForm, setEvaluationForm] = useState<CampusEvaluation>(createEmptyEvaluation());
   const [pendingAttachments, setPendingAttachments] = useState<PendingAttachment[]>([]);
+  const [isValidatingAttachments, setIsValidatingAttachments] = useState(false);
   const [removedAttachmentIds, setRemovedAttachmentIds] = useState<string[]>([]);
   const [attachmentWarning, setAttachmentWarning] = useState<string | null>(null);
   const [directAttachmentMessage, setDirectAttachmentMessage] = useState<{
@@ -393,6 +394,7 @@ export function OpenCampusClient() {
   const [deferredAttendanceIds, setDeferredAttendanceIds] = useState<string[]>([]);
   const attachmentInputRef = useRef<HTMLInputElement | null>(null);
   const attachmentEditorRevisionRef = useRef(0);
+  const attachmentValidationCountRef = useRef(0);
   const directAttachmentInputRef = useRef<HTMLInputElement | null>(null);
   const directAttachmentEventIdRef = useRef<string | null>(null);
   const objectUrlsRef = useRef<string[]>([]);
@@ -671,8 +673,14 @@ export function OpenCampusClient() {
     );
   }
 
-  function openCreateEvent() {
+  function resetAttachmentValidation() {
     attachmentEditorRevisionRef.current += 1;
+    attachmentValidationCountRef.current = 0;
+    setIsValidatingAttachments(false);
+  }
+
+  function openCreateEvent() {
+    resetAttachmentValidation();
     setIsCreatingEvent(true);
     setCreateIntent("upcoming");
     setPendingEvalInviteId(null);
@@ -693,7 +701,7 @@ export function OpenCampusClient() {
   }
 
   function openEditEvent(event: OpenCampusEvent) {
-    attachmentEditorRevisionRef.current += 1;
+    resetAttachmentValidation();
     setIsCreatingEvent(false);
     setEditingEventId(event.id);
     setEditingEvaluationTarget(null);
@@ -712,7 +720,7 @@ export function OpenCampusClient() {
   }
 
   function closeEventEditor() {
-    attachmentEditorRevisionRef.current += 1;
+    resetAttachmentValidation();
     setIsCreatingEvent(false);
     setCreateIntent("upcoming");
     setEditingEventId(null);
@@ -724,7 +732,7 @@ export function OpenCampusClient() {
   }
 
   function openEvaluationChooser(eventId: string, options?: { scrollToEvaluation?: boolean }) {
-    attachmentEditorRevisionRef.current += 1;
+    resetAttachmentValidation();
     setIsCreatingEvent(false);
     setEditingEventId(null);
     setPendingEditScrollId(null);
@@ -762,7 +770,7 @@ export function OpenCampusClient() {
       return;
     }
 
-    attachmentEditorRevisionRef.current += 1;
+    resetAttachmentValidation();
     setIsCreatingEvent(false);
     setEditingEventId(null);
     setPendingEditScrollId(null);
@@ -1569,8 +1577,8 @@ export function OpenCampusClient() {
           </div>
 
           <div className="action-row">
-            <button type="button" className="action-button primary" onClick={() => void handleSaveEvent()}>
-              保存する
+            <button type="button" className="action-button primary" disabled={isValidatingAttachments} onClick={() => void handleSaveEvent()}>
+              {isValidatingAttachments ? "添付ファイルを確認中…" : "保存する"}
             </button>
             <button type="button" className="action-button" onClick={closeEventEditor}>
               キャンセル
@@ -2291,22 +2299,30 @@ export function OpenCampusClient() {
     }
 
     const editorRevision = attachmentEditorRevisionRef.current;
-    const { nextPending, warningMessage } = await collectPendingAttachments(fileList);
-    // Closing, reopening (even the same event), or switching editors invalidates this selection.
-    if (editorRevision !== attachmentEditorRevisionRef.current) return;
+    attachmentValidationCountRef.current += 1;
+    setIsValidatingAttachments(true);
+    try {
+      const { nextPending, warningMessage } = await collectPendingAttachments(fileList);
+      // Closing, reopening (even the same event), or switching editors invalidates this selection.
+      if (editorRevision !== attachmentEditorRevisionRef.current) return;
 
-    if (warningMessage) {
-      const message = warningMessage;
-      setAttachmentWarning(message);
-      window.alert(message);
-    } else {
-      setAttachmentWarning(null);
-    }
+      if (warningMessage) {
+        setAttachmentWarning(warningMessage);
+        window.alert(warningMessage);
+      } else {
+        setAttachmentWarning(null);
+      }
 
-    if (nextPending.length > 0) {
-      setPendingAttachments((current) => editorRevision === attachmentEditorRevisionRef.current
-        ? [...current, ...nextPending]
-        : current);
+      if (nextPending.length > 0) {
+        setPendingAttachments((current) => editorRevision === attachmentEditorRevisionRef.current
+          ? [...current, ...nextPending]
+          : current);
+      }
+    } finally {
+      if (editorRevision === attachmentEditorRevisionRef.current) {
+        attachmentValidationCountRef.current -= 1;
+        setIsValidatingAttachments(attachmentValidationCountRef.current > 0);
+      }
     }
   }
 
@@ -2499,6 +2515,8 @@ export function OpenCampusClient() {
   }
 
   async function handleSaveEvent() {
+    // The synchronous guard also covers clicks before React renders the disabled button.
+    if (attachmentValidationCountRef.current > 0 || isValidatingAttachments) return;
     if (!eventForm.university.trim()) {
       window.alert("大学名を入力してください。");
       return;
