@@ -392,6 +392,7 @@ export function OpenCampusClient() {
   const [pendingEvalScrollId, setPendingEvalScrollId] = useState<string | null>(null);
   const [deferredAttendanceIds, setDeferredAttendanceIds] = useState<string[]>([]);
   const attachmentInputRef = useRef<HTMLInputElement | null>(null);
+  const attachmentEditorRevisionRef = useRef(0);
   const directAttachmentInputRef = useRef<HTMLInputElement | null>(null);
   const directAttachmentEventIdRef = useRef<string | null>(null);
   const objectUrlsRef = useRef<string[]>([]);
@@ -411,6 +412,7 @@ export function OpenCampusClient() {
 
   useEffect(() => {
     return () => {
+      attachmentEditorRevisionRef.current += 1;
       revokeObjectUrls(objectUrlsRef.current);
       objectUrlsRef.current = [];
     };
@@ -670,6 +672,7 @@ export function OpenCampusClient() {
   }
 
   function openCreateEvent() {
+    attachmentEditorRevisionRef.current += 1;
     setIsCreatingEvent(true);
     setCreateIntent("upcoming");
     setPendingEvalInviteId(null);
@@ -690,6 +693,7 @@ export function OpenCampusClient() {
   }
 
   function openEditEvent(event: OpenCampusEvent) {
+    attachmentEditorRevisionRef.current += 1;
     setIsCreatingEvent(false);
     setEditingEventId(event.id);
     setEditingEvaluationTarget(null);
@@ -708,6 +712,7 @@ export function OpenCampusClient() {
   }
 
   function closeEventEditor() {
+    attachmentEditorRevisionRef.current += 1;
     setIsCreatingEvent(false);
     setCreateIntent("upcoming");
     setEditingEventId(null);
@@ -719,6 +724,7 @@ export function OpenCampusClient() {
   }
 
   function openEvaluationChooser(eventId: string, options?: { scrollToEvaluation?: boolean }) {
+    attachmentEditorRevisionRef.current += 1;
     setIsCreatingEvent(false);
     setEditingEventId(null);
     setPendingEditScrollId(null);
@@ -756,6 +762,7 @@ export function OpenCampusClient() {
       return;
     }
 
+    attachmentEditorRevisionRef.current += 1;
     setIsCreatingEvent(false);
     setEditingEventId(null);
     setPendingEditScrollId(null);
@@ -2283,7 +2290,10 @@ export function OpenCampusClient() {
       return;
     }
 
+    const editorRevision = attachmentEditorRevisionRef.current;
     const { nextPending, warningMessage } = await collectPendingAttachments(fileList);
+    // Closing, reopening (even the same event), or switching editors invalidates this selection.
+    if (editorRevision !== attachmentEditorRevisionRef.current) return;
 
     if (warningMessage) {
       const message = warningMessage;
@@ -2294,7 +2304,9 @@ export function OpenCampusClient() {
     }
 
     if (nextPending.length > 0) {
-      setPendingAttachments((current) => [...current, ...nextPending]);
+      setPendingAttachments((current) => editorRevision === attachmentEditorRevisionRef.current
+        ? [...current, ...nextPending]
+        : current);
     }
   }
 
