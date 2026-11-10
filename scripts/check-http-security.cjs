@@ -1,10 +1,11 @@
 // Run after npm run build. Synthetic admin key; no contact submissions or real user data.
 const {spawn}=require('node:child_process');const assert=require('node:assert/strict');
 const server=spawn(process.execPath,['node_modules/next/dist/bin/next','start','--hostname','127.0.0.1','--port','3198'],{env:{...process.env,SHINROMII_ADMIN_PREVIEW_KEY:'synthetic-http-only'},stdio:['ignore','pipe','pipe']});
+let startupError;server.on('error',error=>{startupError=error;});
 let log='';server.stdout.on('data',x=>log+=x);server.stderr.on('data',x=>log+=x);
 (async()=>{
  const base='http://127.0.0.1:3198';let ready=false;
- for(let i=0;i<60;i++){try {if((await fetch(base)).ok){ready=true;break;}}catch{}await new Promise(r=>setTimeout(r,250));}
+ for(let i=0;i<60;i++){if(startupError||server.exitCode!==null)throw startupError??new Error('Server exited before readiness: '+log);try {if(log.includes('Ready in') && (await fetch(base)).ok){ready=true;break;}}catch{}await new Promise(r=>setTimeout(r,250));}
  if(!ready)throw new Error('Local server unavailable: '+log);
  const page=await fetch(base);assert.match(await page.text(),/Ver\.1\.06/);
  for(const [key,value] of [['x-frame-options','DENY'],['x-content-type-options','nosniff'],['referrer-policy','no-referrer']])assert.equal(page.headers.get(key),value);

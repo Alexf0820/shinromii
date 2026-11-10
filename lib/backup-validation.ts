@@ -62,7 +62,8 @@ const identity = shape({}, {
 });
 
 // Bound nesting/total work, including unknown extension fields; reject prototype keys at every level.
-function boundedJson(value: unknown, depth = 0, budget = { remaining: 200_000 }): boolean {
+// A JSON scalar needs at least two bytes including its separator: 5M visits covers the 10MB file cap.
+function boundedJson(value: unknown, depth = 0, budget = { remaining: 5_000_000 }): boolean {
   if (--budget.remaining < 0 || depth > 16) return false;
   if (typeof value === "string") return text(value);
   if (typeof value === "number") return number(value);

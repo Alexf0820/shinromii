@@ -20,6 +20,13 @@ check(b=>b.data.gradeRecords[0].memo='x'.repeat(200001));
 check(b=>Object.defineProperty(b.data,'__proto__',{value:{polluted:true},enumerable:true}));
 // Preserve invalid numeric grades: old data remains visible, excluded by the established calculation.
 check(b=>b.data.gradeRecords[0].grade=9,true);
+// A valid large export must not be blocked by the traversal budget below the 10MB file cap.
+const large=structuredClone(sample);large.data.gradeRecords=Array.from({length:20000},(_,i)=>({...sample.data.gradeRecords[0],id:`large-${i}`,memo:'',scores:{midterm:80,final:90}}));
+const compact=JSON.stringify(large);assert.ok(Buffer.byteLength(compact)<=10000000);assert.equal(parse(compact).ok,true);
+const validator=load('@/lib/backup-validation').validateBackupStorage;
+assert.equal(validator(sample.data,9),true);
+const poisoned=JSON.parse(JSON.stringify(sample.data));Object.defineProperty(poisoned,'__proto__',{value:{polluted:true},enumerable:true});
+assert.equal(validator(poisoned,9),false);delete poisoned.__proto__;
 const parsed=parse(JSON.stringify(sample));assert.equal(parsed.ok,true);
 assert.equal(JSON.stringify(parsed.storage.gradeRecords),JSON.stringify(sample.data.gradeRecords));
 assert.equal(writes,0);assert.equal(memory.size,0);

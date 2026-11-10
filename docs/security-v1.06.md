@@ -39,3 +39,17 @@ npm audit
 The pure regression suite includes the nine existing scenarios (feedback updated for the unified flow) and four new security suites. It covers backup corruption/legacy compatibility, normal/demo isolation, reference averages, attachment MIME/signatures/IDB abort, SW cache boundaries, admin POST/cookies/expiry/redirects, and safe links. HTTP validation exercises the actual production Next build with a synthetic key. No contact submission or real email is sent.
 
 Preview/browser and CodeRabbit results are recorded in the pull request. iPhone Safari/PWA on the owner's actual device remains the final acceptance check. These checks do not prove the absence of every possible vulnerability or audit CONTACT HUB's live database/configuration.
+
+
+## Review and Preview evidence (2026-11-10)
+
+Initial reviewed code: `7b38f2dfe9cbd2b08655831862a391827f20535b`; Preview `dpl_932sbAFi89YFANxxRkaFdy9XWaEn` (READY).
+Browser QA confirmed 1.06, normal/demo switching, 3.4/3.6/annual 3.5 grade display, the contact form, and the admin key form (no real key entered). A synthetic backup whose grade subject was an object was rejected; the demo grades remained unchanged afterwards. No contact message was submitted.
+
+![Synthetic invalid backup rejected](qa/security-v106-backup-rejected.png)
+
+CodeRabbit's first review had five actionable findings (one Major, four Minor): large-backup traversal budget, cache-write failures discarding successful network responses, prototype extension lookup, and two invalid-link presentation cases. All five have corresponding corrections. Tests now cover 20,000-grade valid backups, inherited extension names, cache API failures, static assets, bypass headers, redirects, status failures and actual eviction. The HTTP check waits for its own server's ready log and fails on child exit so a port collision cannot pass against another server.
+
+Reviewed observations retained deliberately: the existing optional admin guard argument stays compatible; the Origin/Host check remains deployed behind Vercel's host routing. The prototype-key fixture is based on a separately passing valid backup. Set-Cookie is not observable to browser SWs and is not claimed as a cache boundary. CodeRabbit's default docstring percentage is a documentation suggestion, not a security verification.
+
+The admin endpoint still relies on the entropy of the existing key. A durable cross-instance login limiter would require an approved shared service or platform rule; a process-local Map is not represented as a solution. Existing keys were not retrieved/rotated and platform protection was not disabled. No weak-key safety claim is made. Owner iPhone/PWA acceptance remains pending.

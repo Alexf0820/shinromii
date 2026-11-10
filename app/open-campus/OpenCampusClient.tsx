@@ -1660,14 +1660,19 @@ export function OpenCampusClient() {
                 <span className="review-note-label">当日リンク</span>
                 {event.links.length > 0 ? (
                   <div className="oc-day-links">
-                    {event.links.map((link) => (
-                      <a key={link.id} className="oc-day-link" href={safeExternalUrl(link.url)}>
-                        <span>{link.label || "当日ページを開く"}</span>
-                        <span className="oc-day-link-arrow" aria-hidden="true">
-                          ↗
+                    {event.links.map((link) => {
+                      const href = safeExternalUrl(link.url);
+                      return href ? (
+                        <a key={link.id} className="oc-day-link" href={href}>
+                          <span>{link.label || "当日ページを開く"}</span>
+                          <span className="oc-day-link-arrow" aria-hidden="true">↗</span>
+                        </a>
+                      ) : (
+                        <span key={link.id} className="oc-day-link" aria-disabled="true">
+                          {link.label || "当日ページ"}（URLを確認してください）
                         </span>
-                      </a>
-                    ))}
+                      );
+                    })}
                   </div>
                 ) : (
                   <p className="muted-text top-gap">まだリンクはありません。</p>

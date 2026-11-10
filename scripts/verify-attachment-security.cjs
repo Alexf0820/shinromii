@@ -9,6 +9,7 @@ const {runtime} = require('./security-test-runtime.cjs');
   await assert.rejects(validate(new Blob(['<html><script>1</script>']),name));
   await assert.rejects(validate(new Blob([new Uint8Array(bytes)],{type}),name+'.html'));
  }
+ for(const name of ['a.constructor','a.__proto__','a.toString']) await assert.rejects(validate(new Blob([new Uint8Array(cases[3][2])]),name));
  await assert.rejects(validate(new Blob(['<svg/>'],{type:'image/svg+xml'}),'bad.png'));
  await assert.rejects(validate(new Blob([]),'empty.pdf'));
  await assert.rejects(validate(new Blob([new Uint8Array(20*1024*1024+1)]),'large.pdf'));

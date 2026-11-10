@@ -1,9 +1,9 @@
 export const MAX_ATTACHMENT_BYTES = 20 * 1024 * 1024;
-const extensions: Record<string, string> = { pdf: "application/pdf", jpg: "image/jpeg", jpeg: "image/jpeg", png: "image/png", webp: "image/webp" };
+const extensions = new Map<string, string>([["pdf", "application/pdf"], ["jpg", "image/jpeg"], ["jpeg", "image/jpeg"], ["png", "image/png"], ["webp", "image/webp"]]);
 
 /** Both new uploads and old IndexedDB blobs must pass this before creating an object URL. */
 export async function validateAttachmentBlob(blob: Blob, name: string): Promise<Blob> {
-  const expected = extensions[name.split(".").pop()?.toLowerCase() ?? ""];
+  const expected = extensions.get(name.split(".").pop()?.toLowerCase() ?? "");
   if (!expected || blob.size === 0 || blob.size > MAX_ATTACHMENT_BYTES) {
     throw new Error("添付は20MB以下の PDF / JPG / PNG / WebP にしてください。");
   }

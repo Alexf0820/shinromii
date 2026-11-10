@@ -10,8 +10,8 @@ function isCacheableRequest(request) {
 }
 function isCacheableResponse(response) {
   return response.ok && response.status === 200 && !response.redirected
-    && !/\b(?:no-store|private)\b/i.test(response.headers.get("cache-control") || "")
-    && !response.headers.has("set-cookie");
+    && !/\b(?:no-store|private)\b/i.test(response.headers.get("cache-control") || "");
+  // Browsers filter Set-Cookie. The public path allowlist and Cache-Control are the real boundary.
 }
 self.addEventListener("install", event => {
   // Failure to precache a public shell must not prevent removal of the old unsafe cache.
@@ -41,18 +41,22 @@ self.addEventListener("fetch", event => {
   const { request } = event;
   if (!isCacheableRequest(request)) return; // Admin/API/query/RSC always reach the network, even offline.
   const operation = (async () => {
-    const cache = await caches.open(CACHE_NAME);
+    let response;
     try {
-      const response = await fetch(request);
-      if (isCacheableResponse(response)) await cache.put(request, response.clone());
-      else await cache.delete(request); // Never reuse an old copy after policy changes.
-      return response;
+      response = await fetch(request);
     } catch {
-      const cached = await cache.match(request);
+      const cached = await caches.open(CACHE_NAME).then(cache => cache.match(request)).catch(() => undefined);
       if (cached) return cached;
       if (request.mode === "navigate") return new Response("<!doctype html><html lang='ja'><meta charset='utf-8'><meta name='viewport' content='width=device-width'><title>オフライン</title><p>接続を確認して、もう一度開いてください。保存済みの進路データはこの端末に残っています。</p></html>", { status: 503, headers: { "Content-Type": "text/html; charset=utf-8", "Cache-Control": "no-store" } });
       return Response.error();
     }
+    const cacheable = isCacheableResponse(response);
+    const copy = cacheable ? response.clone() : null;
+    event.waitUntil(caches.open(CACHE_NAME).then(cache => copy
+      ? cache.put(request, copy)
+      : cache.delete(request) // Remove stale entries after policy changes.
+    ).catch(() => { /* Quota/cache failures must never discard a fresh network response. */ }));
+    return response;
   })();
   event.respondWith(operation);
   event.waitUntil(operation.then(() => undefined));
