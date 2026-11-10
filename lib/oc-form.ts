@@ -1,3 +1,4 @@
+import { safeExternalUrl } from "@/lib/safe-external-url";
 import type {
   OpenCampusAttachmentMeta,
   OpenCampusEvent,
@@ -77,7 +78,7 @@ export function applyCreateIntent(form: EventFormState, intent: OpenCampusCreate
 }
 
 export function buildOpenCampusEventFromForm(form: EventFormState, existing?: OpenCampusEvent | null) {
-  if (!form.university.trim()) {
+  if (!form.university.trim() || form.links.some(link => link.url.trim() && !safeExternalUrl(link.url))) {
     return null;
   }
 

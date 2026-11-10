@@ -58,9 +58,14 @@ export function BackupDataManagementClient() {
       return;
     }
 
-    await storageRepository.saveStorage(restored);
-    await refreshHistory();
+    try {
+      await storageRepository.saveStorage(restored);
+    } catch {
+      setMessage("復元を保存できませんでした。端末の空き容量とブラウザの保存設定を確認してください。");
+      return;
+    }
     setMessage("自動保存の履歴から復元しました。");
+    try { await refreshHistory(); } catch { /* Restore succeeded; a history read error must not misreport it. */ }
   }
 
 

@@ -60,17 +60,30 @@ function withStore<T>(
         const transaction = database.transaction(STORE_NAME, mode);
         const store = transaction.objectStore(STORE_NAME);
 
-        execute(store)
-          .then(resolve)
-          .catch(reject);
-
+        let result: T;
+        let executionError: unknown;
         transaction.oncomplete = () => {
           database.close();
+          if (executionError) reject(executionError);
+          else resolve(result);
         };
-
+        transaction.onabort = () => {
+          database.close();
+          reject(executionError ?? new Error("添付ファイル保存処理を完了できませんでした。"));
+        };
         transaction.onerror = () => {
-          reject(new Error("添付ファイル保存処理に失敗しました。"));
+          // The abort event is the terminal failure. Do not report request success as commit success.
+          executionError ??= new Error("添付ファイル保存処理に失敗しました。");
         };
+        try {
+          execute(store).then(value => { result = value; }).catch(error => {
+            executionError = error;
+            try { transaction.abort(); } catch { database.close(); reject(error); }
+          });
+        } catch (error) {
+          executionError = error;
+          try { transaction.abort(); } catch { database.close(); reject(error); }
+        }
       }),
   );
 }

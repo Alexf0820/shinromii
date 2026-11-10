@@ -1,5 +1,9 @@
 "use client";
 
+import { safeExternalUrl } from "@/lib/safe-external-url";
+
+import { validateAttachmentBlob } from "@/lib/attachment-validation";
+
 import { isDemoMode } from "@/lib/shinromii-demo-mode";
 
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent } from "react";
@@ -67,9 +71,6 @@ const categoryLabels: Record<CampusEvaluationCategory, string> = {
   career: "就職・将来性",
 };
 
-const allowedMimeTypes = new Set(["application/pdf", "image/jpeg", "image/png", "image/webp"]);
-const allowedExtensions = [".pdf", ".jpg", ".jpeg", ".png", ".webp"];
-const maxAttachmentSizeBytes = 20 * 1024 * 1024;
 
 type AttachmentKind = "image" | "pdf" | "other";
 
@@ -341,15 +342,6 @@ function renderChipRow(values: string[]) {
   );
 }
 
-function matchesAllowedFileType(file: File) {
-  if (allowedMimeTypes.has(file.type)) {
-    return true;
-  }
-
-  const lower = file.name.toLowerCase();
-  return allowedExtensions.some((extension) => lower.endsWith(extension));
-}
-
 function getAttachmentKind(meta: OpenCampusAttachmentMeta): AttachmentKind {
   const lowerName = meta.name.toLowerCase();
 
@@ -362,14 +354,6 @@ function getAttachmentKind(meta: OpenCampusAttachmentMeta): AttachmentKind {
   }
 
   return "other";
-}
-
-function normalizeAttachmentBlob(blob: Blob, meta: OpenCampusAttachmentMeta) {
-  if (!meta.mimeType || blob.type === meta.mimeType) {
-    return blob;
-  }
-
-  return new Blob([blob], { type: meta.mimeType });
 }
 
 function revokeObjectUrls(urls: string[]) {
@@ -489,7 +473,7 @@ export function OpenCampusClient() {
             ] as const;
           }
 
-          const objectUrl = URL.createObjectURL(normalizeAttachmentBlob(blob, attachment));
+          const objectUrl = URL.createObjectURL(await validateAttachmentBlob(blob, attachment.name));
 
           return [
             attachment.id,
@@ -1677,7 +1661,7 @@ export function OpenCampusClient() {
                 {event.links.length > 0 ? (
                   <div className="oc-day-links">
                     {event.links.map((link) => (
-                      <a key={link.id} className="oc-day-link" href={link.url}>
+                      <a key={link.id} className="oc-day-link" href={safeExternalUrl(link.url)}>
                         <span>{link.label || "当日ページを開く"}</span>
                         <span className="oc-day-link-arrow" aria-hidden="true">
                           ↗
@@ -2294,7 +2278,7 @@ export function OpenCampusClient() {
       return;
     }
 
-    const { nextPending, warningMessage } = collectPendingAttachments(fileList);
+    const { nextPending, warningMessage } = await collectPendingAttachments(fileList);
 
     if (warningMessage) {
       const message = warningMessage;
@@ -2309,31 +2293,19 @@ export function OpenCampusClient() {
     }
   }
 
-  function collectPendingAttachments(fileList: FileList) {
+  async function collectPendingAttachments(fileList: FileList) {
     const nextPending: PendingAttachment[] = [];
     const errors: string[] = [];
-
-    Array.from(fileList).forEach((file) => {
-      if (!matchesAllowedFileType(file)) {
-        errors.push(`${file.name}: PDF / JPG / PNG / WebP のみ追加できます。`);
-        return;
+    // Snapshot FileList before awaiting; the input can be cleared by its change handler.
+    for (const file of Array.from(fileList)) {
+      try {
+        const safeBlob = await validateAttachmentBlob(file, file.name);
+        nextPending.push({ id: createId("oc-attachment"), file: new File([safeBlob], file.name, { type: safeBlob.type, lastModified: file.lastModified }) });
+      } catch (error) {
+        errors.push(`${file.name}: ${error instanceof Error ? error.message : "読み込めませんでした。"}`);
       }
-
-      if (file.size > maxAttachmentSizeBytes) {
-        errors.push(`${file.name}: 1ファイル20MB以下にしてください。`);
-        return;
-      }
-
-      nextPending.push({
-        id: createId("oc-attachment"),
-        file,
-      });
-    });
-
-    return {
-      nextPending,
-      warningMessage: errors.length > 0 ? errors.join("\n") : null,
-    };
+    }
+    return { nextPending, warningMessage: errors.length ? errors.join("\n") : null };
   }
 
   async function persistPendingAttachments(ocId: string, attachments: PendingAttachment[]) {
@@ -2412,7 +2384,7 @@ export function OpenCampusClient() {
       return;
     }
 
-    const { nextPending, warningMessage } = collectPendingAttachments(fileList);
+    const { nextPending, warningMessage } = await collectPendingAttachments(fileList);
 
     if (warningMessage) {
       window.alert(warningMessage);
@@ -2520,11 +2492,11 @@ export function OpenCampusClient() {
     const invalidLink = eventForm.links.find((link) => {
       const hasLabel = link.label.trim().length > 0;
       const hasUrl = link.url.trim().length > 0;
-      return hasLabel !== hasUrl;
+      return hasLabel !== hasUrl || (hasUrl && !safeExternalUrl(link.url));
     });
 
     if (invalidLink) {
-      window.alert("当日リンクは表示名とURLをセットで入力してください。");
+      window.alert("当日リンクは表示名と http:// または https:// から始まるURLをセットで入力してください。");
       return;
     }
 
@@ -2795,7 +2767,7 @@ export function OpenCampusClient() {
         return;
       }
 
-      const objectUrl = URL.createObjectURL(normalizeAttachmentBlob(blob, meta));
+      const objectUrl = URL.createObjectURL(await validateAttachmentBlob(blob, meta.name));
       objectUrlsRef.current.push(objectUrl);
 
       const opened = window.open(objectUrl, "_blank", "noopener,noreferrer");

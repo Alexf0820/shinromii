@@ -1,5 +1,7 @@
 "use client";
 
+import { safeExternalUrl } from "@/lib/safe-external-url";
+
 import { isDemoMode } from "@/lib/shinromii-demo-mode";
 
 import { useEffect, useMemo, useRef, useState, type KeyboardEvent } from "react";
@@ -251,6 +253,10 @@ export function UniversityCandidatesClient() {
   }
 
   function handleSave() {
+    if (form.url.trim() && !safeExternalUrl(form.url)) {
+      window.alert("URLは http:// または https:// から始まるWebページを入力してください。");
+      return;
+    }
     if (!form.university.trim()) {
       window.alert("大学名を入力してください。");
       return;
@@ -527,7 +533,7 @@ export function UniversityCandidatesClient() {
               <p className="uni-detail-section-title">基本情報</p>
               <div className="review-note">
                 <span className="review-note-label">URL</span>
-                <a className="uni-detail-link" href={candidate.url}>
+                <a className="uni-detail-link" href={safeExternalUrl(candidate.url)}>
                   {candidate.url}
                 </a>
               </div>
@@ -702,7 +708,7 @@ export function UniversityCandidatesClient() {
                   </div>
 
                   {item.url ? (
-                    <a className="uni-card-link" href={item.url} onClick={(event) => event.stopPropagation()}>
+                    <a className="uni-card-link" href={safeExternalUrl(item.url)} onClick={(event) => event.stopPropagation()}>
                       <UiIcon name="link" className="subject-action-icon" />
                       大学ページを見る
                     </a>
