@@ -1,3 +1,4 @@
+import { isSupportedStorageVersion } from "@/lib/backup-validation";
 import { normalizePeriodSystem } from "@/lib/grade-periods";
 import { normalizeSchoolSubjectsTemplate } from "@/lib/school-subject-templates";
 import { isDemoMode } from "@/lib/shinromii-demo-mode";
@@ -27,7 +28,7 @@ type ParseBackupResult =
     };
 
 function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null;
+  return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
 function pad(value: number) {
@@ -110,7 +111,7 @@ export function parseShinromiiBackupJson(raw: string): ParseBackupResult {
     };
   }
 
-  if (typeof parsed.createdAt !== "string" || typeof parsed.storageVersion !== "number") {
+  if (typeof parsed.createdAt !== "string" || parsed.createdAt.length > 64 || !Number.isFinite(Date.parse(parsed.createdAt)) || !isSupportedStorageVersion(parsed.storageVersion, STORAGE_VERSION) || !isRecord(parsed.data) || parsed.data.version !== parsed.storageVersion) {
     return {
       ok: false,
       error: "バックアップファイルの内容が足りないため、復元できませんでした。",

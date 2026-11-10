@@ -1,7 +1,7 @@
 import { createHmac, timingSafeEqual } from "node:crypto";
 import { cookies, headers } from "next/headers";
 import { redirect } from "next/navigation";
-import { ADMIN_PREVIEW_ACCESS_COOKIE, ADMIN_PREVIEW_QUERY_PARAM, buildAdminAuthorizationPath } from "@/lib/admin-paths";
+import { ADMIN_PREVIEW_ACCESS_COOKIE, buildAdminAuthorizationPath } from "@/lib/admin-paths";
 
 type SearchParamValue = string | string[] | undefined;
 type SearchParamsInput =
@@ -10,10 +10,6 @@ type SearchParamsInput =
   | undefined;
 
 const ACCESS_TTL_MS = 1000 * 60 * 30;
-
-function firstValue(value: SearchParamValue) {
-  return Array.isArray(value) ? value[0] : value;
-}
 
 function safeEqual(left: string, right: string) {
   const leftBuffer = Buffer.from(left);
@@ -51,10 +47,6 @@ function isLocalAdminHost(host: string | null) {
   );
 }
 
-async function resolveSearchParams(searchParams: SearchParamsInput) {
-  return (await searchParams) ?? {};
-}
-
 function getPreviewSecret() {
   return process.env.SHINROMII_ADMIN_PREVIEW_KEY?.trim() ?? "";
 }
@@ -72,10 +64,10 @@ export function createAdminPreviewAccessCookieValue(previewSecret: string, now =
 function verifyAdminPreviewAccessCookieValue(cookieValue: string | undefined, previewSecret: string, now = Date.now()) {
   if (!cookieValue || !previewSecret) return false;
 
-  const [expiresAtText, signature] = cookieValue.split(".");
+  const [expiresAtText, signature, extra] = cookieValue.split(".");
   const expiresAt = Number(expiresAtText);
 
-  if (!Number.isFinite(expiresAt) || !signature || expiresAt <= now) {
+  if (!Number.isSafeInteger(expiresAt) || !signature || extra !== undefined || expiresAt <= now || expiresAt > now + ACCESS_TTL_MS) {
     return false;
   }
 
@@ -94,7 +86,7 @@ function isDevelopmentLocalBypassAllowed(host: string | null) {
   return process.env.NODE_ENV !== "production" && isLocalAdminHost(host);
 }
 
-export async function requireAdminPreviewAccess(pathname: string, searchParams?: SearchParamsInput) {
+export async function requireAdminPreviewAccess(pathname: string, _searchParams?: SearchParamsInput) {
   const host = (await headers()).get("host");
 
   if (isDevelopmentLocalBypassAllowed(host)) {
@@ -112,11 +104,5 @@ export async function requireAdminPreviewAccess(pathname: string, searchParams?:
     return;
   }
 
-  const resolvedSearchParams = await resolveSearchParams(searchParams);
-  const providedKey = firstValue(resolvedSearchParams[ADMIN_PREVIEW_QUERY_PARAM]);
-  if (providedKey && isValidAdminPreviewKey(providedKey, previewSecret)) {
-    redirect(buildAdminAuthorizationPath(pathname, providedKey));
-  }
-
-  redirect("/");
+  redirect(buildAdminAuthorizationPath(pathname));
 }

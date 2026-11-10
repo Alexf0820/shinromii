@@ -1,0 +1,27 @@
+const assert=require('node:assert/strict');const {runtime}=require('./security-test-runtime.cjs');
+(async()=>{
+ const env={NODE_ENV:'production',SHINROMII_ADMIN_PREVIEW_KEY:'synthetic-test-key-only'};let cookie;
+ const redirect=path=>{throw new Error('REDIRECT '+path);};
+ const app=runtime({process:{env}}, {'next/headers':{headers:async()=>new Headers({host:'localhost'}),cookies:async()=>({get:()=>cookie?{value:cookie}:undefined})},'next/navigation':{redirect}});
+ const access=app.load('@/lib/admin-access-server');const paths=app.load('@/lib/admin-paths');
+ await assert.rejects(access.requireAdminPreviewAccess('/admin',{adminKey:env.SHINROMII_ADMIN_PREVIEW_KEY}),/REDIRECT \/admin\/access\?redirectTo/);
+ assert.equal(access.isValidAdminPreviewKey('wrong'),false);
+ cookie=access.createAdminPreviewAccessCookieValue(env.SHINROMII_ADMIN_PREVIEW_KEY);await access.requireAdminPreviewAccess('/admin');
+ cookie=access.createAdminPreviewAccessCookieValue(env.SHINROMII_ADMIN_PREVIEW_KEY,Date.now()-31*60*1000);await assert.rejects(access.requireAdminPreviewAccess('/admin'),/REDIRECT/);
+ for(const p of ['//evil.test','/admin/../../outside','/admin\\evil','/admin%2fevil','/administrator','/admin?adminKey=secret']) assert.equal(paths.sanitizeAdminRedirect(p),'/admin');
+ assert.equal(paths.sanitizeAdminRedirect('/admin/preview/setup'),'/admin/preview/setup');
+ const route=app.load('@/app/admin/access/session/route');
+ const req=(body,origin='https://example.test',type='application/x-www-form-urlencoded')=>new Request('https://example.test/admin/access/session',{method:'POST',headers:{origin,'content-type':type},body});
+ assert.equal((await route.POST(req('key=bad','https://evil.test'))).status,403);
+ assert.equal((await route.POST(req('key=bad','https://example.test','text/plain'))).status,415);
+ assert.equal((await route.POST(req('x'.repeat(4097)))).status,413);
+ const invalid=await route.POST(req('key=bad'));assert.equal(invalid.headers.get('set-cookie'),null);assert.match(invalid.headers.get('location'),/error=1/);
+ const valid=await route.POST(req('key=synthetic-test-key-only&redirectTo=%2Fadmin%2Fpreview%2Fsetup'));
+ assert.equal(valid.status,303);assert.equal(valid.headers.get('location'),'https://example.test/admin/preview/setup');
+ const set=valid.headers.get('set-cookie');for(const flag of ['HttpOnly','Secure','SameSite=strict','Path=/admin'])assert.ok(set.includes(flag));
+ assert.ok(!set.includes(env.SHINROMII_ADMIN_PREVIEW_KEY));assert.equal(valid.headers.get('cache-control'),'private, no-store');
+ const safe=app.load('@/lib/safe-external-url').safeExternalUrl;
+ for(const url of ['javascript:alert(1)','data:text/html,x','//evil.test','https://user:pass@example.test','https:\n//example.test',{},null])assert.equal(safe(url),undefined);
+ assert.equal(safe('https://example.test'),'https://example.test/');
+ console.log('PASS admin: production bypass denied, URL keys denied, expiry, POST origin/type/size validation, secure cookie and safe redirects/links');
+})().catch(e=>{console.error(e);process.exitCode=1});

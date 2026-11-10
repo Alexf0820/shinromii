@@ -1,86 +1,63 @@
-const CACHE_NAME = "shinromii-v09923-static";
-const APP_SHELL_ROUTES = [
-  "/",
-  "/grades",
-  "/universities",
-  "/open-campus",
-  "/ai-notes",
-  "/profile",
-  "/guide",
-  "/manifest.webmanifest",
-  "/icon-192.png",
-  "/icon-512.png",
-  "/apple-touch-icon.png",
-];
+const CACHE_NAME = "shinromii-v106-static";
+const PUBLIC_PAGES = new Set(["/", "/grades", "/universities", "/open-campus", "/ai-notes", "/profile", "/guide"]);
+const PUBLIC_FILES = new Set(["/manifest.webmanifest", "/icon-192.png", "/icon-512.png", "/apple-touch-icon.png", "/images/shinromii-home-hero.png", "/images/data-protection-guide-confirmed.jpg", "/brand/shinromii-mark.png"]);
 
-self.addEventListener("install", (event) => {
-  event.waitUntil(
-    caches.open(CACHE_NAME).then((cache) => cache.addAll(APP_SHELL_ROUTES)).then(() => {
-      if (!self.registration.active) {
-        return self.skipWaiting();
-      }
-
-      return undefined;
-    }),
-  );
-});
-
-self.addEventListener("activate", (event) => {
-  event.waitUntil(
-    caches
-      .keys()
-      .then((keys) => Promise.all(keys.filter((key) => key !== CACHE_NAME).map((key) => caches.delete(key))))
-      .then(() => self.clients.claim()),
-  );
-});
-
-self.addEventListener("message", (event) => {
-  if (event.data?.type === "SKIP_WAITING") {
-    self.skipWaiting();
-  }
-});
-
-self.addEventListener("fetch", (event) => {
-  const { request } = event;
-
-  if (request.method !== "GET") {
-    return;
-  }
-
+function isCacheableRequest(request) {
   const url = new URL(request.url);
-  if (url.origin !== self.location.origin) {
-    return;
-  }
-
-  if (request.mode === "navigate") {
-    event.respondWith(
-      fetch(request)
-        .then((response) => {
-          const cloned = response.clone();
-          caches.open(CACHE_NAME).then((cache) => cache.put(request, cloned));
-          return response;
-        })
-        .catch(async () => {
-          const cached = await caches.match(request);
-          return cached || caches.match("/");
-        }),
-    );
-    return;
-  }
-
-  event.respondWith(
-    caches.match(request).then((cached) => {
-      const networkFetch = fetch(request)
-        .then((response) => {
-          if (response.ok) {
-            const cloned = response.clone();
-            caches.open(CACHE_NAME).then((cache) => cache.put(request, cloned));
-          }
-          return response;
-        })
-        .catch(() => cached);
-
-      return cached || networkFetch;
-    }),
-  );
+  if (request.method !== "GET" || url.origin !== self.location.origin || url.search || request.headers.has("authorization") || request.headers.has("range") || request.headers.has("rsc") || request.headers.has("next-router-prefetch")) return false;
+  return request.mode === "navigate" ? PUBLIC_PAGES.has(url.pathname)
+    : PUBLIC_FILES.has(url.pathname) || /^\/_next\/static\/.+\.(?:js|css|woff2?|png|jpg|jpeg|webp)$/.test(url.pathname);
+}
+function isCacheableResponse(response) {
+  return response.ok && response.status === 200 && !response.redirected
+    && !/\b(?:no-store|private)\b/i.test(response.headers.get("cache-control") || "");
+  // Browsers filter Set-Cookie. The public path allowlist and Cache-Control are the real boundary.
+}
+self.addEventListener("install", event => {
+  // Failure to precache a public shell must not prevent removal of the old unsafe cache.
+  event.waitUntil((async () => {
+    const cache = await caches.open(CACHE_NAME);
+    await Promise.all([...PUBLIC_PAGES, ...PUBLIC_FILES].map(async path => {
+      try {
+        const response = await fetch(path, { cache: "reload", credentials: "omit" });
+        if (isCacheableResponse(response)) await cache.put(path, response);
+      } catch { /* Offline or unavailable: update still installs. */ }
+    }));
+    // No storage schema change. Activate promptly to remove cached admin/API responses.
+    await self.skipWaiting();
+  })());
+});
+self.addEventListener("activate", event => {
+  event.waitUntil((async () => {
+    const keys = await caches.keys();
+    await Promise.all(keys.filter(key => key.startsWith("shinromii-") && key !== CACHE_NAME).map(key => caches.delete(key)));
+    await self.clients.claim();
+  })());
+});
+self.addEventListener("message", event => {
+  if (event.data?.type === "SKIP_WAITING") self.skipWaiting();
+});
+self.addEventListener("fetch", event => {
+  const { request } = event;
+  if (!isCacheableRequest(request)) return; // Admin/API/query/RSC always reach the network, even offline.
+  const operation = (async () => {
+    let response;
+    try {
+      response = await fetch(request);
+    } catch {
+      const cached = await caches.open(CACHE_NAME).then(cache => cache.match(request)).catch(() => undefined);
+      if (cached) return cached;
+      if (request.mode === "navigate") return new Response("<!doctype html><html lang='ja'><meta charset='utf-8'><meta name='viewport' content='width=device-width'><title>オフライン</title><p>接続を確認して、もう一度開いてください。保存済みの進路データはこの端末に残っています。</p></html>", { status: 503, headers: { "Content-Type": "text/html; charset=utf-8", "Cache-Control": "no-store" } });
+      return Response.error();
+    }
+    const cacheable = isCacheableResponse(response);
+    const copy = cacheable ? response.clone() : null;
+    event.waitUntil(caches.open(CACHE_NAME).then(cache => copy
+      ? cache.put(request, copy)
+      : cache.delete(request) // Remove stale entries after policy changes.
+    ).catch(() => { /* Quota/cache failures must never discard a fresh network response. */ }));
+    return response;
+  })();
+  event.respondWith(operation);
+  event.waitUntil(operation.then(() => undefined));
 });

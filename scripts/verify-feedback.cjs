@@ -1,34 +1,15 @@
 const assert = require('node:assert/strict');
-const ts = require('typescript');
 const fs = require('node:fs');
-const vm = require('node:vm');
-let calls = [];
-let providerOk = true;
-const env = {};
-const route = {};
-const compiled = ts.transpileModule(fs.readFileSync('app/api/feedback/route.ts', 'utf8'), {compilerOptions:{module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022}}).outputText;
-vm.runInNewContext(compiled, {exports: route, require: name => name === '@/lib/app-version' ? {APP_VERSION:'1.03', IS_BETA:true} : require(name), process: {env}, Response, URL, Buffer, AbortSignal, fetch: async (url, options) => {calls.push({url, options}); return {ok:providerOk};}});
-const payload = {message:'架空の動作確認です。',id:'11111111-1111-4111-8111-111111111111',createdAt:'2026-09-12T00:00:00.000Z'};
-function request(data=payload, ip='test1', origin='https://example.test') {return new Request('https://example.test/api/feedback',{method:'POST',headers:{origin,host:'example.test','content-type':'application/json','x-forwarded-for':ip,'user-agent':'iPhone Safari'},body:JSON.stringify(data)});}
+const {runtime} = require('./security-test-runtime.cjs');
 (async()=>{
- assert.deepEqual(await (await route.GET()).json(), {available:false});
- assert.equal((await route.POST(request())).status,503);
- Object.assign(env,{RESEND_API_KEY:'fake-key',SHINROMII_FEEDBACK_FROM:'sender@example.test',SHINROMII_FEEDBACK_TO:'recipient@example.test'});
- assert.deepEqual(await (await route.GET()).json(), {available:true});
- const sender=env.SHINROMII_FEEDBACK_FROM; env.SHINROMII_FEEDBACK_FROM='  ';
- assert.deepEqual(await (await route.GET()).json(), {available:false});
- env.SHINROMII_FEEDBACK_FROM=sender;
- for (const data of [{...payload,message:''},{...payload,message:' '.repeat(2)},{...payload,message:'x'.repeat(2001)},{...payload,grades:[5]},{...payload,createdAt:'invalid'}]) assert.equal((await route.POST(request(data))).status,400);
- assert.equal((await route.POST(request(payload,'test1','https://evil.test'))).status,403);
- const response = await route.POST(request());
- assert.equal(response.status,200); assert.deepEqual(await response.json(),{ok:true});
- assert.equal((await route.POST(request())).status,429); assert.equal(calls.length,1);
- const mail=JSON.parse(calls[0].options.body);
- assert.match(mail.text,/Ver\.1\.03/); assert.match(mail.text,/送信日時:/); assert.match(mail.text,/現在ページ: \/\n/); assert.match(mail.text,/端末種別: iPhone/); assert.match(mail.text,/ブラウザ種別: Safari/);
- assert.deepEqual(Object.keys(mail).sort(),['from','subject','text','to']);
- providerOk=false; assert.equal((await route.POST(request(payload,'test2'))).status,502);
+ let sends=0;
+ for(let instance=0;instance<2;instance++) {
+  const route=runtime({fetch:async()=>{sends++;throw new Error('must not send');}}).load('@/app/api/feedback/route');
+  const availability=await route.GET();assert.equal(availability.headers.get('cache-control'),'no-store');assert.equal((await availability.json()).available,false);
+  for(let i=0;i<3;i++) assert.equal((await route.POST()).status,410);
+ }
+ assert.equal(sends,0);
  const component=fs.readFileSync('components/BetaFeedback.tsx','utf8');
- assert.doesNotMatch(component,/localStorage|indexedDB|shinromii-storage|mailto:|recipient@example/);
- assert.match(component,/sending.current/); assert.doesNotMatch(component,/credentials:/);
- console.log('PASS feedback validation, payload whitelist, coarse metadata, configuration failure, provider success/failure, rate guard, no storage access');
-})().catch(error=>{console.error(error);process.exitCode=1});
+ assert.match(component,/href="\/contact"/);assert.doesNotMatch(component,/fetch\(|localStorage|indexedDB|shinromii-storage|mailto:/);
+ console.log('PASS feedback: retired relay never sends across instances; feedback uses shared contact flow; no notebook data access');
+})().catch(e=>{console.error(e);process.exitCode=1});

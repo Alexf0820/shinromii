@@ -1,3 +1,4 @@
+import { validateBackupStorage } from "@/lib/backup-validation";
 import { normalizePeriodSystem, type GradePeriodSystem } from "@/lib/grade-periods";
 import { normalizeSchoolSubjectsTemplate, getSchoolSubjectsTemplate, type SchoolSubjectsTemplate } from "@/lib/school-subject-templates";
 import { isDemoMode, scopedStorageKey } from "@/lib/shinromii-demo-mode";
@@ -392,39 +393,12 @@ function coerceStorageValues(
 }
 
 export function parseBackupStorageData(candidate: unknown): ShinromiiStorage | null {
-  const fallback = buildDefaultStorage();
-
-  if (!isRecord(candidate)) {
+  if (!validateBackupStorage(candidate, STORAGE_VERSION)) return null;
+  try {
+    return coerceStorageValues(candidate as Partial<ShinromiiStorage>, buildDefaultStorage(), { fromBackup: true });
+  } catch {
     return null;
   }
-
-  const requiredKeys = [
-    "aiNotes",
-    "campusEvaluations",
-    "universityCandidates",
-    "gradeRecords",
-    "qualifications",
-    "openCampusEvents",
-  ] as const;
-
-  const hasRequiredShape = requiredKeys.every((key) => key in candidate);
-
-  if (!hasRequiredShape) {
-    return null;
-  }
-
-  if (
-    !Array.isArray(candidate.aiNotes) ||
-    !isRecord(candidate.campusEvaluations) ||
-    !Array.isArray(candidate.universityCandidates) ||
-    !Array.isArray(candidate.gradeRecords) ||
-    !Array.isArray(candidate.qualifications) ||
-    !Array.isArray(candidate.openCampusEvents)
-  ) {
-    return null;
-  }
-
-  return coerceStorageValues(candidate as Partial<ShinromiiStorage>, fallback, { fromBackup: true });
 }
 
 function canUseStorage() {
