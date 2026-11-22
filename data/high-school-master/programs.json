@@ -1,0 +1,168 @@
+{
+  "sources": {
+    "tokyo": {
+      "year": "2027",
+      "checkedAt": "2026-11-22",
+      "url": "https://www.kyoiku.metro.tokyo.lg.jp/admission/high_school/application/enroll/release2026100801"
+    },
+    "kinjo": {
+      "year": "2027",
+      "checkedAt": "2026-11-22",
+      "url": "https://www.kinjo-highschool.ed.jp/admission/requirements.php"
+    }
+  },
+  "bySchool": {
+    "D113299901031": [
+      {
+        "schedule": "全日制",
+        "department": "普通科",
+        "source": "tokyo"
+      }
+    ],
+    "D113299901059": [
+      {
+        "schedule": "全日制",
+        "department": "普通科",
+        "source": "tokyo"
+      }
+    ],
+    "D113299904074": [
+      {
+        "schedule": "全日制",
+        "department": "普通科",
+        "source": "tokyo"
+      }
+    ],
+    "D113299903084": [
+      {
+        "schedule": "全日制",
+        "department": "普通科",
+        "source": "tokyo"
+      }
+    ],
+    "D113299903128": [
+      {
+        "schedule": "全日制",
+        "department": "普通科",
+        "source": "tokyo"
+      }
+    ],
+    "D113299905108": [
+      {
+        "schedule": "全日制",
+        "department": "普通科",
+        "source": "tokyo"
+      }
+    ],
+    "D113299906134": [
+      {
+        "schedule": "全日制",
+        "department": "普通科",
+        "source": "tokyo"
+      }
+    ],
+    "D113299908089": [
+      {
+        "schedule": "全日制",
+        "department": "普通科",
+        "source": "tokyo"
+      }
+    ],
+    "D113299907106": [
+      {
+        "schedule": "全日制",
+        "department": "普通科",
+        "source": "tokyo"
+      }
+    ],
+    "D113299907133": [
+      {
+        "schedule": "全日制",
+        "department": "普通科",
+        "source": "tokyo"
+      }
+    ],
+    "D113299909131": [
+      {
+        "schedule": "全日制",
+        "department": "普通科",
+        "source": "tokyo"
+      }
+    ],
+    "D113299908114": [
+      {
+        "schedule": "全日制",
+        "department": "普通科",
+        "source": "tokyo"
+      }
+    ],
+    "D113299901148": [
+      {
+        "schedule": "全日制",
+        "department": "普通科（単位制）",
+        "source": "tokyo"
+      }
+    ],
+    "D113299906241": [
+      {
+        "schedule": "全日制",
+        "department": "科学技術科",
+        "source": "tokyo"
+      }
+    ],
+    "D113299902156": [
+      {
+        "schedule": "全日制",
+        "department": "ビジネス科",
+        "source": "tokyo"
+      }
+    ],
+    "D113299906269": [
+      {
+        "schedule": "全日制",
+        "department": "産業科",
+        "source": "tokyo"
+      }
+    ],
+    "D113299910101": [
+      {
+        "schedule": "全日制",
+        "department": "総合学科",
+        "source": "tokyo"
+      }
+    ],
+    "D113299901013": [
+      {
+        "schedule": "通信制",
+        "department": "普通科",
+        "source": "tokyo"
+      }
+    ],
+    "D113299902138": [
+      {
+        "schedule": "通信制",
+        "department": "普通科",
+        "source": "tokyo"
+      }
+    ],
+    "D113299908025": [
+      {
+        "schedule": "通信制",
+        "department": "普通科",
+        "source": "tokyo"
+      }
+    ],
+    "D113321100014": [
+      {
+        "course": "特進コース",
+        "selectionTime": "出願時",
+        "source": "kinjo"
+      },
+      {
+        "course": "進学コース",
+        "selectionTime": "出願時",
+        "source": "kinjo"
+      }
+    ]
+  }
+}

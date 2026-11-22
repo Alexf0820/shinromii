@@ -12,7 +12,7 @@ const items = [
   { href: "/ai-notes", label: "相談メモ", icon: "ai", activeIcon: "ai-fill" },
 ] as const;
 
-export function MobileNav() {
+export function MobileNav({ highSchool }: { highSchool: boolean }) {
   const pathname = usePathname();
 
   return (
@@ -32,7 +32,7 @@ export function MobileNav() {
               <span className="nav-icon-wrap" aria-hidden="true">
                 <UiIcon name={isActive ? item.activeIcon : item.icon} className="nav-icon" />
               </span>
-              <span className="nav-label">{item.label}</span>
+              <span className="nav-label">{highSchool && item.href === "/universities" ? "高校候補" : item.label}</span>
             </Link>
           );
         })}

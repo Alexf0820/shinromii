@@ -114,6 +114,11 @@ export type UniversityCandidate = {
   familyView: string;
   reason: string;
   futureNote: string;
+  schoolKind?: "high-school" | "university";
+  highSchoolCode?: string;
+  studySchedule?: string;
+  selectionTime?: string;
+  masterSourceUrl?: string;
   /** マスターから登録した場合の大学ID。手入力では付けない。 */
   universityMasterId?: string;
   /** マスターから学部を選んだ場合の学部ID。手入力では付けない。 */

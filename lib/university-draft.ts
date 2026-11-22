@@ -2,7 +2,7 @@ import type { UniversityCandidate } from "@/data/mockData";
 import { createShinromiiId } from "@/lib/shinromii-id";
 import { normalizeUniversityCandidate } from "@/lib/university-candidate";
 import {
-  universityMaster,
+  universitySource,
   type UniversityMaster,
 } from "@/lib/university-master";
 
@@ -24,6 +24,8 @@ export function createUniversityCandidateDraft(input: {
   const facultyName = (input.faculty ?? "").trim();
   const master = input.master ?? null;
 
+  const source = master ? universitySource(master) : null;
+
   return normalizeUniversityCandidate({
     id: createCandidateId(),
     createdAt: todayString(),
@@ -40,7 +42,8 @@ export function createUniversityCandidateDraft(input: {
     futureNote: "",
     universityMasterId: master?.id,
     facultyMasterId: facultyName && input.facultyMasterId ? input.facultyMasterId : undefined,
-    masterCheckedAt: master ? universityMaster.checkedAt : undefined,
-    masterAcademicYear: master ? universityMaster.academicYear : undefined,
+    masterCheckedAt: source?.checkedAt,
+    masterAcademicYear: source?.academicYear,
+    masterSourceUrl: source?.sourceUrl,
   });
 }

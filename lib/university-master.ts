@@ -1,5 +1,9 @@
 import masterFile from "@/data/university-master/r7-2025.json";
 
+import reviews from "@/data/university-master/reviewed.json";
+
+export type CatalogSource = { academicYear: string; checkedAt: string; sourceUrl: string; sourceName: string };
+
 export type UniversityMasterType = "国立" | "公立" | "私立";
 
 export type FacultyMaster = {
@@ -14,6 +18,7 @@ export type UniversityMaster = {
   type: UniversityMasterType;
   prefecture: string;
   faculties: FacultyMaster[];
+  source?: CatalogSource;
 };
 
 export type UniversityMasterFile = {
@@ -26,7 +31,19 @@ export type UniversityMasterFile = {
   universities: UniversityMaster[];
 };
 
-export const universityMaster = masterFile as UniversityMasterFile;
+const base = masterFile as UniversityMasterFile;
+export const universityMaster: UniversityMasterFile = {
+  ...base,
+  universities: base.universities.map(school => {
+    const review = reviews.find(row => row.schoolCode === school.schoolCode && row.academicYear > base.academicYear);
+    if (!review) return school;
+    const { faculties, schoolCode, ...source } = review;
+    return { ...school, source, faculties: faculties.map(name => ({
+      name, id: school.faculties.find(f => f.name === name)?.id ?? `shinromii-fac-${schoolCode}-${name.replace(/[ 　]/g, "")}`,
+    })) };
+  }),
+};
+export const universitySource = (school: UniversityMaster) => school.source ?? base;
 
 function normalizeSearchText(value: string) {
   return value.normalize("NFKC").replace(/[\s　]/g, "").toLowerCase();

@@ -21,6 +21,7 @@ function isOriginalKonanDummy(record: UniversityCandidate) {
 }
 
 export function isLegacyDummyUniversity(record: UniversityCandidate) {
+  if (record.schoolKind === "high-school") return false;
   if (LEGACY_DUMMY_UNIVERSITY_IDS.has(record.id)) {
     return true;
   }

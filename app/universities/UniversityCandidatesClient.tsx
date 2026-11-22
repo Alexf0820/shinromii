@@ -2,7 +2,8 @@
 
 import { safeExternalUrl } from "@/lib/safe-external-url";
 
-import { isDemoMode } from "@/lib/shinromii-demo-mode";
+import { highSchoolMaster, programLabel, programsForSchool, programSources } from "@/lib/high-school-master";
+import { HighSchoolSearchPanel } from "@/components/universities/HighSchoolSearchPanel";
 
 import { useEffect, useMemo, useRef, useState, type KeyboardEvent } from "react";
 import { CardActionBar } from "@/components/CardActionBar";
@@ -10,13 +11,13 @@ import { SectionHeader } from "@/components/SectionHeader";
 import { ScoreSelector } from "@/components/ScoreSelector";
 import { UiIcon } from "@/components/UiIcon";
 import { UniversitySearchPanel } from "@/components/universities/UniversitySearchPanel";
-import { universities as initialCandidates } from "@/data/mockData";
 import type { UniversityCandidate } from "@/data/mockData";
 import { createShinromiiId } from "@/lib/shinromii-id";
 import { isSameUniversityFaculty, normalizeUniversityCandidate } from "@/lib/university-candidate";
 import {
   findUniversityMasterById,
   universityMaster,
+  universitySource,
   type UniversityMaster,
 } from "@/lib/university-master";
 import {
@@ -40,6 +41,7 @@ type CandidateFormState = {
   university: string;
   faculty: string;
   department: string;
+  studySchedule?: string;
   url: string;
   interest: number | null;
   studentScore: UniversityCandidate["studentScore"];
@@ -85,6 +87,7 @@ function formFromCandidate(candidate: UniversityCandidate): CandidateFormState {
     university: candidate.university,
     faculty: candidate.faculty,
     department: candidate.department,
+    studySchedule: candidate.studySchedule,
     url: candidate.url,
     interest: candidate.interest,
     studentScore: candidate.studentScore,
@@ -123,7 +126,9 @@ function renderStars(score: number) {
 }
 
 export function UniversityCandidatesClient() {
-  const [candidates, setCandidates] = useState<UniversityCandidate[]>(() => isDemoMode() ? [] : initialCandidates);
+  const [candidates, setCandidates] = useState<UniversityCandidate[]>([]);
+  const [isHighSchool, setHighSchool] = useState(false);
+  const [ready, setReady] = useState(false);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [copyingId, setCopyingId] = useState<string | null>(null);
@@ -136,12 +141,14 @@ export function UniversityCandidatesClient() {
 
   useEffect(() => {
     const storage = loadShinromiiStorage();
+    setHighSchool(storage.profile.progressionStage === "high-school");
     setCandidates(storage.universityCandidates);
+    setReady(true);
     setSortOrder(loadUniversitySortOrder());
   }, []);
 
   const sortedCandidates = useMemo(() => {
-    const next = [...candidates];
+    const next = candidates.filter(item => (item.schoolKind === "high-school") === isHighSchool);
 
     if (sortOrder === "newest") {
       return next.sort((a, b) => b.createdAt.localeCompare(a.createdAt));
@@ -162,7 +169,7 @@ export function UniversityCandidatesClient() {
 
       return b.createdAt.localeCompare(a.createdAt);
     });
-  }, [candidates, sortOrder]);
+  }, [candidates, sortOrder, isHighSchool]);
 
   function updateForm<K extends keyof CandidateFormState>(key: K, value: CandidateFormState[K]) {
     setForm((current) => ({
@@ -190,8 +197,8 @@ export function UniversityCandidatesClient() {
       ...createEmptyForm(),
       university: universityName,
       universityMasterId: master?.id,
-      masterCheckedAt: master ? universityMaster.checkedAt : undefined,
-      masterAcademicYear: master ? universityMaster.academicYear : undefined,
+      masterCheckedAt: master ? universitySource(master).checkedAt : undefined,
+      masterAcademicYear: master ? universitySource(master).academicYear : undefined,
     });
   }
 
@@ -233,22 +240,29 @@ export function UniversityCandidatesClient() {
   }
 
   function persistCandidate(nextCandidate: UniversityCandidate, replaceId?: string) {
-    const duplicate = candidates.some(
+    const current = loadShinromiiStorage().universityCandidates;
+    const duplicate = current.some(
       (item) => item.id !== replaceId && isSameUniversityFaculty(item, nextCandidate),
     );
 
     if (duplicate) {
-      window.alert("同じ大学・学部はすでに候補にあります。");
+      window.alert("同じ学校・専攻の候補がすでにあります。");
       return false;
     }
 
+    if (replaceId && !current.some(item => item.id === replaceId)) {
+      setCandidates(current);
+      closeEditor();
+      window.alert("この候補はすでに削除されています。");
+      return false;
+    }
     const nextCandidates = replaceId
-      ? candidates.map((item) => (item.id === replaceId ? nextCandidate : item))
-      : [nextCandidate, ...candidates];
+      ? current.map((item) => (item.id === replaceId ? nextCandidate : item))
+      : [nextCandidate, ...current];
 
+    saveUniversityCandidates(nextCandidates);
     setCandidates(nextCandidates);
     setSelectedId(nextCandidate.id);
-    saveUniversityCandidates(nextCandidates);
     return true;
   }
 
@@ -258,7 +272,7 @@ export function UniversityCandidatesClient() {
       return;
     }
     if (!form.university.trim()) {
-      window.alert("大学名を入力してください。");
+      window.alert(isHighSchool ? "高校名を入力してください。" : "大学名を入力してください。");
       return;
     }
 
@@ -284,7 +298,16 @@ export function UniversityCandidatesClient() {
         ? form.facultyMasterId
         : undefined;
 
+    const sameProgram = namesUnchanged && existing?.department === form.department.trim() &&
+      (existing.studySchedule ?? "") === (form.studySchedule ?? "").trim();
+    const source = masterUniversity ? universitySource(masterUniversity) : undefined;
+    const keepSnapshot = isHighSchool ? sameProgram : namesUnchanged;
     const nextCandidate = normalizeUniversityCandidate({
+      ...existing,
+      schoolKind: isHighSchool ? "high-school" : existing?.schoolKind,
+      highSchoolCode: isHighSchool && existing?.university === universityName ? existing.highSchoolCode : undefined,
+      studySchedule: isHighSchool ? form.studySchedule?.trim() : undefined,
+      selectionTime: isHighSchool && sameProgram ? existing?.selectionTime : undefined,
       id: editingId ?? createCandidateId(),
       createdAt: existing?.createdAt ?? todayString(),
       university: universityName,
@@ -300,16 +323,9 @@ export function UniversityCandidatesClient() {
       futureNote: form.futureNote.trim(),
       universityMasterId,
       facultyMasterId,
-      masterCheckedAt: universityMasterId
-        ? namesUnchanged
-          ? existing?.masterCheckedAt
-          : universityMaster.checkedAt
-        : undefined,
-      masterAcademicYear: universityMasterId
-        ? namesUnchanged
-          ? existing?.masterAcademicYear
-          : universityMaster.academicYear
-        : undefined,
+      masterCheckedAt: keepSnapshot ? existing?.masterCheckedAt : universityMasterId ? source?.checkedAt : undefined,
+      masterAcademicYear: keepSnapshot ? existing?.masterAcademicYear : universityMasterId ? source?.academicYear : undefined,
+      masterSourceUrl: keepSnapshot ? existing?.masterSourceUrl : universityMasterId ? source?.sourceUrl : undefined,
     });
 
     if (!persistCandidate(nextCandidate, editingId ?? undefined)) {
@@ -326,9 +342,9 @@ export function UniversityCandidatesClient() {
       return;
     }
 
-    const nextCandidates = candidates.filter((item) => item.id !== candidate.id);
-    setCandidates(nextCandidates);
+    const nextCandidates = loadShinromiiStorage().universityCandidates.filter((item) => item.id !== candidate.id);
     saveUniversityCandidates(nextCandidates);
+    setCandidates(nextCandidates);
 
     if (selectedId === candidate.id) {
       setSelectedId(null);
@@ -367,7 +383,7 @@ export function UniversityCandidatesClient() {
         <div className="form-stack">
           <div className="field-grid">
             <label className="field-block">
-              <span className="field-label">大学名</span>
+              <span className="field-label">{isHighSchool ? "高校名" : "大学名"}</span>
               <input
                 className="text-input"
                 type="text"
@@ -377,7 +393,7 @@ export function UniversityCandidatesClient() {
             </label>
 
             <label className="field-block">
-              <span className="field-label">学部名（任意）</span>
+              <span className="field-label">{isHighSchool ? "学科（任意）" : "学部名（任意）"}</span>
               <input
                 className="text-input"
                 type="text"
@@ -389,7 +405,7 @@ export function UniversityCandidatesClient() {
 
           <div className="field-grid">
             <label className="field-block">
-              <span className="field-label">学科名（任意）</span>
+              <span className="field-label">{isHighSchool ? "コース（任意）" : "学科名（任意）"}</span>
               <input
                 className="text-input"
                 type="text"
@@ -399,7 +415,7 @@ export function UniversityCandidatesClient() {
             </label>
 
             <label className="field-block">
-              <span className="field-label">大学・学部URL（任意）</span>
+              <span className="field-label">{isHighSchool ? "高校URL（任意）" : "大学・学部URL（任意）"}</span>
               <input
                 className="text-input"
                 type="url"
@@ -409,6 +425,9 @@ export function UniversityCandidatesClient() {
             </label>
           </div>
 
+          {isHighSchool && <label className="field-block">課程（任意）
+            <input className="text-input" value={form.studySchedule ?? ""} onChange={e => updateForm("studySchedule", e.target.value)} />
+          </label>}
           <ScoreSelector
             label="気になる度"
             value={form.interest}
@@ -505,7 +524,12 @@ export function UniversityCandidatesClient() {
   }
 
   function renderCandidateDetail(candidate: UniversityCandidate) {
-    const facultyLabel = [candidate.faculty, candidate.department].filter(Boolean).join(" / ");
+    const facultyLabel = [candidate.studySchedule, candidate.faculty, candidate.department].filter(Boolean).join(" / ");
+    const currentSchool = candidate.universityMasterId ? findUniversityMasterById(candidate.universityMasterId) : null;
+    const currentSource = currentSchool ? universitySource(currentSchool) : undefined;
+    const savedSourceUrl = safeExternalUrl(candidate.masterSourceUrl ?? (candidate.universityMasterId && candidate.masterAcademicYear === universityMaster.academicYear ? universityMaster.sourceUrl : ""));
+    const latestPrograms = candidate.highSchoolCode ? programsForSchool(candidate.highSchoolCode)
+      .filter(p => programSources[p.source].year > (candidate.masterAcademicYear ?? "")) : [];
     const notes = [
       { label: "本人メモ", value: candidate.studentView.trim() },
       { label: "家族メモ", value: candidate.familyView.trim() },
@@ -528,6 +552,16 @@ export function UniversityCandidatesClient() {
         </div>
 
         <div className="uni-detail-sections">
+          {candidate.highSchoolCode && <p>学校コード {candidate.highSchoolCode} · <a href={highSchoolMaster.sourceUrl}>学校名簿</a></p>}
+          {candidate.masterAcademicYear && <section className="uni-detail-section">
+            <p>登録時の資料 · {candidate.masterAcademicYear}年度 · {candidate.masterCheckedAt}確認
+              {candidate.selectionTime && ` · ${candidate.selectionTime}に選択`}
+              {savedSourceUrl && <> · <a href={savedSourceUrl}>出典</a></>}</p>
+            {latestPrograms.map(p => <p key={programLabel(p)}>確認済みの募集 · {programSources[p.source].year}年度 · <a href={programSources[p.source].url}>{programLabel(p)}</a></p>)}
+            {currentSource && currentSource.academicYear !== candidate.masterAcademicYear && <p>
+              現行資料（{currentSource.academicYear}年度） · <a href={currentSource.sourceUrl}>{currentSchool?.faculties.map(f => f.name).join("、")}</a>
+            </p>}
+          </section>}
           {candidate.url ? (
             <section className="uni-detail-section">
               <p className="uni-detail-section-title">基本情報</p>
@@ -603,13 +637,20 @@ export function UniversityCandidatesClient() {
     return () => window.cancelAnimationFrame(frame);
   }, [openEditorKey, pendingEditScrollId]);
 
+  function registerCandidate(candidate: UniversityCandidate) {
+    if (!persistCandidate(candidate)) return false;
+    closeEditor();
+    return true;
+  }
+
+  if (!ready) return <p role="status">候補を読み込み中…</p>;
   return (
     <div className="uni-page">
       <section className="list-section">
         <div className="list-section-head">
           <div className="list-section-copy">
-            <h2 className="list-section-title">大学・学部候補</h2>
-            <p className="list-section-note">{candidates.length}校を保存中</p>
+            <h2 className="list-section-title">{isHighSchool ? "高校・学科候補" : "大学・学部候補"}</h2>
+            <p className="list-section-note">{sortedCandidates.length}件を保存中</p>
           </div>
           <button
             type="button"
@@ -631,7 +672,7 @@ export function UniversityCandidatesClient() {
             <option value="interest">気になる度が高い順</option>
             <option value="newest">新しい順</option>
             <option value="oldest">古い順</option>
-            <option value="name">大学名順</option>
+            <option value="name">学校名順</option>
           </select>
         </label>
 
@@ -639,25 +680,16 @@ export function UniversityCandidatesClient() {
           ? renderCandidateEditor("候補を追加", "実際の進路検討で見返しやすい内容だけを入力")
           : null}
         {isCreating && createStep !== "form" ? (
-          <UniversitySearchPanel
-            onRegister={(candidate) => {
-              if (!persistCandidate(candidate)) {
-                return false;
-              }
-
-              closeEditor();
-              return true;
-            }}
-            onCancel={closeEditor}
-            onManual={(universityName, master) => openManualCreate(universityName, master)}
-          />
+          isHighSchool ? <HighSchoolSearchPanel onRegister={registerCandidate} onCancel={closeEditor} /> :
+          <UniversitySearchPanel onRegister={registerCandidate} onCancel={closeEditor}
+            onManual={(universityName, master) => openManualCreate(universityName, master)} />
         ) : null}
 
         <div className="uni-list">
           {sortedCandidates.length === 0 ? (
             <div className="empty-state">
-              <p className="item-title small">まだ大学・学部候補はありません</p>
-              <p className="muted-text">気になる大学から気軽に登録できます。</p>
+              <p className="item-title small">まだ{isHighSchool ? "高校" : "大学"}の候補はありません</p>
+              <p className="muted-text">気になる学校から気軽に登録できます。</p>
             </div>
           ) : (
             sortedCandidates.map((item) => (
@@ -681,8 +713,7 @@ export function UniversityCandidatesClient() {
                       <div className="uni-card-copy">
                         <p className="uni-card-name">{item.university}</p>
                         <p className="uni-card-faculty">
-                          {item.faculty.trim() ? item.faculty : "まだ決めていない"}
-                          {item.department ? ` / ${item.department}` : ""}
+                          {[item.studySchedule, item.faculty, item.department].filter(Boolean).join(" / ") || "まだ決めていない"}
                         </p>
                       </div>
                       <span className="heart-shell" aria-hidden="true">
@@ -712,7 +743,7 @@ export function UniversityCandidatesClient() {
                   {safeExternalUrl(item.url) ? (
                     <a className="uni-card-link" href={safeExternalUrl(item.url)} onClick={(event) => event.stopPropagation()}>
                       <UiIcon name="link" className="subject-action-icon" />
-                      大学ページを見る
+                      学校ページを見る
                     </a>
                   ) : null}
 
@@ -754,7 +785,7 @@ export function UniversityCandidatesClient() {
                 {copyingId === item.id
                   ? renderCandidateEditor(
                       `${item.university}をコピーして追加`,
-                      "学部・学科などを変更して保存すると、新しい候補として追加されます",
+                      "希望する学科などを変更して保存すると、新しい候補として追加されます",
                       copyEditorKey(item.id),
                     )
                   : null}

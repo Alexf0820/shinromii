@@ -1,0 +1,52 @@
+{
+  "academicYear": "2025",
+  "academicYearLabel": "令和7年度",
+  "sourceName": "文部科学省『令和7年度全国大学一覧』",
+  "sourceUrl": "https://www.mext.go.jp/a_menu/koutou/ichiran/mext_00050.html",
+  "files": [
+    {
+      "name": "01.xlsx",
+      "type": "国立"
+    },
+    {
+      "name": "02.xlsx",
+      "type": "公立"
+    },
+    {
+      "name": "03-1.xlsx",
+      "type": "私立"
+    },
+    {
+      "name": "03-2.xlsx",
+      "type": "私立"
+    },
+    {
+      "name": "03-3.xlsx",
+      "type": "私立"
+    },
+    {
+      "name": "03-4.xlsx",
+      "type": "私立"
+    },
+    {
+      "name": "03-5.xlsx",
+      "type": "私立"
+    },
+    {
+      "name": "03-6.xlsx",
+      "type": "私立"
+    },
+    {
+      "name": "03-7.xlsx",
+      "type": "私立"
+    },
+    {
+      "name": "03-8.xlsx",
+      "type": "私立"
+    },
+    {
+      "name": "05.xlsx",
+      "type": "私立"
+    }
+  ]
+}

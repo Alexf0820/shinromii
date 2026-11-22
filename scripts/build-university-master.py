@@ -13,6 +13,7 @@ import os
 import re
 import sys
 from datetime import date
+from pathlib import Path
 
 try:
     import openpyxl
@@ -86,21 +87,6 @@ SECTION_STOP = {
 
 FACULTY_KEEP = re.compile(r"(学部|学群|学域|学環)")
 TITLE_RE = re.compile(r"^(国立|公立|私立)\s+(.+)$")
-
-SOURCE_FILES = [
-    ("01.xlsx", "国立"),
-    ("02.xlsx", "公立"),
-    ("03-1.xlsx", "私立"),
-    ("03-2.xlsx", "私立"),
-    ("03-3.xlsx", "私立"),
-    ("03-4.xlsx", "私立"),
-    ("03-5.xlsx", "私立"),
-    ("03-6.xlsx", "私立"),
-    ("03-7.xlsx", "私立"),
-    ("03-8.xlsx", "私立"),
-    ("05.xlsx", "私立"),
-]
-
 
 def prefecture_from(text: object) -> str:
     if not text:
@@ -187,11 +173,12 @@ def parse_sheet(ws, sheet_name: str) -> dict:
     }
 
 
-def build_master(source_dir: str) -> list[dict]:
+def build_master(source_dir: str, files: list[dict]) -> list[dict]:
     universities = []
     seen_codes: set[str] = set()
 
-    for filename, default_type in SOURCE_FILES:
+    for source in files:
+        filename, default_type = source["name"], source["type"]
         path = os.path.join(source_dir, filename)
         if not os.path.exists(path):
             raise FileNotFoundError(f"公式 Excel が見つかりません: {path}")
@@ -232,23 +219,40 @@ def main() -> None:
     parser.add_argument("--source-dir", required=True, help="文科省 Excel を置いたディレクトリ")
     parser.add_argument("--out", required=True, help="出力 JSON")
     parser.add_argument("--checked-at", default=date.today().isoformat())
+    default_manifest = Path(__file__).resolve().parents[1] / "data/university-master/r7-inputs.json"
+    parser.add_argument("--manifest", type=Path, default=default_manifest, help="対象年度・出典・ファイル名を示すJSON")
+    parser.add_argument("--previous", type=Path, help="差分比較する既存の年度別JSON")
     args = parser.parse_args()
+    manifest = json.loads(args.manifest.read_text(encoding="utf-8"))
+    files = manifest["files"]
+    if not re.fullmatch(r"\d{4}", manifest["academicYear"]) or not manifest["sourceUrl"].startswith("https://www.mext.go.jp/"):
+        parser.error("年度または文科省の出典URLを確認してください")
+    if {f["type"] for f in files} != {"国立", "公立", "私立"}:
+        parser.error("国公私立の入力ファイルを指定してください")
+    if len({f["name"] for f in files}) != len(files):
+        parser.error("入力ファイル名が重複しています")
+    if args.previous and args.previous.resolve() == Path(args.out).resolve():
+        parser.error("前回データと新しい候補ファイルの出力先を分けてください")
 
-    universities = build_master(args.source_dir)
+    universities = build_master(args.source_dir, files)
     missing_pref = [item["name"] for item in universities if not item["prefecture"]]
     if missing_pref:
         raise RuntimeError("都道府県を読めない大学があります: " + ", ".join(missing_pref[:10]))
 
     payload = {
-        "academicYear": "2025",
-        "academicYearLabel": "令和7年度",
-        "sourceName": "文部科学省『令和7年度全国大学一覧』",
-        "sourceUrl": "https://www.mext.go.jp/a_menu/koutou/ichiran/mext_00050.html",
+        **{key: manifest[key] for key in ("academicYear", "academicYearLabel", "sourceName", "sourceUrl")},
         "checkedAt": args.checked_at,
         "idNote": "大学idの mext-{学校コード} は文科省学校コードに基づく。学部idの shinromii-fac- はSHINROMii内部ID。",
         "universities": universities,
     }
 
+    if args.previous:
+        previous = json.loads(args.previous.read_text(encoding="utf-8"))
+        old = {school["id"]: school for school in previous["universities"]}
+        new = {school["id"]: school for school in universities}
+        for school_id in sorted(old.keys() | new.keys()):
+            if old.get(school_id) != new.get(school_id):
+                print(json.dumps({"id": school_id, "before": old.get(school_id), "after": new.get(school_id)}, ensure_ascii=False))
     os.makedirs(os.path.dirname(args.out) or ".", exist_ok=True)
     with open(args.out, "w", encoding="utf-8") as handle:
         json.dump(payload, handle, ensure_ascii=False, indent=2)
