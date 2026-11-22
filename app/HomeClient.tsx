@@ -145,6 +145,7 @@ export function HomeClient() {
       .slice(0, 2);
   }, [storage]);
 
+  const isHighSchool = storage?.profile.progressionStage === "high-school";
   const summaryItems = [
     {
       href: "/grades#grades",
@@ -167,9 +168,9 @@ export function HomeClient() {
     },
     {
       href: "/universities",
-      label: "大学候補",
-      value: storage ? `${storage.universityCandidates.length}` : "-",
-      unit: storage ? "校" : "",
+      label: isHighSchool ? "高校候補" : "大学候補",
+      value: storage ? `${storage.universityCandidates.filter(c => (c.schoolKind === "high-school") === isHighSchool).length}` : "-",
+      unit: storage ? "件" : "",
       note: "登録済み",
     },
     {
@@ -303,9 +304,9 @@ export function HomeClient() {
               <UiIcon name={item.icon} className="home-feature-glyph" />
             </span>
             <span className="home-feature-body">
-              <strong>{item.title}</strong>
+              <strong>{isHighSchool && item.href === "/universities" ? "高校・学科候補" : item.title}</strong>
               <span className="home-feature-desc">
-                {item.description.map((line) => (
+                {(isHighSchool && item.href === "/universities" ? ["気になる高校を", "比較・整理する"] : item.description).map((line) => (
                   <span key={line}>{line}</span>
                 ))}
               </span>

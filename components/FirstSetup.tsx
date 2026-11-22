@@ -7,6 +7,7 @@ import { GradeRecordForm } from "@/components/grades/GradeRecordForm";
 import { QualificationRecordForm } from "@/components/grades/QualificationRecordForm";
 import { OpenCampusCreatePanel } from "@/components/open-campus/OpenCampusCreatePanel";
 import { UiIcon } from "@/components/UiIcon";
+import { HighSchoolSearchPanel } from "@/components/universities/HighSchoolSearchPanel";
 import { UniversitySearchPanel } from "@/components/universities/UniversitySearchPanel";
 import type { GradeRecord, QualificationRecord, UniversityCandidate } from "@/data/mockData";
 import { buildGradeRecord, createEmptyGradeForm, type GradeFormState } from "@/lib/grade-form";
@@ -189,11 +190,14 @@ export function FirstSetup({ onFinished, preview = false, resume = false }: Firs
     setShowQualificationForm(false);
   }
 
+  const isHighSchool = profile.progressionStage === "high-school";
+  const visibleCandidates = candidates.filter(item => (item.schoolKind === "high-school") === isHighSchool);
+
   function handleRegisterUniversity(candidate: UniversityCandidate) {
     const duplicate = candidates.some((item) => isSameUniversityFaculty(item, candidate));
 
     if (duplicate) {
-      window.alert("同じ大学・学部はすでに候補にあります。");
+      window.alert("同じ学校・専攻はすでに候補にあります。");
       return false;
     }
 
@@ -396,27 +400,27 @@ export function FirstSetup({ onFinished, preview = false, resume = false }: Firs
 
       {step === 4 ? (
         <div className="first-setup-step">
-          <h1 className="first-setup-title">気になる大学はある？</h1>
-          <p className="first-setup-lead">大学名で検索できます。学部が決まっていなくても登録できます。</p>
+          <h1 className="first-setup-title">気になる{isHighSchool ? "高校" : "大学"}はある？</h1>
+          <p className="first-setup-lead">学校名で検索できます。学校だけでも登録できます。</p>
 
-          {candidates.length > 0 ? (
+          {visibleCandidates.length > 0 ? (
             <ul className="setup-mini-list">
-              {candidates.map((candidate) => (
+              {visibleCandidates.map((candidate) => (
                 <li key={candidate.id}>
                   <strong>{candidate.university}</strong>
-                  <span>{candidate.faculty.trim() ? candidate.faculty : "まだ決めていない"}</span>
+                  <span>{[candidate.studySchedule, candidate.faculty, candidate.department].filter(Boolean).join(" / ") || "まだ決めていない"}</span>
                 </li>
               ))}
             </ul>
           ) : null}
 
-          <UniversitySearchPanel onRegister={handleRegisterUniversity} showCancel={false} />
+          {isHighSchool ? <HighSchoolSearchPanel onRegister={handleRegisterUniversity} /> : <UniversitySearchPanel onRegister={handleRegisterUniversity} showCancel={false} />}
         </div>
       ) : null}
 
       {step === 5 ? (
         <div className="first-setup-step">
-          <h1 className="first-setup-title">OCの予定や、行った大学はある？</h1>
+          <h1 className="first-setup-title">{isHighSchool ? "学校見学の予定はある？" : "OCの予定や、行った大学はある？"}</h1>
           <p className="first-setup-lead">これから参加も、参加済みも残せます。何も登録せず進めても大丈夫です。</p>
           <OpenCampusCreatePanel
             events={events}

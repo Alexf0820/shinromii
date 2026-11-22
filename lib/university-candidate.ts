@@ -2,7 +2,7 @@ import type { UniversityCandidate } from "@/data/mockData";
 import {
   findFacultyMasterByExactName,
   findUniversityMasterByExactName,
-  universityMaster,
+  universitySource,
 } from "@/lib/university-master";
 
 export function normalizeUniversityCandidate(record: UniversityCandidate): UniversityCandidate {
@@ -41,6 +41,13 @@ export function normalizeUniversityCandidate(record: UniversityCandidate): Unive
 }
 
 export function isSameUniversityFaculty(left: UniversityCandidate, right: UniversityCandidate) {
+  if (left.schoolKind === "high-school" || right.schoolKind === "high-school") {
+    if (left.schoolKind !== right.schoolKind) return false;
+    const sameSchool = left.highSchoolCode && right.highSchoolCode
+      ? left.highSchoolCode === right.highSchoolCode : left.university === right.university;
+    return sameSchool && left.faculty === right.faculty && left.department === right.department &&
+      (left.studySchedule ?? "") === (right.studySchedule ?? "");
+  }
   if (left.universityMasterId && right.universityMasterId && left.facultyMasterId && right.facultyMasterId) {
     return left.universityMasterId === right.universityMasterId && left.facultyMasterId === right.facultyMasterId;
   }
@@ -60,6 +67,8 @@ export function attachUniversityMasterIds(records: UniversityCandidate[]): {
   const next = records.map((record) => {
     const current = normalizeUniversityCandidate(record);
 
+    if (current.schoolKind === "high-school") return current;
+
     if (current.universityMasterId && (current.facultyMasterId || !current.faculty.trim())) {
       return current;
     }
@@ -75,8 +84,10 @@ export function attachUniversityMasterIds(records: UniversityCandidate[]): {
 
     if (!patched.universityMasterId) {
       patched.universityMasterId = university.id;
-      patched.masterCheckedAt = universityMaster.checkedAt;
-      patched.masterAcademicYear = universityMaster.academicYear;
+      const source = universitySource(university);
+      patched.masterCheckedAt = source.checkedAt;
+      patched.masterAcademicYear = source.academicYear;
+      patched.masterSourceUrl = source.sourceUrl;
       localChanged = true;
     }
 

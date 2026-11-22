@@ -1,4 +1,4 @@
-const CACHE_NAME = "shinromii-v106-static";
+const CACHE_NAME = "shinromii-v107-static";
 const PUBLIC_PAGES = new Set(["/", "/grades", "/universities", "/open-campus", "/ai-notes", "/profile", "/guide"]);
 const PUBLIC_FILES = new Set(["/manifest.webmanifest", "/icon-192.png", "/icon-512.png", "/apple-touch-icon.png", "/images/shinromii-home-hero.png", "/images/data-protection-guide-confirmed.jpg", "/brand/shinromii-mark.png"]);
 

@@ -6,6 +6,8 @@ import type { UniversityCandidate } from "@/data/mockData";
 import { createUniversityCandidateDraft } from "@/lib/university-draft";
 import {
   formatUniversityMasterCheckedAt,
+  universityMaster,
+  universitySource,
   searchUniversityMaster,
   type UniversityMaster,
 } from "@/lib/university-master";
@@ -118,6 +120,7 @@ export function UniversitySearchPanel({
     return (
       <section className="panel inline-detail-card inline-editor-card uni-search-panel">
         <SectionHeader title="学部を選択" description={selectedMaster.name} />
+        <p className="uni-search-source">{universitySource(selectedMaster).academicYear}年度 · {formatUniversityMasterCheckedAt(universitySource(selectedMaster).checkedAt)} · <a href={universitySource(selectedMaster).sourceUrl}>{universitySource(selectedMaster).sourceName}</a></p>
         {selectedMaster.faculties.length > 0 ? (
           <div className="uni-search-list">
             {selectedMaster.faculties.map((faculty) => (
@@ -220,8 +223,8 @@ export function UniversitySearchPanel({
         )}
       </div>
       <p className="uni-search-source">
-        大学・学部データ {formatUniversityMasterCheckedAt()}
-        <span className="uni-search-source-sub">文部科学省の公開情報をもとに作成</span>
+        全国一覧 {universityMaster.academicYear}年度 · {formatUniversityMasterCheckedAt()}
+        <span className="uni-search-source-sub"><a href={universityMaster.sourceUrl}>{universityMaster.sourceName}</a> · 個別に確認した大学は選択後に年度を表示</span>
       </p>
       <button type="button" className="card-action subtle" onClick={() => openManual()}>
         見つからない場合は手入力

@@ -126,7 +126,7 @@ export function BackupFileActions({ restoreOnly = false, preview = false, onRest
         <p className="backup-filename">{pending.name}</p>
         <p>作成日時：{displayDate(pending.createdAt)}</p>
         <p>{pending.storage.meta?.isSample ? "サンプルのバックアップ" : "通常のバックアップ"}</p>
-        <ul><li>成績：{pending.storage.gradeRecords.length}件</li><li>資格・検定：{pending.storage.qualifications.length}件</li><li>大学候補：{pending.storage.universityCandidates.length}件</li><li>OC：{pending.storage.openCampusEvents.length}件</li><li>相談メモ：{pending.storage.aiNotes.length}件</li></ul>
+        <ul><li>成績：{pending.storage.gradeRecords.length}件</li><li>資格・検定：{pending.storage.qualifications.length}件</li><li>学校候補：{pending.storage.universityCandidates.length}件</li><li>OC：{pending.storage.openCampusEvents.length}件</li><li>相談メモ：{pending.storage.aiNotes.length}件</li></ul>
         <p className="backup-warning">{isDemoMode() ? "現在のデモデータ" : "現在のデータ"}を、このバックアップの内容で置き換えます。追加・結合ではありません。今の内容を残す場合は、キャンセルして先にバックアップを保存してください。</p>
         <button type="button" className="action-button primary" disabled={busy || preview} onClick={() => void restore()}>{busy ? "復元中…" : "復元する"}</button>
       </> : null}

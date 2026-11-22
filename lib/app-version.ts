@@ -1,5 +1,5 @@
 /** Single source of truth for the version shown in the UI. */
-export const APP_VERSION = "1.06";
+export const APP_VERSION = "1.07";
 
 export const APP_VERSION_LABEL = `Ver.${APP_VERSION}`;
 

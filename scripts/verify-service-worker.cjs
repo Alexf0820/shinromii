@@ -3,7 +3,7 @@ const fs=require('node:fs');const vm=require('node:vm');const assert=require('no
  const listeners={},stores=new Map([['shinromii-v09923-static',new Map()],['other-app',new Map()]]);
  const key=r=>typeof r==='string'?new URL(r,'https://example.test').href:r.url;
  let offline=false,control='public, max-age=0',status=200,redirected=false,cacheFailure='',body='public shell';
- const current=()=>stores.get('shinromii-v106-static');
+ const current=()=>stores.get('shinromii-v107-static');
  const cache={async put(r,v){if(cacheFailure==='put')throw new Error('quota');current().set(key(r),v);},async match(r){return current().get(key(r));},async delete(r){if(cacheFailure==='delete')throw new Error('cache failure');current().delete(key(r));}};
  const caches={async open(n){if(cacheFailure==='open')throw new Error('unavailable');if(!stores.has(n))stores.set(n,new Map());return cache;},async keys(){return [...stores.keys()];},async delete(n){return stores.delete(n);}};
  vm.runInNewContext(fs.readFileSync('public/sw.js','utf8'),{self:{location:{origin:'https://example.test'},addEventListener:(n,f)=>listeners[n]=f,skipWaiting:async()=>{},clients:{claim:async()=>{}}},URL,Response,caches,fetch:async()=>{if(offline)throw new Error('offline');const r=new Response(body,{status,headers:{'cache-control':control}});Object.defineProperty(r,'redirected',{value:redirected});return r;}});

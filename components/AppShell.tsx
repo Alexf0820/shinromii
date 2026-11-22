@@ -280,7 +280,7 @@ export function AppShell({ children }: AppShellProps) {
                       <UiIcon name={meta.icon} className="topbar-glyph" />
                     </span>
                   ) : null}
-                  <h1 className="topbar-title">{meta.title}</h1>
+                  <h1 className="topbar-title">{pathname === "/universities" && progressionStage === "high-school" ? "高校・学科候補" : meta.title}</h1>
                 </div>
                 {meta.subtitle ? (
                   <p className={`topbar-subtitle${isInfoPage ? " info-page-lead" : ""}`}>{meta.subtitle}</p>
@@ -317,7 +317,7 @@ export function AppShell({ children }: AppShellProps) {
             </>
           )}
         </div>
-        {isOnboarding || isAdminPath ? null : <MobileNav />}
+        {isOnboarding || isAdminPath ? null : <MobileNav highSchool={progressionStage === "high-school"} />}
         <WelcomeGuide allowAutomatic={!demo && pathname === "/"} />
       </main>
     </div>

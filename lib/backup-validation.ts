@@ -32,7 +32,7 @@ const qualification = shape({ id, ...strings("name scoreOrLevel status memo crea
   }),
 });
 const candidate = shape({ id, ...strings("university faculty department url studentScore familyScore studentView familyView reason futureNote"), interest: number }, {
-  ...meta, ...strings("createdAt universityMasterId facultyMasterId masterCheckedAt masterAcademicYear"),
+  ...meta, schoolKind: oneOf("university", "high-school"), ...strings("createdAt universityMasterId facultyMasterId masterCheckedAt masterAcademicYear masterSourceUrl highSchoolCode studySchedule selectionTime"),
 });
 const note = shape({ id, ...strings("consultedAt title consultationBody answerBody summary relatedSchool freeNote"), helpful: number }, {
   ...meta, provider: text, sourceName: text, sourceKind: oneOf("family", "school", "cram", "ai", "other"),
